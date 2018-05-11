@@ -258,6 +258,12 @@
   version = "v1.0.0"
 
 [[projects]]
+  name = "github.com/pmezard/go-difflib"
+  packages = ["difflib"]
+  revision = "792786c7400a136282c1664665ae0a8db921c6c2"
+  version = "v1.0.0"
+
+[[projects]]
   branch = "master"
   name = "github.com/ryanuber/go-glob"
   packages = ["."]
@@ -267,6 +273,12 @@
   name = "github.com/sethgrid/pester"
   packages = ["."]
   revision = "1808e6f72af9682aaae9189a91c6bb9b416297ca"
+
+[[projects]]
+  name = "github.com/stretchr/testify"
+  packages = ["assert"]
+  revision = "12b6f73e6084dad08a7c6e575284b177ecafbc71"
+  version = "v1.2.1"
 
 [[projects]]
   name = "github.com/subosito/gotenv"
@@ -419,6 +431,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "62852da3e4c5d4f62182d532e502459add8217639897a83387449408d5381194"
+  inputs-digest = "995e1f30f31d8677a79aea7da55b53609286b134dfa6a8517a1cfbf3d9a4300b"
   solver-name = "gps-cdcl"
   solver-version = 1

@@ -15,7 +15,7 @@ const (
 	maxLeaseTTLHr     = 12
 )
 
-func getTestBackend(t *testing.T) (logical.Backend, logical.Storage) {
+func getTestBackend(t *testing.T) (*azureSecretBackend, logical.Storage) {
 	b := Backend()
 
 	config := &logical.BackendConfig{

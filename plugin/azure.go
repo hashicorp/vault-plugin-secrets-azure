@@ -11,6 +11,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/compute/mgmt/compute"
 	"github.com/Azure/azure-sdk-for-go/services/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
+	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/Azure/go-autorest/autorest/to"
@@ -26,6 +27,36 @@ const (
 
 	principalNotFoundErr = "PrincipalNotFound"
 )
+
+type Provider interface {
+	getApplicationClient() ApplicationClient
+	getServicePrincipalClient() ServicePrincipalClient
+	getRoleAssignmentClient() RoleAssignmentClient
+}
+
+type ApplicationClient interface {
+	Create(ctx context.Context, parameters graphrbac.ApplicationCreateParameters) (graphrbac.Application, error)
+	Delete(ctx context.Context, applicationObjectID string) (autorest.Response, error)
+}
+
+type ServicePrincipalClient interface {
+	Create(ctx context.Context, parameters graphrbac.ServicePrincipalCreateParameters) (graphrbac.ServicePrincipal, error)
+}
+
+type RoleAssignmentClient interface {
+	Create(ctx context.Context, scope string, roleAssignmentName string, parameters authorization.RoleAssignmentCreateParameters) (authorization.RoleAssignment, error)
+}
+
+//type P2 interface {
+//	CreateApp(ctx context.Context, parameters graphrbac.ApplicationCreateParameters) (graphrbac.Application, error)
+//}
+//
+//type realP2 struct{}
+//
+//func (p *realP2) CreateApp(ctx context.Context, parameters graphrbac.ApplicationCreateParameters) (graphrbac.Application, error) {
+//
+//return p.ac.Create(ctx context.Context, parameters graphrbac.ApplicationCreateParameters) (graphrbac.Application, error) {
+//}
 
 //type azureSettings struct {
 //	TenantID     string
@@ -202,24 +233,6 @@ func (b *azureSecretBackend) updateMachineIdentities(ctx context.Context, resour
 	return err
 }
 
-type azureClient struct {
-	settings *azureSettings
-}
-
-func newAzureClient() (*azureClient, error) {
-	settings, err := getAzureSettings(&azureConfig{})
-
-	if err != nil {
-		return nil, err
-	}
-
-	c := azureClient{
-		settings: settings,
-	}
-
-	return &c, nil
-}
-
 // Get current identities, add/remove ours, save the result
 func updateIdentities() {
 	vmClient := compute.NewVirtualMachinesClient(helpers.SubscriptionID())
@@ -250,25 +263,20 @@ func updateIdentities() {
 	fmt.Println(err)
 }
 
-func generateCredential() {
+type mockAppClient struct {
 }
+
+func (m *mockAppClient) Create(ctx context.Context, parameters graphrbac.ApplicationCreateParameters) (graphrbac.Application, error) {
+	return graphrbac.Application{}, nil
+}
+
+//func newMockAppClient() mockAppClien {
+//
+//}
 
 // createApp creates a new Azure "Application". An Application is a needed to create service
 // principles in subsequent for authentication
 func (c *azureClient) createApp() (app *graphrbac.Application, err error) {
-	config := auth.NewClientCredentialsConfig(c.settings.ClientID, c.settings.ClientSecret, c.settings.TenantID)
-	config.AADEndpoint = c.settings.Environment.ActiveDirectoryEndpoint
-	config.Resource = c.settings.Environment.GraphEndpoint
-	authorizer, err := config.Authorizer()
-
-	if err != nil {
-		return nil, err
-	}
-
-	appClient := graphrbac.NewApplicationsClient(c.settings.TenantID)
-	appClient.Authorizer = authorizer
-	appClient.AddToUserAgent(helpers.UserAgent())
-
 	// Generate a random app name
 	name, err := uuid.GenerateUUID()
 	if err != nil {
@@ -276,31 +284,18 @@ func (c *azureClient) createApp() (app *graphrbac.Application, err error) {
 	}
 	url := fmt.Sprintf("https://%s", name)
 
-	result, err := appClient.Create(context.Background(), graphrbac.ApplicationCreateParameters{
+	result, err := c.provider.getApplicationClient().Create(context.Background(), graphrbac.ApplicationCreateParameters{
 		AvailableToOtherTenants: to.BoolPtr(false),
 		DisplayName:             to.StringPtr(name),
 		Homepage:                to.StringPtr(url),
 		IdentifierUris:          &[]string{url},
 	})
 
-	return &result, nil
+	return &result, err
 }
 
 // createSP creates a new service principal
 func (c *azureClient) createSP(app *graphrbac.Application, duration time.Duration) (sp *graphrbac.ServicePrincipal, password string, err error) {
-	config := auth.NewClientCredentialsConfig(c.settings.ClientID, c.settings.ClientSecret, c.settings.TenantID)
-	config.AADEndpoint = c.settings.Environment.ActiveDirectoryEndpoint
-	config.Resource = c.settings.Environment.GraphEndpoint
-	authorizer, err := config.Authorizer()
-
-	if err != nil {
-		return nil, "", err
-	}
-
-	client := graphrbac.NewServicePrincipalsClient(c.settings.TenantID)
-	client.Authorizer = authorizer
-	client.AddToUserAgent(helpers.UserAgent())
-
 	// Generate a random key id (which must be a UUID) and password
 	keyID, err := uuid.GenerateUUID()
 	if err != nil {
@@ -312,7 +307,7 @@ func (c *azureClient) createSP(app *graphrbac.Application, duration time.Duratio
 		return nil, "", err
 	}
 
-	result, err := client.Create(context.Background(), graphrbac.ServicePrincipalCreateParameters{
+	result, err := c.provider.getServicePrincipalClient().Create(context.Background(), graphrbac.ServicePrincipalCreateParameters{
 		AppID:          app.AppID,
 		AccountEnabled: to.BoolPtr(true),
 		PasswordCredentials: &[]graphrbac.PasswordCredential{
@@ -325,25 +320,12 @@ func (c *azureClient) createSP(app *graphrbac.Application, duration time.Duratio
 		},
 	})
 
-	return &result, password, nil
+	return &result, password, err
 }
 
 // deleteApp deletes an Azure application
 func (c *azureClient) deleteApp(appObjectID string) error {
-	config := auth.NewClientCredentialsConfig(c.settings.ClientID, c.settings.ClientSecret, c.settings.TenantID)
-	config.AADEndpoint = c.settings.Environment.ActiveDirectoryEndpoint
-	config.Resource = c.settings.Environment.GraphEndpoint
-	authorizer, err := config.Authorizer()
-
-	if err != nil {
-		return err
-	}
-
-	client := graphrbac.NewApplicationsClient(c.settings.TenantID)
-	client.Authorizer = authorizer
-	client.AddToUserAgent(helpers.UserAgent())
-
-	resp, err := client.Delete(context.Background(), appObjectID)
+	resp, err := c.provider.getApplicationClient().Delete(context.Background(), appObjectID)
 
 	// Don't consider it and error if the object wasn't present
 	if err != nil && resp.StatusCode == 404 {
@@ -355,15 +337,6 @@ func (c *azureClient) deleteApp(appObjectID string) error {
 
 // assignRoles assigns roles
 func (c *azureClient) assignRoles(sp *graphrbac.ServicePrincipal, roles []azureRole) error {
-	config := auth.NewClientCredentialsConfig(c.settings.ClientID, c.settings.ClientSecret, c.settings.TenantID)
-	config.AADEndpoint = c.settings.Environment.ActiveDirectoryEndpoint
-	config.Resource = c.settings.Environment.ResourceManagerEndpoint
-	authorizer, err := config.Authorizer()
-
-	if err != nil {
-		return err
-	}
-
 	for _, role := range roles {
 		// Generate an assignment ID
 		assignmentID, err := uuid.GenerateUUID()
@@ -373,11 +346,7 @@ func (c *azureClient) assignRoles(sp *graphrbac.ServicePrincipal, roles []azureR
 
 		tries := 1
 		for ; tries < maxRetries; tries++ {
-			client := authorization.NewRoleAssignmentsClient(c.settings.SubscriptionID)
-			client.Authorizer = authorizer
-			client.AddToUserAgent(helpers.UserAgent())
-
-			_, err := client.Create(context.Background(), role.Scope, assignmentID, authorization.RoleAssignmentCreateParameters{
+			_, err := c.provider.getRoleAssignmentClient().Create(context.Background(), role.Scope, assignmentID, authorization.RoleAssignmentCreateParameters{
 				RoleAssignmentProperties: &authorization.RoleAssignmentProperties{
 					RoleDefinitionID: to.StringPtr(role.RoleID),
 					PrincipalID:      sp.ObjectID,

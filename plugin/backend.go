@@ -6,6 +6,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Azure-Samples/azure-sdk-for-go-samples/helpers"
+	"github.com/Azure/azure-sdk-for-go/services/authorization/mgmt/2018-01-01-preview/authorization"
+	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
+	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/hashicorp/vault-plugin-secrets-gcp/plugin/iamutil"
 	"github.com/hashicorp/vault/logical"
 	"github.com/hashicorp/vault/logical/framework"
@@ -15,6 +19,9 @@ type azureSecretBackend struct {
 	*framework.Backend
 
 	l sync.RWMutex
+
+	client   *azureClient
+	provider Provider
 }
 
 type backend struct {
@@ -69,6 +76,67 @@ func Backend() *azureSecretBackend {
 	}
 
 	return &b
+}
+
+type prov struct {
+	settings  *azureSettings
+	appClient *graphrbac.ApplicationsClient
+	spClient  *graphrbac.ServicePrincipalsClient
+	raClient  *authorization.RoleAssignmentsClient
+}
+
+func (p *prov) getApplicationClient() ApplicationClient {
+	return p.appClient
+}
+
+func (p *prov) getServicePrincipalClient() ServicePrincipalClient {
+	return p.spClient
+}
+
+func (p *prov) getRoleAssignmentClient() RoleAssignmentClient {
+	return p.raClient
+}
+
+func (b *azureSecretBackend) getProvider() (Provider, error) {
+	if b.provider != nil {
+		return b.provider, nil
+	}
+
+	settings, err := getAzureSettings(&azureConfig{})
+
+	if err != nil {
+		return nil, err
+	}
+
+	config := auth.NewClientCredentialsConfig(settings.ClientID, settings.ClientSecret, settings.TenantID)
+	config.AADEndpoint = settings.Environment.ActiveDirectoryEndpoint
+	config.Resource = settings.Environment.GraphEndpoint
+	authorizer, err := config.Authorizer()
+
+	appClient := graphrbac.NewApplicationsClient(settings.TenantID)
+	appClient.Authorizer = authorizer
+	appClient.AddToUserAgent(helpers.UserAgent())
+
+	spClient := graphrbac.NewServicePrincipalsClient(settings.TenantID)
+	spClient.Authorizer = authorizer
+	spClient.AddToUserAgent(helpers.UserAgent())
+
+	config.Resource = settings.Environment.ResourceManagerEndpoint
+	authorizer, err = config.Authorizer()
+	raClient := authorization.NewRoleAssignmentsClient(settings.SubscriptionID)
+	raClient.Authorizer = authorizer
+	raClient.AddToUserAgent(helpers.UserAgent())
+
+	p := &prov{
+		settings:  settings,
+		appClient: &appClient,
+		spClient:  &spClient,
+		raClient:  &raClient,
+	}
+
+	b.provider = p
+
+	return p, nil
 }
 
 //func newHttpClient(ctx context.Context, s logical.Storage, scopes ...string) (*http.Client, error) {

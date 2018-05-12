@@ -57,7 +57,7 @@ func (b *azureSecretBackend) pathCredentialRead(ctx context.Context, req *logica
 		return nil, errors.New("error during credential create: could not load config")
 	}
 
-	c, err := newAzureClient()
+	c, err := b.newAzureClient()
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +116,7 @@ func (b *azureSecretBackend) credentialRenew(ctx context.Context, req *logical.R
 func (b *azureSecretBackend) credentialRevoke(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
 	appObjectID := req.Secret.InternalData["appObjectID"].(string)
 
-	c, err := newAzureClient()
+	c, err := b.newAzureClient()
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +133,7 @@ func (b *azureSecretBackend) credentialRollback(ctx context.Context, req *logica
 		return err
 	}
 
-	c, err := newAzureClient()
+	c, err := b.newAzureClient()
 	if err != nil {
 		return err
 	}

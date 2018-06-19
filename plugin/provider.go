@@ -124,7 +124,7 @@ func (p *azureProvider) DeleteRoleAssignmentByID(ctx context.Context, roleID str
 	return p.raClient.DeleteByID(ctx, roleID)
 }
 
-func (b *azureSecretBackend) getProvider(cfg *azureConfig) (Provider, error) {
+func (b *azureSecretBackend) getProvider(settings *azureSettings) (Provider, error) {
 	b.providerLock.Lock()
 	defer b.providerLock.Unlock()
 
@@ -132,17 +132,14 @@ func (b *azureSecretBackend) getProvider(cfg *azureConfig) (Provider, error) {
 		return b.provider, nil
 	}
 
-	settings, err := getAzureSettings(cfg)
-
-	if err != nil {
-		return nil, err
-	}
-
 	// clients using the Active Directory endpoint
 	config := auth.NewClientCredentialsConfig(settings.ClientID, settings.ClientSecret, settings.TenantID)
 	config.AADEndpoint = settings.Environment.ActiveDirectoryEndpoint
 	config.Resource = settings.Environment.GraphEndpoint
 	authorizer, err := config.Authorizer()
+	if err != nil {
+		return nil, err
+	}
 
 	appClient := graphrbac.NewApplicationsClient(settings.TenantID)
 	appClient.Authorizer = authorizer
@@ -155,6 +152,9 @@ func (b *azureSecretBackend) getProvider(cfg *azureConfig) (Provider, error) {
 	// clients using the Resource Manager endpoint
 	config.Resource = settings.Environment.ResourceManagerEndpoint
 	authorizer, err = config.Authorizer()
+	if err != nil {
+		return nil, err
+	}
 
 	raClient := authorization.NewRoleAssignmentsClient(settings.SubscriptionID)
 	raClient.Authorizer = authorizer
@@ -169,6 +169,9 @@ func (b *azureSecretBackend) getProvider(cfg *azureConfig) (Provider, error) {
 	vmClient.AddToUserAgent(userAgent())
 
 	oidcVerifier, err := newVerifier(settings)
+	if err != nil {
+		return nil, err
+	}
 
 	// Ping the metadata service (if available)
 	go pingMetadataService()

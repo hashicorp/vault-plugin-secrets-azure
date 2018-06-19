@@ -36,12 +36,12 @@ type azureClient struct {
 }
 
 func (b *azureSecretBackend) newAzureClient(ctx context.Context, cfg *azureConfig) (*azureClient, error) {
-	p, err := b.getProvider(cfg)
+	settings, err := getAzureSettings(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	settings, err := getAzureSettings(cfg)
+	p, err := b.getProvider(settings)
 	if err != nil {
 		return nil, err
 	}

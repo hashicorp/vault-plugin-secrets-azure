@@ -66,7 +66,7 @@ func (b *azureSecretBackend) pathSPRead(ctx context.Context, req *logical.Reques
 		return logical.ErrorResponse(fmt.Sprintf("role '%s' is not a service principal role", roleName)), nil
 	}
 
-	app, err := c.createApp()
+	app, err := c.createApp(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -78,15 +78,15 @@ func (b *azureSecretBackend) pathSPRead(ctx context.Context, req *logical.Reques
 		return nil, errwrap.Wrapf("unable to create WAL entry to clean up service account: {{err}}", err)
 	}
 
-	sp, secret, err := c.createSP(app, cfg.MaxTTL)
+	sp, secret, err := c.createSP(ctx, app, cfg.MaxTTL)
 	if err != nil {
-		c.deleteApp(*app.ObjectID)
+		c.deleteApp(ctx, *app.ObjectID)
 		return nil, err
 	}
 
-	raIDs, err := c.assignRoles(sp, role.Roles)
+	raIDs, err := c.assignRoles(ctx, sp, role.Roles)
 	if err != nil {
-		c.deleteApp(*app.ObjectID)
+		c.deleteApp(ctx, *app.ObjectID)
 		return nil, err
 	}
 
@@ -155,11 +155,11 @@ func (b *azureSecretBackend) spRevoke(ctx context.Context, req *logical.Request,
 
 	// unassigning roles is effectively a garbage collection operation. Errors will be noted but won't fail the
 	// revocation process. Deleting the app, however, *is* required to consider the secret revoked.
-	if err := c.unassignRoles(raIDs); err != nil {
+	if err := c.unassignRoles(ctx, raIDs); err != nil {
 		resp.AddWarning(err.Error())
 	}
 
-	err = c.deleteApp(appObjectID)
+	err = c.deleteApp(ctx, appObjectID)
 
 	return resp, err
 }
@@ -181,5 +181,5 @@ func (b *azureSecretBackend) spRollback(ctx context.Context, req *logical.Reques
 		return err
 	}
 
-	return c.deleteApp(entry.AppObjectID)
+	return c.deleteApp(ctx, entry.AppObjectID)
 }

@@ -26,10 +26,9 @@ const (
 )
 
 // azureClient offers higher level Azure operations that provide a simpler interface
-// for handler. It in turns relies on a Provider interface to access the lower level
+// for handlers. It in turn relies on a Provider interface to access the lower level
 // Azure Client SDK methods.
 type azureClient struct {
-	ctx      context.Context
 	provider Provider
 	logger   log.Logger
 	settings *azureSettings
@@ -47,7 +46,6 @@ func (b *azureSecretBackend) newAzureClient(ctx context.Context, cfg *azureConfi
 	}
 
 	c := azureClient{
-		ctx:      ctx,
 		provider: p,
 		logger:   b.Logger(),
 		settings: settings,
@@ -58,14 +56,14 @@ func (b *azureSecretBackend) newAzureClient(ctx context.Context, cfg *azureConfi
 
 // createApp creates a new Azure "Application". An Application is a needed to create service
 // principles in subsequent for authentication
-func (c *azureClient) createApp() (app *graphrbac.Application, err error) {
+func (c *azureClient) createApp(ctx context.Context) (app *graphrbac.Application, err error) {
 	name, err := uuid.GenerateUUID()
 	if err != nil {
 		return nil, err
 	}
 	url := fmt.Sprintf("https://%s", name)
 
-	result, err := c.provider.CreateApplication(c.ctx, graphrbac.ApplicationCreateParameters{
+	result, err := c.provider.CreateApplication(ctx, graphrbac.ApplicationCreateParameters{
 		AvailableToOtherTenants: to.BoolPtr(false),
 		DisplayName:             to.StringPtr(name),
 		Homepage:                to.StringPtr(url),
@@ -76,7 +74,7 @@ func (c *azureClient) createApp() (app *graphrbac.Application, err error) {
 }
 
 // createSP creates a new service principal
-func (c *azureClient) createSP(app *graphrbac.Application, duration time.Duration) (sp *graphrbac.ServicePrincipal, password string, err error) {
+func (c *azureClient) createSP(ctx context.Context, app *graphrbac.Application, duration time.Duration) (sp *graphrbac.ServicePrincipal, password string, err error) {
 
 	// Generate a random key id (which must be a UUID) and password
 	keyID, err := uuid.GenerateUUID()
@@ -89,7 +87,7 @@ func (c *azureClient) createSP(app *graphrbac.Application, duration time.Duratio
 		return nil, "", err
 	}
 
-	result, err := c.provider.CreateServicePrincipal(c.ctx, graphrbac.ServicePrincipalCreateParameters{
+	result, err := c.provider.CreateServicePrincipal(ctx, graphrbac.ServicePrincipalCreateParameters{
 		AppID:          app.AppID,
 		AccountEnabled: to.BoolPtr(true),
 		PasswordCredentials: &[]graphrbac.PasswordCredential{
@@ -106,8 +104,8 @@ func (c *azureClient) createSP(app *graphrbac.Application, duration time.Duratio
 }
 
 // deleteApp deletes an Azure application
-func (c *azureClient) deleteApp(appObjectID string) error {
-	resp, err := c.provider.DeleteApplication(c.ctx, appObjectID)
+func (c *azureClient) deleteApp(ctx context.Context, appObjectID string) error {
+	resp, err := c.provider.DeleteApplication(ctx, appObjectID)
 
 	// Don't consider it an error if the object wasn't present
 	if err != nil && resp.StatusCode == 404 {
@@ -118,7 +116,7 @@ func (c *azureClient) deleteApp(appObjectID string) error {
 }
 
 // assignRoles assigns roles to a service principal
-func (c *azureClient) assignRoles(sp *graphrbac.ServicePrincipal, roles []*azureRole) ([]string, error) {
+func (c *azureClient) assignRoles(ctx context.Context, sp *graphrbac.ServicePrincipal, roles []*azureRole) ([]string, error) {
 	var ids []string
 	var tries int
 
@@ -130,7 +128,7 @@ func (c *azureClient) assignRoles(sp *graphrbac.ServicePrincipal, roles []*azure
 		}
 
 		for ; tries < maxRetries; tries++ {
-			ra, err := c.provider.CreateRoleAssignment(c.ctx, role.Scope, assignmentID, authorization.RoleAssignmentCreateParameters{
+			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentID, authorization.RoleAssignmentCreateParameters{
 				RoleAssignmentProperties: &authorization.RoleAssignmentProperties{
 					RoleDefinitionID: to.StringPtr(role.RoleID),
 					PrincipalID:      sp.ObjectID,
@@ -158,11 +156,11 @@ func (c *azureClient) assignRoles(sp *graphrbac.ServicePrincipal, roles []*azure
 
 // unassignRoles deletes role assignments, if they existed
 // This is a clean-up operation, and well
-func (c *azureClient) unassignRoles(roleIDs []string) error {
+func (c *azureClient) unassignRoles(ctx context.Context, roleIDs []string) error {
 	var merr *multierror.Error
 
 	for _, id := range roleIDs {
-		if _, err := c.provider.DeleteRoleAssignmentByID(c.ctx, id); err != nil {
+		if _, err := c.provider.DeleteRoleAssignmentByID(ctx, id); err != nil {
 			merr = multierror.Append(merr, errwrap.Wrapf("error unassigning role: {{err}}", err))
 		}
 	}
@@ -203,7 +201,7 @@ func (c *azureClient) updateMachineIdentities(ctx context.Context, resourceGroup
 		identity.IdentityIds = &resourceIDs
 	}
 
-	_, err := c.provider.VMUpdate(c.ctx, resourceGroup, vm, compute.VirtualMachineUpdate{
+	_, err := c.provider.VMUpdate(ctx, resourceGroup, vm, compute.VirtualMachineUpdate{
 		Identity: &identity,
 	})
 

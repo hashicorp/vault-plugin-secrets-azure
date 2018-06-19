@@ -65,6 +65,28 @@ func Backend() *azureSecretBackend {
 	return &b
 }
 
+func (b *azureSecretBackend) getProvider(settings *azureSettings) (p Provider, err error) {
+	b.providerLock.Lock()
+	defer b.providerLock.Unlock()
+
+	if b.provider != nil {
+		return b.provider, nil
+	}
+
+	if b.provider, err = NewAzureProvider(settings); err != nil {
+		return nil, err
+	}
+
+	return b.provider, nil
+}
+
+func (b *azureSecretBackend) reset() {
+	b.providerLock.Lock()
+	defer b.providerLock.Unlock()
+
+	b.provider = nil
+}
+
 const backendHelp = `
 The Azure secrets backend dynamically generates Azure service
 principals and/or User Assigned Identity assignments. Both types

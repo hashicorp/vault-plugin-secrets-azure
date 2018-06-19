@@ -10,7 +10,6 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/Azure-Samples/azure-sdk-for-go-samples/helpers"
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/compute/mgmt/compute"
 	"github.com/Azure/azure-sdk-for-go/services/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
@@ -147,11 +146,11 @@ func (b *azureSecretBackend) getProvider(cfg *azureConfig) (Provider, error) {
 
 	appClient := graphrbac.NewApplicationsClient(settings.TenantID)
 	appClient.Authorizer = authorizer
-	appClient.AddToUserAgent(helpers.UserAgent())
+	appClient.AddToUserAgent(userAgent())
 
 	spClient := graphrbac.NewServicePrincipalsClient(settings.TenantID)
 	spClient.Authorizer = authorizer
-	spClient.AddToUserAgent(helpers.UserAgent())
+	spClient.AddToUserAgent(userAgent())
 
 	// clients using the Resource Manager endpoint
 	config.Resource = settings.Environment.ResourceManagerEndpoint
@@ -159,15 +158,15 @@ func (b *azureSecretBackend) getProvider(cfg *azureConfig) (Provider, error) {
 
 	raClient := authorization.NewRoleAssignmentsClient(settings.SubscriptionID)
 	raClient.Authorizer = authorizer
-	raClient.AddToUserAgent(helpers.UserAgent())
+	raClient.AddToUserAgent(userAgent())
 
 	rdClient := authorization.NewRoleDefinitionsClient(settings.SubscriptionID)
 	rdClient.Authorizer = authorizer
-	rdClient.AddToUserAgent(helpers.UserAgent())
+	rdClient.AddToUserAgent(userAgent())
 
 	vmClient := compute.NewVirtualMachinesClient(settings.SubscriptionID)
 	vmClient.Authorizer = authorizer
-	vmClient.AddToUserAgent(helpers.UserAgent())
+	vmClient.AddToUserAgent(userAgent())
 
 	oidcVerifier, err := newVerifier(settings)
 

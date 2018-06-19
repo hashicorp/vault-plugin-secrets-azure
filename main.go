@@ -10,14 +10,6 @@ import (
 )
 
 func main() {
-	/*
-		ParseArgs()
-		poc3()
-		os.Exit(0)
-	*/
-
-	//ParseArgs()
-
 	apiClientMeta := &pluginutil.APIClientMeta{}
 	flags := apiClientMeta.FlagSet()
 	flags.Parse(os.Args[1:])

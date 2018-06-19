@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/hashicorp/errwrap"
 	"github.com/hashicorp/vault/helper/parseutil"
 	"github.com/hashicorp/vault/helper/strutil"
 	"github.com/mitchellh/mapstructure"
@@ -34,16 +35,15 @@ func (d *FieldData) Validate() error {
 		}
 
 		switch schema.Type {
-		case TypeBool, TypeInt, TypeMap, TypeDurationSecond, TypeString,
+		case TypeBool, TypeInt, TypeMap, TypeDurationSecond, TypeString, TypeLowerCaseString,
 			TypeNameString, TypeSlice, TypeStringSlice, TypeCommaStringSlice,
 			TypeKVPairs, TypeCommaIntSlice:
 			_, _, err := d.getPrimitive(field, schema)
 			if err != nil {
-				return fmt.Errorf("Error converting input %v for field %s: %s", value, field, err)
+				return errwrap.Wrapf(fmt.Sprintf("error converting input %v for field %q: {{err}}", value, field), err)
 			}
 		default:
-			return fmt.Errorf("unknown field type %s for field %s",
-				schema.Type, field)
+			return fmt.Errorf("unknown field type %q for field %q", schema.Type, field)
 		}
 	}
 
@@ -107,17 +107,17 @@ func (d *FieldData) GetOk(k string) (interface{}, bool) {
 func (d *FieldData) GetOkErr(k string) (interface{}, bool, error) {
 	schema, ok := d.Schema[k]
 	if !ok {
-		return nil, false, fmt.Errorf("unknown field: %s", k)
+		return nil, false, fmt.Errorf("unknown field: %q", k)
 	}
 
 	switch schema.Type {
-	case TypeBool, TypeInt, TypeMap, TypeDurationSecond, TypeString,
+	case TypeBool, TypeInt, TypeMap, TypeDurationSecond, TypeString, TypeLowerCaseString,
 		TypeNameString, TypeSlice, TypeStringSlice, TypeCommaStringSlice,
 		TypeKVPairs, TypeCommaIntSlice:
 		return d.getPrimitive(k, schema)
 	default:
 		return nil, false,
-			fmt.Errorf("unknown field type %s for field %s", schema.Type, k)
+			fmt.Errorf("unknown field type %q for field %q", schema.Type, k)
 	}
 }
 
@@ -148,6 +148,13 @@ func (d *FieldData) getPrimitive(k string, schema *FieldSchema) (interface{}, bo
 			return nil, true, err
 		}
 		return result, true, nil
+
+	case TypeLowerCaseString:
+		var result string
+		if err := mapstructure.WeakDecode(raw, &result); err != nil {
+			return nil, true, err
+		}
+		return strings.ToLower(result), true, nil
 
 	case TypeNameString:
 		var result string

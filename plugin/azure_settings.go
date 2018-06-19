@@ -7,6 +7,8 @@ import (
 	"github.com/Azure/go-autorest/autorest/azure"
 )
 
+// azureSettings is used by a azureClient to connect to Azure. It is created
+// from a combination of Vault config settings and environment variables.
 type azureSettings struct {
 	SubscriptionID string
 	TenantID       string
@@ -35,16 +37,6 @@ func getAzureSettings(config *azureConfig) (*azureSettings, error) {
 	}
 	settings.SubscriptionID = subscriptionID
 
-	//envResource := os.Getenv("AZURE_AD_RESOURCE")
-	//switch {
-	//case envResource != "":
-	//	settings.Resource = envResource
-	//case config.Resource != "":
-	//	settings.Resource = config.Resource
-	//default:
-	//	return nil, errors.New("resource is required")
-	//}
-
 	clientID := os.Getenv("AZURE_CLIENT_ID")
 	if clientID == "" {
 		clientID = config.ClientID
@@ -56,6 +48,12 @@ func getAzureSettings(config *azureConfig) (*azureSettings, error) {
 		clientSecret = config.ClientSecret
 	}
 	settings.ClientSecret = clientSecret
+
+	resource := os.Getenv("AZURE_AD_RESOURCE")
+	if resource == "" {
+		resource = config.Resource
+	}
+	settings.Resource = resource
 
 	envName := os.Getenv("AZURE_ENVIRONMENT")
 	if envName == "" {

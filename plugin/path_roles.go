@@ -2,131 +2,66 @@ package azuresecrets
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
+	"time"
 
+	"github.com/hashicorp/errwrap"
+	multierror "github.com/hashicorp/go-multierror"
+	"github.com/hashicorp/vault/helper/jsonutil"
 	"github.com/hashicorp/vault/logical"
 	"github.com/hashicorp/vault/logical/framework"
-)
-
-const (
-	rolesetStoragePrefix = "roleset"
 )
 
 func pathsRole(b *azureSecretBackend) []*framework.Path {
 	return []*framework.Path{
 		{
-			Pattern: fmt.Sprintf("roles/identity/%s", framework.GenericNameRegex("name")),
+			Pattern: fmt.Sprintf("roles/%s", framework.GenericNameRegex("name")),
 			Fields: map[string]*framework.FieldSchema{
 				"name": {
+					Type:        framework.TypeLowerCaseString,
+					Description: "Name of the role",
+				},
+				"credential_type": {
 					Type:        framework.TypeString,
-					Description: "Required. Name of the role.",
+					Description: `Secret type ("sp" or "identity")`,
 				},
 				"identity": {
 					Type:        framework.TypeString,
-					Description: "Azure identity for this role",
-					//Default:     SecretTypeAccessToken,
+					Description: "Azure identity name",
 				},
-				//				"secret_type": {
-				//					Type:        framework.TypeString,
-				//					Description: fmt.Sprintf("Type of secret generated for this role set. Defaults to '%s'", SecretTypeAccessToken),
-				//					Default:     SecretTypeAccessToken,
-				//				},
-				//				"project": {
-				//					Type:        framework.TypeString,
-				//					Description: "Name of the GCP project that this roleset's service account will belong to.",
-				//				},
-				//				"bindings": {
-				//					Type:        framework.TypeString,
-				//					Description: "Bindings configuration string.",
-				//				},
-				//				"token_scopes": {
-				//					Type:        framework.TypeCommaStringSlice,
-				//					Description: `List of OAuth scopes to assign to credentials generated under this role set`,
-				//				},
-				//			ExistenceCheck: b.pathRoleSetExistenceCheck,
-			},
-			Callbacks: map[logical.Operation]framework.OperationFunc{
-				//				logical.DeleteOperation: b.pathRoleSetDelete,
-				logical.ReadOperation:   b.pathRoleIdentityRead,
-				logical.CreateOperation: b.pathRoleIdentityCreateUpdate,
-				logical.UpdateOperation: b.pathRoleIdentityCreateUpdate,
-			},
-			//			HelpSynopsis:    pathRoleSetHelpSyn,
-			//			HelpDescription: pathRoleSetHelpDesc,
-			//		// Path to rotate role set service accounts
-			//		{
-			//			Pattern: fmt.Sprintf("roleset/%s/rotate", framework.GenericNameRegex("name")),
-			//			Fields: map[string]*framework.FieldSchema{
-			//				"name": {
-			//					Type:        framework.TypeString,
-			//					Description: "Name of the role.",
-			//				},
-			//			},
-			//			ExistenceCheck: b.pathRoleSetExistenceCheck,
-			//			Callbacks: map[logical.Operation]framework.OperationFunc{
-			//				logical.UpdateOperation: b.pathRoleSetRotateAccount,
-			//			},
-			//			HelpSynopsis:    pathRoleSetRotateHelpSyn,
-			//			HelpDescription: pathRoleSetRotateHelpDesc,
-			//		},
-			//		// Path to rotating role set service account key used to generate access tokens
-			//		{
-			//			Pattern: fmt.Sprintf("roleset/%s/rotate-key", framework.GenericNameRegex("name")),
-			//			Fields: map[string]*framework.FieldSchema{
-			//				"name": {
-			//					Type:        framework.TypeString,
-			//					Description: "Name of the role.",
-			//				},
-			//			},
-			//			ExistenceCheck: b.pathRoleSetExistenceCheck,
-			//			Callbacks: map[logical.Operation]framework.OperationFunc{
-			//				logical.UpdateOperation: b.pathRoleSetRotateKey,
-			//			},
-			//			HelpSynopsis:    pathRoleSetRotateKeyHelpSyn,
-			//			HelpDescription: pathRoleSetRotateKeyHelpDesc,
-			//		},
-			//		// Paths for listing role sets
-			//		{
-			//			Pattern: "rolesets/?",
-			//			Callbacks: map[logical.Operation]framework.OperationFunc{
-			//				logical.ListOperation: b.pathRoleSetList,
-			//			},
-			//
-			//			HelpSynopsis:    pathListRoleSetHelpSyn,
-			//			HelpDescription: pathListRoleSetHelpDesc,
-			//		},
-			//		{
-			//			Pattern: "roleset/?",
-			//			Callbacks: map[logical.Operation]framework.OperationFunc{
-			//				logical.ListOperation: b.pathRoleSetList,
-			//			},
-			//
-			//			HelpSynopsis:    pathListRoleSetHelpSyn,
-			//			HelpDescription: pathListRoleSetHelpDesc,
-		},
-		{
-			Pattern: fmt.Sprintf("roles/credential/%s", framework.GenericNameRegex("name")),
-			Fields: map[string]*framework.FieldSchema{
-				"name": {
+				"resource_group": {
 					Type:        framework.TypeString,
-					Description: "Required. Name of the role.",
+					Description: "Azure resource group",
 				},
-				"roles": { // TODO this word is overloaded
+				"roles": {
 					Type:        framework.TypeString,
 					Description: "Azure roles to assign",
 				},
+				"ttl": {
+					Type:        framework.TypeDurationSecond,
+					Description: "Default lease for generated credentials. If <= 0, will use system default.",
+				},
+				"max_ttl": {
+					Type:        framework.TypeDurationSecond,
+					Description: "Maximum time a service principal. If <= 0, will use system default.",
+				},
 			},
 			Callbacks: map[logical.Operation]framework.OperationFunc{
-				logical.DeleteOperation: b.pathRoleCredDelete,
-				logical.ReadOperation:   b.pathRoleCredRead,
-				logical.CreateOperation: b.pathRoleCredCreateUpdate,
-				logical.UpdateOperation: b.pathRoleCredCreateUpdate,
+				logical.ReadOperation:   b.pathRoleRead,
+				logical.CreateOperation: b.pathRoleCreateUpdate,
+				logical.UpdateOperation: b.pathRoleCreateUpdate,
+				logical.DeleteOperation: b.pathRoleDelete,
 			},
+			ExistenceCheck:  b.pathRoleExistenceCheck,
+			HelpSynopsis:    "TBD",
+			HelpDescription: "TBD",
 		},
 		{
-			Pattern: "roles/credential/?",
+			Pattern: "roles/?",
 			Callbacks: map[logical.Operation]framework.OperationFunc{
-				logical.ListOperation: b.pathRoleCredList,
+				logical.ListOperation: b.pathRoleList,
 			},
 			HelpSynopsis:    "TBD",
 			HelpDescription: "TBD",
@@ -135,498 +70,226 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 
 }
 
-func (b *azureSecretBackend) pathRoleCredList(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-	roles, err := req.Storage.List(ctx, credRolePrefix+"/")
+// pathRoleCreateUpdate creates or updates Vault roles. Basic validity check are made to verify that the
+// provided fields meet the requirements for the secret type. There are no checks of the validity of the Azure
+// data itself (e.g. that identities or roles exist, etc.)
+func (b *azureSecretBackend) pathRoleCreateUpdate(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
+	var merr *multierror.Error
+	var resp *logical.Response
+
+	// load or create role
+	name := d.Get("name").(string)
+	role, err := getRole(ctx, name, req.Storage)
+	if err != nil {
+		return nil, errwrap.Wrapf("error reading role: {{err}}", err)
+	}
+
+	if role == nil {
+		role = &Role{
+			Name: name,
+		}
+	}
+
+	// update role with any provided parameters
+	if stRaw, ok := d.GetOk("credential_type"); ok {
+		role.CredentialType = stRaw.(string)
+	}
+
+	if ttlRaw, ok := d.GetOk("ttl"); ok {
+		role.DefaultTTL = time.Duration(ttlRaw.(int)) * time.Second
+	}
+
+	if maxTTLRaw, ok := d.GetOk("max_ttl"); ok {
+		role.MaxTTL = time.Duration(maxTTLRaw.(int)) * time.Second
+	}
+
+	if identity, ok := d.GetOk("identity"); ok {
+		role.Identity = strings.TrimSpace(identity.(string))
+	}
+
+	if rg, ok := d.GetOk("resource_group"); ok {
+		role.ResourceGroup = strings.TrimSpace(rg.(string))
+	}
+
+	if roles, ok := d.GetOk("roles"); ok {
+		parsedRoles := []*azureRole{} // non-nil to suppress the "missing roles" error later
+
+		err := jsonutil.DecodeJSON([]byte(roles.(string)), &parsedRoles)
+		if err != nil {
+			merr = multierror.Append(merr, errors.New("invalid Azure role definitions"))
+		}
+		role.Roles = parsedRoles
+	}
+
+	cfg, err := b.getConfig(ctx, req.Storage)
 	if err != nil {
 		return nil, err
 	}
+
+	c, err := b.newAzureClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	roleIDs := make(map[string]bool)
+	for _, r := range role.Roles {
+		roleDefs, err := c.lookupRole(ctx, r.RoleName, r.RoleID)
+		if err != nil {
+			return nil, errwrap.Wrapf("unable to lookup Azure role: {{err}}", err)
+		}
+
+		switch len(roleDefs) {
+		case 0:
+			return logical.ErrorResponse(
+				fmt.Sprintf("no role found for role_name: '%s', role_id: '%s'", r.RoleName, r.RoleID)), nil
+		case 1:
+		default:
+			return logical.ErrorResponse(
+				fmt.Sprintf("multiple matches found for role_name: '%s'", r.RoleName)), nil
+		}
+
+		rd := roleDefs[0]
+		if roleIDs[*rd.ID] {
+			return logical.ErrorResponse(fmt.Sprintf("duplicate role_id: '%s'", *rd.ID)), nil
+		}
+		roleIDs[*rd.ID] = true
+		r.RoleName, r.RoleID = *rd.RoleName, *rd.ID
+	}
+
+	// validate role definition constraints
+	if role.DefaultTTL < 0 {
+		merr = multierror.Append(merr, errors.New("ttl < 0"))
+	}
+	if role.MaxTTL < 0 {
+		merr = multierror.Append(merr, errors.New("max_ttl < 0"))
+	}
+	if role.DefaultTTL > role.MaxTTL && role.MaxTTL != 0 {
+		merr = multierror.Append(merr, errors.New("ttl > max_ttl"))
+	}
+
+	switch role.CredentialType {
+	case SecretTypeSP:
+		if role.Roles == nil {
+			merr = multierror.Append(merr, errors.New("missing Azure role definitions"))
+		}
+	case SecretTypeIdentity:
+		if role.Identity == "" {
+			merr = multierror.Append(merr, errors.New("missing or empty identity"))
+		}
+
+		if role.ResourceGroup == "" {
+			merr = multierror.Append(merr, errors.New("missing or empty resource_group"))
+		}
+	case "":
+		merr = multierror.Append(merr, errors.New("credential_type is required"))
+	default:
+		merr = multierror.Append(merr, fmt.Errorf("invalid secret type: %s", role.CredentialType))
+	}
+
+	if merr.ErrorOrNil() != nil {
+		return logical.ErrorResponse(merr.Error()), nil
+	}
+
+	err = saveRole(ctx, role, req.Storage)
+	if err != nil {
+		return nil, errwrap.Wrapf("error storing role: {{err}}", err)
+	}
+
+	return resp, nil
+}
+
+func (b *azureSecretBackend) pathRoleRead(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
+	var data = make(map[string]interface{})
+
+	nameRaw, ok := d.GetOk("name")
+	if !ok {
+		return logical.ErrorResponse("name is required"), nil
+	}
+
+	r, err := getRole(ctx, nameRaw.(string), req.Storage)
+	if err != nil {
+		return nil, errwrap.Wrapf("error reading role: {{err}}", err)
+	}
+
+	if r == nil {
+		return nil, nil
+	}
+
+	data["credential_type"] = r.CredentialType
+	data["ttl"] = int64(r.DefaultTTL / time.Second)
+	data["max_ttl"] = int64(r.MaxTTL / time.Second)
+
+	switch r.CredentialType {
+	case SecretTypeIdentity:
+		data["identity"] = r.Identity
+		data["resource_group"] = r.ResourceGroup
+	case SecretTypeSP:
+		data["roles"] = r.Roles
+	default:
+		return nil, errors.New("error retrieving role")
+	}
+
+	return &logical.Response{
+		Data: data,
+	}, nil
+}
+
+func (b *azureSecretBackend) pathRoleList(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
+	roles, err := req.Storage.List(ctx, rolePrefix+"/")
+	if err != nil {
+		return nil, errwrap.Wrapf("error listing roles: {{err}}", err)
+	}
+	_ = roles
 	return logical.ListResponse(roles), nil
 }
 
-func (b *azureSecretBackend) pathRoleCredRead(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
+func (b *azureSecretBackend) pathRoleDelete(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
 	nameRaw, ok := d.GetOk("name")
 	if !ok {
 		return logical.ErrorResponse("name is required"), nil
 	}
 
-	cr, err := b.getCredentialRole(ctx, nameRaw.(string), req.Storage)
+	err := req.Storage.Delete(ctx, rolePrefix+"/"+nameRaw.(string))
 	if err != nil {
-		return nil, err
-	}
-	if cr == nil {
-		return nil, nil
-	}
-
-	data := map[string]interface{}{
-		"roles": cr.Roles,
-	}
-
-	return &logical.Response{
-		Data: data,
-	}, nil
-}
-
-func (b *azureSecretBackend) pathRoleCredDelete(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-	nameRaw, ok := d.GetOk("name")
-	if !ok {
-		return logical.ErrorResponse("name is required"), nil
-	}
-
-	err := req.Storage.Delete(ctx, credRolePrefix+"/"+nameRaw.(string))
-	if err != nil {
-		return nil, err
+		return nil, errwrap.Wrapf("error deleting role: {{err}}", err)
 	}
 	return nil, nil
 }
 
-func (b *azureSecretBackend) pathRoleCredCreateUpdate(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
+func (b *azureSecretBackend) pathRoleExistenceCheck(ctx context.Context, req *logical.Request, d *framework.FieldData) (bool, error) {
 	nameRaw, ok := d.GetOk("name")
 	if !ok {
-		return logical.ErrorResponse("role name is required"), nil
+		return false, errors.New("name is required")
 	}
 
-	roles, ok := d.GetOk("roles")
-	if !ok {
-		return logical.ErrorResponse("Azure roles definition is required"), nil
-	}
-
-	cred, err := newCredentialRole(nameRaw.(string), roles.(string))
+	cr, err := getRole(ctx, nameRaw.(string), req.Storage)
 	if err != nil {
-		return logical.ErrorResponse(err.Error()), nil
+		return false, errwrap.Wrapf("error reading role: {{err}}", err)
 	}
 
-	err = cred.save(ctx, req.Storage)
-	if err != nil {
-		return logical.ErrorResponse(err.Error()), nil
-	}
-
-	return nil, nil
+	return cr != nil, nil
 }
 
-//
-//func (b *backend) pathRoleSetExistenceCheck(ctx context.Context, req *logical.Request, d *framework.FieldData) (bool, error) {
-//	nameRaw, ok := d.GetOk("name")
-//	if !ok {
-//		return false, errors.New("roleset name is required")
-//	}
-//
-//	rs, err := getRoleSet(nameRaw.(string), ctx, req.Storage)
+//func (b *azureSecretBackend) lookupRole(ctx context.Context, c *azureClient, role *azureRole) error {
+//	r, err := c.searchRole(role.RoleName)
 //	if err != nil {
-//		return false, err
+//		return err
 //	}
-//
-//	return rs != nil, nil
+//	fmt.Println(*r[0].ID)
+//	fmt.Println(*r[0].Name)
+//	return nil
 //}
-//
-func (b *azureSecretBackend) pathRoleIdentityRead(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-	nameRaw, ok := d.GetOk("name")
-	if !ok {
-		return logical.ErrorResponse("name is required"), nil
-	}
 
-	rs, err := getRoleSet(nameRaw.(string), ctx, req.Storage)
-	if err != nil {
-		return nil, err
-	}
-	if rs == nil {
-		return nil, nil
-	}
-	//
-	//	data := map[string]interface{}{
-	//		"secret_type": rs.SecretType,
-	//		"bindings":    rs.Bindings.asOutput(),
-	//	}
-	data := map[string]interface{}{
-		"identities": rs.Identities,
-	}
-	//
-	//	if rs.AccountId != nil {
-	//		data["service_account_email"] = rs.AccountId.EmailOrId
-	//		data["service_account_project"] = rs.AccountId.Project
-	//	}
-	//
-	//	if rs.TokenGen != nil && rs.SecretType == SecretTypeAccessToken {
-	//		data["token_scopes"] = rs.TokenGen.Scopes
-	//	}
-	//
-	return &logical.Response{
-		Data: data,
-	}, nil
-}
-
-//
-//func (b *backend) pathRoleSetDelete(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-//	nameRaw, ok := d.GetOk("name")
-//	if !ok {
-//		return logical.ErrorResponse("name is required"), nil
+//func validateTTL(passwordConf *passwordConf, fieldData *framework.FieldData) (int, error) {
+//	ttl := fieldData.Get("ttl").(int)
+//	if ttl == 0 {
+//		ttl = passwordConf.TTL
 //	}
-//	rsName := nameRaw.(string)
-//
-//	rs, err := getRoleSet(rsName, ctx, req.Storage)
-//	if err != nil {
-//		return nil, errwrap.Wrapf(fmt.Sprintf("unable to get role set %s: {{err}}", rsName), err)
+//	if ttl > passwordConf.MaxTTL {
+//		return 0, fmt.Errorf("requested ttl of %d seconds is over the max ttl of %d seconds", ttl, passwordConf.MaxTTL)
 //	}
-//	if rs == nil {
-//		return nil, nil
+//	if ttl < 0 {
+//		return 0, fmt.Errorf("ttl can't be negative")
 //	}
-//
-//	b.rolesetLock.Lock()
-//	defer b.rolesetLock.Unlock()
-//
-//	if rs.AccountId != nil {
-//		_, err := framework.PutWAL(ctx, req.Storage, walTypeAccount, &walAccount{
-//			RoleSet: rsName,
-//			Id:      *rs.AccountId,
-//		})
-//		if err != nil {
-//			return nil, errwrap.Wrapf("unable to create WAL entry to clean up service account: {{err}}", err)
-//		}
-//
-//		for resName, roleSet := range rs.Bindings {
-//			_, err := framework.PutWAL(ctx, req.Storage, walTypeIamPolicy, &walIamPolicy{
-//				RoleSet:   rsName,
-//				AccountId: *rs.AccountId,
-//				Resource:  resName,
-//				Roles:     roleSet.ToSlice(),
-//			})
-//			if err != nil {
-//				return nil, errwrap.Wrapf("unable to create WAL entry to clean up service account bindings: {{err}}", err)
-//			}
-//		}
-//
-//		if rs.TokenGen != nil {
-//			_, err := framework.PutWAL(ctx, req.Storage, walTypeAccount, &walAccountKey{
-//				RoleSet:            rsName,
-//				ServiceAccountName: rs.AccountId.ResourceName(),
-//				KeyName:            rs.TokenGen.KeyName,
-//			})
-//			if err != nil {
-//				return nil, errwrap.Wrapf("unable to create WAL entry to clean up service account key: {{err}}", err)
-//			}
-//		}
-//	}
-//
-//	if err := req.Storage.Delete(ctx, fmt.Sprintf("roleset/%s", nameRaw)); err != nil {
-//		return nil, err
-//	}
-//
-//	// Clean up resources:
-//	httpC, err := newHttpClient(ctx, req.Storage)
-//	if err != nil {
-//		return nil, err
-//	}
-//
-//	iamAdmin, err := iam.New(httpC)
-//	if err != nil {
-//		return nil, err
-//	}
-//
-//	iamHandle := iamutil.GetIamHandle(httpC, useragent.String())
-//
-//	warnings := make([]string, 0)
-//	if rs.AccountId != nil {
-//		if err := b.deleteServiceAccount(ctx, iamAdmin, rs.AccountId); err != nil {
-//			w := fmt.Sprintf("unable to delete service account '%s' (WAL entry to clean-up later has been added): %v", rs.AccountId.ResourceName(), err)
-//			warnings = append(warnings, w)
-//		}
-//		if err := b.deleteTokenGenKey(ctx, iamAdmin, rs.TokenGen); err != nil {
-//			w := fmt.Sprintf("unable to delete key for service account '%s' (WAL entry to clean-up later has been added): %v", rs.AccountId.ResourceName(), err)
-//			warnings = append(warnings, w)
-//		}
-//		if merr := b.removeBindings(ctx, iamHandle, rs.AccountId.EmailOrId, rs.Bindings); merr != nil {
-//			for _, err := range merr.Errors {
-//				w := fmt.Sprintf("unable to delete IAM policy bindings for service account '%s' (WAL entry to clean-up later has been added): %v", rs.AccountId.EmailOrId, err)
-//				warnings = append(warnings, w)
-//			}
-//		}
-//	}
-//
-//	if len(warnings) > 0 {
-//		return &logical.Response{Warnings: warnings}, nil
-//	}
-//
-//	return nil, nil
+//	return ttl, nil
 //}
-//
-func (b *azureSecretBackend) pathRoleIdentityCreateUpdate(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-	var warnings []string
-	nameRaw, ok := d.GetOk("name")
-	if !ok {
-		return logical.ErrorResponse("name is required"), nil
-	}
-	name := nameRaw.(string)
-
-	identityRaw, _ := d.GetOk("identities")
-	identities := identityRaw.([]string)
-	b.Logger().Debug("", "identities", identities)
-
-	rs, err := getRoleSet(name, ctx, req.Storage)
-	if err != nil {
-		return nil, err
-	}
-
-	if rs == nil {
-		rs = &IdentityRole{
-			Name:       name,
-			Identities: identities,
-		}
-	}
-	rs.Identities = identities
-
-	//isCreate := req.Operation == logical.CreateOperation
-	//
-	//	// Secret type
-	//	if isCreate {
-	//		secretType := d.Get("secret_type").(string)
-	//		switch secretType {
-	//		case SecretTypeKey, SecretTypeAccessToken:
-	//			rs.SecretType = secretType
-	//		default:
-	//			return logical.ErrorResponse(fmt.Sprintf(`invalid "secret_type" value: "%s"`, secretType)), nil
-	//		}
-	//	} else {
-	//		secretTypeRaw, ok := d.GetOk("secret_type")
-	//		if ok && rs.SecretType != secretTypeRaw.(string) {
-	//			return logical.ErrorResponse("cannot change secret_type after roleset creation"), nil
-	//		}
-	//	}
-	//
-	//	// Project
-	//	var project string
-	//	projectRaw, ok := d.GetOk("project")
-	//	if ok {
-	//		project = projectRaw.(string)
-	//		if !isCreate && rs.AccountId.Project != project {
-	//			return logical.ErrorResponse(fmt.Sprintf("cannot change project for existing role set (old: %s, new: %s)", rs.AccountId.Project, project)), nil
-	//		}
-	//		if len(project) == 0 {
-	//			return logical.ErrorResponse("given empty project"), nil
-	//		}
-	//	} else {
-	//		if isCreate {
-	//			return logical.ErrorResponse("project argument is required for new role set"), nil
-	//		}
-	//		project = rs.AccountId.Project
-	//	}
-	//
-	//	// Default scopes
-	//	var scopes []string
-	//	scopesRaw, ok := d.GetOk("token_scopes")
-	//	if ok {
-	//		if rs.SecretType != SecretTypeAccessToken {
-	//			warnings = []string{
-	//				fmt.Sprintf("ignoring token_scopes, only valid for '%s' secret type role set", SecretTypeAccessToken),
-	//			}
-	//		}
-	//		scopes = scopesRaw.([]string)
-	//		if len(scopes) == 0 {
-	//			return logical.ErrorResponse("cannot provide empty token_scopes"), nil
-	//		}
-	//	} else if rs.SecretType == SecretTypeAccessToken {
-	//		if isCreate {
-	//			return logical.ErrorResponse("token_scopes must be provided for creating access token role set"), nil
-	//		}
-	//		if rs.TokenGen != nil {
-	//			scopes = rs.TokenGen.Scopes
-	//		}
-	//	}
-	//
-	//	// Bindings
-	//	bRaw, newBindings := d.GetOk("bindings")
-	//	if len(bRaw.(string)) == 0 {
-	//		return logical.ErrorResponse("given empty bindings string"), nil
-	//	}
-	//
-	//	if isCreate && newBindings == false {
-	//		return logical.ErrorResponse("bindings are required for new role set"), nil
-	//	}
-	//
-	//	if !newBindings {
-	//		// Just save role with updated metadata:
-	//		if err := rs.save(ctx, req.Storage); err != nil {
-	//			return logical.ErrorResponse(err.Error()), nil
-	//		}
-	//		return nil, nil
-	//	}
-	//
-	//	// If new bindings, update service account.
-	//	var bindings ResourceBindings
-	//	bindings, err = util.ParseBindings(bRaw.(string))
-	//	if err != nil {
-	//		return logical.ErrorResponse(fmt.Sprintf("unable to parse bindings: %v", err)), nil
-	//	}
-	//	if len(bindings) == 0 {
-	//		return logical.ErrorResponse("unable to parse any bindings from given bindings HCL"), nil
-	//	}
-	//	rs.RawBindings = bRaw.(string)
-
-	//updateWarns, err := b.saveRoleSetWithNewAccount(ctx, req.Storage, rs, project, bindings, scopes)
-	rs.save(ctx, req.Storage)
-	//if updateWarns != nil {
-	//	warnings = append(warnings, updateWarns...)
-	//}
-
-	if err != nil {
-		return logical.ErrorResponse(err.Error()), nil
-	} else if warnings != nil && len(warnings) > 0 {
-		return &logical.Response{Warnings: warnings}, nil
-	}
-
-	return nil, nil
-}
-
-//
-//func (b *backend) pathRoleSetList(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-//	rolesets, err := req.Storage.List(ctx, "roleset/")
-//	if err != nil {
-//		return nil, err
-//	}
-//	return logical.ListResponse(rolesets), nil
-//}
-//
-//func (b *backend) pathRoleSetRotateAccount(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-//	nameRaw, ok := d.GetOk("name")
-//	if !ok {
-//		return logical.ErrorResponse("name is required"), nil
-//	}
-//	name := nameRaw.(string)
-//
-//	rs, err := getRoleSet(name, ctx, req.Storage)
-//	if err != nil {
-//		return nil, err
-//	}
-//	if rs == nil {
-//		return logical.ErrorResponse(fmt.Sprintf("roleset '%s' not found", name)), nil
-//	}
-//
-//	var scopes []string
-//	if rs.TokenGen != nil {
-//		scopes = rs.TokenGen.Scopes
-//	}
-//
-//	warnings, err := b.saveRoleSetWithNewAccount(ctx, req.Storage, rs, rs.AccountId.Project, nil, scopes)
-//	if err != nil {
-//		return logical.ErrorResponse(err.Error()), nil
-//	} else if warnings != nil && len(warnings) > 0 {
-//		return &logical.Response{Warnings: warnings}, nil
-//	}
-//	return nil, nil
-//}
-//
-//func (b *backend) pathRoleSetRotateKey(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-//	nameRaw, ok := d.GetOk("name")
-//	if !ok {
-//		return logical.ErrorResponse("name is required"), nil
-//	}
-//	name := nameRaw.(string)
-//
-//	rs, err := getRoleSet(name, ctx, req.Storage)
-//	if err != nil {
-//		return nil, err
-//	}
-//	if rs == nil {
-//		return logical.ErrorResponse(fmt.Sprintf("roleset '%s' not found", name)), nil
-//	}
-//
-//	if rs.SecretType != SecretTypeAccessToken {
-//		return logical.ErrorResponse("cannot rotate key for non-access-token role set"), nil
-//	}
-//	var scopes []string
-//	if rs.TokenGen != nil {
-//		scopes = rs.TokenGen.Scopes
-//	}
-//	warn, err := b.saveRoleSetWithNewTokenKey(ctx, req.Storage, rs, scopes)
-//	if err != nil {
-//		return logical.ErrorResponse(err.Error()), nil
-//	}
-//	if warn != "" {
-//		return &logical.Response{Warnings: []string{warn}}, nil
-//	}
-//	return nil, nil
-//}
-//
-func getRoleSet(name string, ctx context.Context, s logical.Storage) (*IdentityRole, error) {
-	entry, err := s.Get(ctx, fmt.Sprintf("%s/%s", rolesetStoragePrefix, name))
-	if err != nil {
-		return nil, err
-	}
-	if entry == nil {
-		return nil, nil
-	}
-
-	rs := &IdentityRole{}
-	if err := entry.DecodeJSON(rs); err != nil {
-		return nil, err
-	}
-	return rs, nil
-}
-
-//
-//const pathRoleSetHelpSyn = `Read/write sets of IAM roles to be given to generated credentials for specified GCP resources.`
-//const pathListRoleSetHelpSyn = `List existing rolesets.`
-//const pathRoleSetRotateHelpSyn = `Rotate the service account (and key for access token roleset) created and used to generate secrets`
-//const pathRoleSetRotateKeyHelpSyn = `Rotate only the service account key used by an access token roleset to generate tokens`
-//
-//const pathRoleSetRotateHelpDesc = `
-//This path allows you to rotate (i.e. recreate) the service account used to
-//generate secrets for a given role set.`
-//const pathRoleSetRotateKeyHelpDesc = `
-//This path allows you to rotate (i.e. recreate) the service account
-//key used to generate access tokens under a given role set. This
-//path only applies to role sets that generate access tokens `
-//
-//const pathRoleSetHelpDesc = `
-//This path allows you create role sets, which bind sets of IAM roles
-//to specific GCP resources. Secrets (either service account keys or
-//access tokens) are generated under a role set and will have the
-//given set of roles on resources.
-//
-//The specified binding file accepts an HCL (or JSON) string
-//with the following format:
-//
-//resource "some/gcp/resource/uri" {
-//	roles = [
-//		"roles/role1",
-//		"roles/role2",
-//		"roles/role3",
-//		...
-//	]
-//}
-//
-//The given resource can have the following
-//
-//* Project-level self link
-//	Self-link for a resource under a given project
-//	(i.e. resource name starts with 'projects/...')
-//	Use if you need to provide a versioned object or
-//	are directly using resource.self_link.
-//
-//	Example (Compute instance):
-//		http://www.googleapis.com/compute/v1/projects/$PROJECT/zones/$ZONE/instances/$INSTANCE_NAME
-//
-//* Full Resource Name
-//	A scheme-less URI consisting of a DNS-compatible
-//	API service name and a resource path (i.e. the
-//	relative resource name). Useful if you need to
-//	specify what service this resource is under
-//	but just want the preferred supported API version.
-//	Note that if the resource you are using is for
-//	a non-preferred API with multiple service versions,
-//	you MUST specify the version.
-//
-//	Example (IAM service account):
-//		//$SERVICE.googleapis.com/projects/my-project/serviceAccounts/myserviceaccount@...
-//
-//* Relative Resource Name:
-//	A URI path (path-noscheme) without the leading "/".
-//	It identifies a resource within the API service.
-//	Use if there is only one service that your
-//	resource could belong to. If there are multiple
-//	API versions that support the resource, we will
-//	attempt to use the preferred version and ask
-//	for more specific format otherwise.
-//
-//	Example (Pubsub subscription):
-//		projects/myproject/subscriptions/mysub
-//`
-//const pathListRoleSetHelpDesc = `List role sets by role set name`

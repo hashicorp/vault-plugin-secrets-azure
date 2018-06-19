@@ -31,19 +31,7 @@
 
 [[constraint]]
   branch = "master"
-  name = "github.com/hashicorp/go-cleanhttp"
-
-[[constraint]]
-  branch = "master"
-  name = "github.com/hashicorp/go-gcp-common"
-
-[[constraint]]
-  branch = "master"
   name = "github.com/hashicorp/go-multierror"
-
-[[constraint]]
-  branch = "master"
-  name = "github.com/hashicorp/hcl"
 
 [[constraint]]
   branch = "master"
@@ -52,14 +40,6 @@
 [[constraint]]
   branch = "master"
   name = "github.com/mitchellh/mapstructure"
-
-[[constraint]]
-  branch = "master"
-  name = "golang.org/x/oauth2"
-
-[[constraint]]
-  branch = "master"
-  name = "google.golang.org/api"
 
 [prune]
   go-tests = true

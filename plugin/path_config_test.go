@@ -2,60 +2,136 @@ package azuresecrets
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
-	"github.com/hashicorp/vault/helper/jsonutil"
 	"github.com/hashicorp/vault/logical"
-	"github.com/stretchr/testify/assert"
+	"github.com/mitchellh/copystructure"
 )
 
 func TestConfig(t *testing.T) {
-	b, reqStorage := getTestBackend(t)
+	b, s := getTestBackend(t, false)
 
-	testConfigRead(t, b, reqStorage, nil)
-
-	creds := map[string]interface{}{
-		"client_email":   "testUser@google.com",
-		"client_id":      "user123",
-		"private_key_id": "privateKey123",
-		"private_key":    "iAmAPrivateKey",
-		"project_id":     "project123",
+	// Test that initial config is empty
+	emptyCfg := map[string]interface{}{
+		"subscription_id": "",
+		"tenant_id":       "",
+		"client_id":       "",
+		"environment":     "",
+		"ttl":             int64(0),
+		"max_ttl":         int64(0),
 	}
 
-	credJson, err := jsonutil.EncodeJSON(creds)
-	if err != nil {
-		t.Fatal(err)
+	testConfigRead(t, b, s, emptyCfg)
+
+	// Test valid config
+	cfg := map[string]interface{}{
+		"subscription_id": "a228ceec-bf1a-4411-9f95-39678d8cdb34",
+		"tenant_id":       "7ac36e27-80fc-4209-a453-e8ad83dc18c2",
+		"client_id":       "testClientId",
+		"client_secret":   "testClientSecret",
+		"environment":     "AZURECHINACLOUD",
+		"ttl":             int64(5),
+		"max_ttl":         int64(18000),
 	}
 
-	testConfigUpdate(t, b, reqStorage, map[string]interface{}{
-		"credentials": credJson,
+	testConfigUpdate(t, b, s, cfg)
+
+	delete(cfg, "client_secret")
+	testConfigRead(t, b, s, cfg)
+
+	// Test string versions of ttls
+	c, _ := copystructure.Copy(cfg)
+	cfg2 := c.(map[string]interface{})
+	cfg2["ttl"] = "5s"
+	cfg2["max_ttl"] = "5h"
+
+	testConfigUpdate(t, b, s, cfg2)
+	testConfigRead(t, b, s, cfg)
+
+	// Test test updating one element retains the others
+	cfg["tenant_id"] = "800e371d-ee51-4145-9ac8-5c43e4ceb79b"
+	cfgSubset := map[string]interface{}{
+		"tenant_id": "800e371d-ee51-4145-9ac8-5c43e4ceb79b",
+	}
+	testConfigUpdate(t, b, s, cfgSubset)
+	testConfigRead(t, b, s, cfg)
+
+	// Test bad environment
+	cfg = map[string]interface{}{
+		"environment": "invalidEnv",
+	}
+
+	resp, _ := b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.UpdateOperation,
+		Path:      "config",
+		Data:      cfg,
+		Storage:   s,
 	})
 
-	expected := map[string]interface{}{
-		"ttl":     int64(0),
-		"max_ttl": int64(0),
+	if !resp.IsError() {
+		t.Fatal("expected a response error")
+	}
+}
+
+func TestConfigTTLs(t *testing.T) {
+	b, s := getTestBackend(t, false)
+
+	const skip = -999
+	tests := []struct {
+		ttl      int64
+		max_ttl  int64
+		expError bool
+	}{
+		{5, 10, false},
+		{5, skip, false},
+		{skip, 10, false},
+		{-1, skip, true},
+		{skip, -1, true},
+		{-2, -1, true},
+		{100, 100, false},
+		{101, 100, true},
+		{101, 0, false}, // max_ttl is unset so this is OK
 	}
 
-	testConfigRead(t, b, reqStorage, expected)
-	testConfigUpdate(t, b, reqStorage, map[string]interface{}{
-		"ttl": "50s",
-	})
+	for i, test := range tests {
+		cfg := map[string]interface{}{}
+		if test.ttl != skip {
+			cfg["ttl"] = test.ttl
+		}
+		if test.max_ttl != skip {
+			cfg["max_ttl"] = test.max_ttl
+		}
+		resp, err := b.HandleRequest(context.Background(), &logical.Request{
+			Operation: logical.UpdateOperation,
+			Path:      "config",
+			Data:      cfg,
+			Storage:   s,
+		})
+		ok(t, err)
 
-	expected["ttl"] = int64(50)
-	testConfigRead(t, b, reqStorage, expected)
+		if resp.IsError() != test.expError {
+			t.Fatalf("\ncase %d\nexp error: %t\ngot: %v", i, test.expError, err)
+		}
+	}
 }
 
 func testConfigUpdate(t *testing.T, b logical.Backend, s logical.Storage, d map[string]interface{}) {
-	assert := assert.New(t)
+	t.Helper()
 
+	// save and restore the mock provider since the config change will clear it
+	provider := b.(*azureSecretBackend).provider
 	resp, err := b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.UpdateOperation,
 		Path:      "config",
 		Data:      d,
 		Storage:   s,
 	})
+	b.(*azureSecretBackend).provider = provider
 
-	assert.Nil(err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if resp != nil && resp.IsError() {
 		t.Fatal(resp.Error())
@@ -63,7 +139,7 @@ func testConfigUpdate(t *testing.T, b logical.Backend, s logical.Storage, d map[
 }
 
 func testConfigRead(t *testing.T, b logical.Backend, s logical.Storage, expected map[string]interface{}) {
-	return
+	t.Helper()
 	resp, err := b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.ReadOperation,
 		Path:      "config",
@@ -74,29 +150,11 @@ func testConfigRead(t *testing.T, b logical.Backend, s logical.Storage, expected
 		t.Fatal(err)
 	}
 
-	if resp == nil && expected == nil {
-		return
-	}
-
-	if resp.IsError() {
+	if resp != nil && resp.IsError() {
 		t.Fatal(resp.Error())
 	}
 
-	if len(expected) != len(resp.Data) {
-		t.Errorf("read data mismatch (expected %d values, got %d)", len(expected), len(resp.Data))
-	}
-
-	for k, expectedV := range expected {
-		actualV, ok := resp.Data[k]
-
-		if !ok {
-			t.Errorf(`expected data["%s"] = %v but was not included in read output"`, k, expectedV)
-		} else if expectedV != actualV {
-			t.Errorf(`expected data["%s"] = %v, instead got %v"`, k, expectedV, actualV)
-		}
-	}
-
-	if t.Failed() {
-		t.FailNow()
+	if !reflect.DeepEqual(expected, resp.Data) {
+		t.Fatalf("expected: %#v  actual:%#v", expected, resp.Data)
 	}
 }

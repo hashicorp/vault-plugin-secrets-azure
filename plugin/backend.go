@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hashicorp/vault/helper/locksutil"
 	"github.com/hashicorp/vault/logical"
 	"github.com/hashicorp/vault/logical/framework"
 )
@@ -14,10 +13,9 @@ import (
 type azureSecretBackend struct {
 	*framework.Backend
 
-	provider      Provider
-	providerLock  sync.RWMutex
-	cfgLock       sync.RWMutex
-	identityLocks []*locksutil.LockEntry
+	provider     Provider
+	providerLock sync.RWMutex
+	cfgLock      sync.RWMutex
 }
 
 func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend, error) {
@@ -29,9 +27,7 @@ func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend,
 }
 
 func Backend() *azureSecretBackend {
-	var b = azureSecretBackend{
-		identityLocks: locksutil.CreateLocks(),
-	}
+	var b = azureSecretBackend{}
 
 	b.Backend = &framework.Backend{
 		Help: strings.TrimSpace(backendHelp),
@@ -48,12 +44,10 @@ func Backend() *azureSecretBackend {
 			pathsRole(&b),
 			[]*framework.Path{
 				pathConfig(&b),
-				pathIdentity(&b),
 				pathServicePrincipal(&b),
 			},
 		),
 		Secrets: []*framework.Secret{
-			secretIdentity(&b),
 			secretServicePrincipal(&b),
 		},
 

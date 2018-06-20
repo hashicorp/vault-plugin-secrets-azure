@@ -16,7 +16,6 @@ func TestRoleCreate(t *testing.T) {
 
 	t.Run("SP role", func(t *testing.T) {
 		spRole1 := map[string]interface{}{
-			"credential_type": SecretTypeSP,
 			"roles": compactJSON(`[
 		{
 			"role_name": "Owner",
@@ -33,7 +32,6 @@ func TestRoleCreate(t *testing.T) {
 		}
 
 		spRole2 := map[string]interface{}{
-			"credential_type": SecretTypeSP,
 			"roles": compactJSON(`[
 		{
 			"role_name": "Contributor",
@@ -45,8 +43,8 @@ func TestRoleCreate(t *testing.T) {
 			"role_id": "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Contributor2",
 			"scope":  "test_scope_3"
 		}]`),
-			"ttl":     int64(0),
-			"max_ttl": int64(0),
+			"ttl":     int64(300),
+			"max_ttl": int64(5000),
 		}
 
 		name := newUUID()
@@ -67,37 +65,20 @@ func TestRoleCreate(t *testing.T) {
 		equal(t, spRole2, resp.Data)
 	})
 
-	t.Run("Identity role", func(t *testing.T) {
-		identityRole := map[string]interface{}{
-			"credential_type": SecretTypeIdentity,
-			"identity":        "abcIdentity",
-			"resource_group":  "123rg",
-			"ttl":             int64(300),
-			"max_ttl":         int64(5000),
-		}
-		name := newUUID()
-		testRoleCreate(t, b, s, name, identityRole)
-
-		resp, err := testRoleRead(t, b, s, name)
-		ok(t, err)
-		equal(t, identityRole, resp.Data)
-	})
-
 	t.Run("Optional role TTLs", func(t *testing.T) {
-		identityRole := map[string]interface{}{
-			"credential_type": SecretTypeIdentity,
-			"identity":        "abcIdentity",
-			"resource_group":  "123rg",
+		testRole := map[string]interface{}{
+			"roles": "[]",
 		}
 
 		name := newUUID()
-		testRoleCreate(t, b, s, name, identityRole)
-		identityRole["ttl"] = int64(0)
-		identityRole["max_ttl"] = int64(0)
+		testRoleCreate(t, b, s, name, testRole)
+		testRole["ttl"] = int64(0)
+		testRole["max_ttl"] = int64(0)
 
 		resp, err := testRoleRead(t, b, s, name)
 		ok(t, err)
-		equal(t, identityRole, resp.Data)
+		resp.Data["roles"] = encode(resp.Data["roles"])
+		equal(t, testRole, resp.Data)
 	})
 
 	t.Run("Role TTL Checks", func(t *testing.T) {
@@ -122,9 +103,7 @@ func TestRoleCreate(t *testing.T) {
 
 		for i, test := range tests {
 			role := map[string]interface{}{
-				"credential_type": SecretTypeIdentity,
-				"identity":        "abcIdentity",
-				"resource_group":  "123rg",
+				"roles": "[]",
 			}
 			if test.ttl != skip {
 				role["ttl"] = test.ttl
@@ -150,7 +129,6 @@ func TestRoleCreate(t *testing.T) {
 	t.Run("Role name lookup", func(t *testing.T) {
 		b, s := getTestBackend(t, true)
 		var role = map[string]interface{}{
-			"credential_type": SecretTypeSP,
 			"roles": compactJSON(`[
 				{
 					"role_name": "Owner",
@@ -188,25 +166,18 @@ func TestRoleCreate(t *testing.T) {
 func TestRoleCreateBad(t *testing.T) {
 	b, s := getTestBackend(t, true)
 
-	tests := []struct {
-		roledef  map[string]interface{}
-		errorMsg string
-	}{
-		{map[string]interface{}{"roles": "{}"}, "credential_type is required"},
-		{map[string]interface{}{"credential_type": "foo"}, "invalid secret type"},
-		{map[string]interface{}{"credential_type": SecretTypeSP}, "missing Azure role definitions"},
-		{map[string]interface{}{"credential_type": SecretTypeSP, "roles": "asdf"}, "invalid Azure role definitions"},
-		{map[string]interface{}{"credential_type": SecretTypeIdentity, "identity": "abc"}, "missing or empty resource_group"},
-		{map[string]interface{}{"credential_type": SecretTypeIdentity, "resource_group": "abc"}, "missing or empty identity"},
+	role := map[string]interface{}{}
+	resp := testRoleCreateBasic(t, b, s, "test_role_1", role)
+	msg := "missing Azure role definitions"
+	if !strings.Contains(resp.Error().Error(), msg) {
+		t.Fatalf("expected to find: %s, got: %s", msg, resp.Error().Error())
 	}
 
-	for i, test := range tests {
-		role := test.roledef
-		name := fmt.Sprintf("test_role_%d", i)
-		resp := testRoleCreateBasic(t, b, s, name, role)
-		if !strings.Contains(resp.Error().Error(), test.errorMsg) {
-			t.Fatalf("Test case %d, expected to find: %s, got: %s", i, test.errorMsg, resp.Error().Error())
-		}
+	role = map[string]interface{}{"roles": "asdf"}
+	resp = testRoleCreateBasic(t, b, s, "test_role_1", role)
+	msg = "invalid Azure role definitions"
+	if !strings.Contains(resp.Error().Error(), msg) {
+		t.Fatalf("expected to find: %s, got: %s", msg, resp.Error().Error())
 	}
 }
 

@@ -158,31 +158,6 @@ func TestSPReadMissingRole(t *testing.T) {
 	}
 }
 
-func TestSPReadIdentityRole(t *testing.T) {
-	b, s := getTestBackend(t, true)
-	identityRole := map[string]interface{}{
-		"credential_type": SecretTypeIdentity,
-		"identity":        "abcIdentity",
-		"resource_group":  "123rg",
-	}
-
-	testRoleCreate(t, b, s, "test_role", identityRole)
-
-	resp, err := b.HandleRequest(context.Background(), &logical.Request{
-		Operation: logical.ReadOperation,
-		Path:      "creds/test_role",
-		Storage:   s,
-	})
-
-	if err != nil {
-		t.Fatalf("expected nil error, actual:%#v", err.Error())
-	}
-
-	if !resp.IsError() {
-		t.Fatal("expected a response error")
-	}
-}
-
 func TestCredentialReadProviderError(t *testing.T) {
 	b, s := getTestBackend(t, true)
 	data := testRole

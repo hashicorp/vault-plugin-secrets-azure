@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/hashicorp/errwrap"
@@ -20,9 +19,6 @@ const (
 
 type Role struct {
 	CredentialType string        `json:"credential_type"`
-	Identity       string        `json:"identity"`
-	ResourceGroup  string        `json:"resource_group"`
-	Name           string        `json:"name"`
 	Roles          []*azureRole  `json:"roles"`
 	DefaultTTL     time.Duration `json:"ttl"`
 	MaxTTL         time.Duration `json:"max_ttl"`
@@ -42,18 +38,6 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 				"name": {
 					Type:        framework.TypeLowerCaseString,
 					Description: "Name of the role",
-				},
-				"credential_type": {
-					Type:        framework.TypeString,
-					Description: `Secret type ("sp" or "identity")`,
-				},
-				"identity": {
-					Type:        framework.TypeString,
-					Description: "Azure identity name",
-				},
-				"resource_group": {
-					Type:        framework.TypeString,
-					Description: "Azure resource group",
 				},
 				"roles": {
 					Type:        framework.TypeString,
@@ -106,7 +90,7 @@ func (b *azureSecretBackend) pathRoleCreateUpdate(ctx context.Context, req *logi
 
 	if role == nil {
 		role = &Role{
-			Name: name,
+			CredentialType: SecretTypeSP,
 		}
 	}
 
@@ -121,14 +105,6 @@ func (b *azureSecretBackend) pathRoleCreateUpdate(ctx context.Context, req *logi
 
 	if maxTTLRaw, ok := d.GetOk("max_ttl"); ok {
 		role.MaxTTL = time.Duration(maxTTLRaw.(int)) * time.Second
-	}
-
-	if identity, ok := d.GetOk("identity"); ok {
-		role.Identity = strings.TrimSpace(identity.(string))
-	}
-
-	if rg, ok := d.GetOk("resource_group"); ok {
-		role.ResourceGroup = strings.TrimSpace(rg.(string))
 	}
 
 	if roles, ok := d.GetOk("roles"); ok {
@@ -187,30 +163,15 @@ func (b *azureSecretBackend) pathRoleCreateUpdate(ctx context.Context, req *logi
 		merr = multierror.Append(merr, errors.New("ttl > max_ttl"))
 	}
 
-	switch role.CredentialType {
-	case SecretTypeSP:
-		if role.Roles == nil {
-			merr = multierror.Append(merr, errors.New("missing Azure role definitions"))
-		}
-	case SecretTypeIdentity:
-		if role.Identity == "" {
-			merr = multierror.Append(merr, errors.New("missing or empty identity"))
-		}
-
-		if role.ResourceGroup == "" {
-			merr = multierror.Append(merr, errors.New("missing or empty resource_group"))
-		}
-	case "":
-		merr = multierror.Append(merr, errors.New("credential_type is required"))
-	default:
-		merr = multierror.Append(merr, fmt.Errorf("invalid secret type: %s", role.CredentialType))
+	if role.Roles == nil {
+		merr = multierror.Append(merr, errors.New("missing Azure role definitions"))
 	}
 
 	if merr.ErrorOrNil() != nil {
 		return logical.ErrorResponse(merr.Error()), nil
 	}
 
-	err = saveRole(ctx, role, req.Storage)
+	err = saveRole(ctx, role, name, req.Storage)
 	if err != nil {
 		return nil, errwrap.Wrapf("error storing role: {{err}}", err)
 	}
@@ -235,19 +196,9 @@ func (b *azureSecretBackend) pathRoleRead(ctx context.Context, req *logical.Requ
 		return nil, nil
 	}
 
-	data["credential_type"] = r.CredentialType
 	data["ttl"] = int64(r.DefaultTTL / time.Second)
 	data["max_ttl"] = int64(r.MaxTTL / time.Second)
-
-	switch r.CredentialType {
-	case SecretTypeIdentity:
-		data["identity"] = r.Identity
-		data["resource_group"] = r.ResourceGroup
-	case SecretTypeSP:
-		data["roles"] = r.Roles
-	default:
-		return nil, errors.New("error retrieving role")
-	}
+	data["roles"] = r.Roles
 
 	return &logical.Response{
 		Data: data,
@@ -290,8 +241,8 @@ func (b *azureSecretBackend) pathRoleExistenceCheck(ctx context.Context, req *lo
 	return cr != nil, nil
 }
 
-func saveRole(ctx context.Context, c *Role, s logical.Storage) error {
-	entry, err := logical.StorageEntryJSON(fmt.Sprintf("%s/%s", rolePrefix, c.Name), c)
+func saveRole(ctx context.Context, c *Role, name string, s logical.Storage) error {
+	entry, err := logical.StorageEntryJSON(fmt.Sprintf("%s/%s", rolePrefix, name), c)
 	if err != nil {
 		return err
 	}

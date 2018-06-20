@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/profiles/latest/compute/mgmt/compute"
 	"github.com/Azure/azure-sdk-for-go/services/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	"github.com/Azure/go-autorest/autorest/date"
@@ -185,47 +184,4 @@ func (c *azureClient) lookupRole(ctx context.Context, roleName, roleId string) (
 		return []authorization.RoleDefinition{r}, nil
 	}
 	return c.provider.ListRoles(ctx, fmt.Sprintf("subscriptions/%s", c.settings.SubscriptionID), fmt.Sprintf("roleName eq '%s'", roleName))
-}
-
-func (c *azureClient) updateMachineIdentities(ctx context.Context, resourceGroup, vm string, identities []assignment) error {
-	var resourceIDs []string
-
-	for _, i := range identities {
-		resourceIDs = append(resourceIDs, fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.ManagedIdentity/userAssignedIdentities/%s", c.settings.SubscriptionID, i.ResourceGroup, i.IdentityName))
-	}
-
-	// To effect "no user assigned identities", the type must be System Assigned.
-	// Simply setting an empty slice for IdentityIds is not sufficient. So use
-	// this as the base.
-	identity := compute.VirtualMachineIdentity{
-		Type: compute.ResourceIdentityTypeSystemAssigned,
-	}
-
-	if len(resourceIDs) > 0 {
-		identity.Type = compute.ResourceIdentityTypeSystemAssignedUserAssigned
-		identity.IdentityIds = &resourceIDs
-	}
-
-	_, err := c.provider.VMUpdate(ctx, resourceGroup, vm, compute.VirtualMachineUpdate{
-		Identity: &identity,
-	})
-
-	// TODO: recheck the returned promise to verify that the update happened
-
-	return err
-}
-
-func (c *azureClient) verifyToken(ctx context.Context, jwt string) (string, error) {
-	token, err := c.provider.VerifyToken(ctx, jwt)
-	if err != nil {
-		return "", err
-	}
-
-	claims := map[string]interface{}{}
-	if err := token.Claims(&claims); err != nil {
-		return "", err
-	}
-	oid := claims["oid"].(string)
-
-	return oid, nil
 }

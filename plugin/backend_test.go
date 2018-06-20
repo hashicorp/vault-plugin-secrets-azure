@@ -73,9 +73,9 @@ func newMockProvider() Provider {
 	}
 }
 
-var reRoleName = regexp.MustCompile("roleName eq '(.*)'")
-
 func (m *mockProvider) ListRoles(ctx context.Context, scope string, filter string) (result []authorization.RoleDefinition, err error) {
+	reRoleName := regexp.MustCompile("roleName eq '(.*)'")
+
 	match := reRoleName.FindAllStringSubmatch(filter, -1)
 	if len(match) > 0 {
 		name := match[0][1]

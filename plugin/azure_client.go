@@ -2,7 +2,6 @@ package azuresecrets
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -20,10 +19,15 @@ import (
 )
 
 const (
-	maxRetries           = 36
 	principalNotFoundErr = "PrincipalNotFound"
 	passwordLength       = 30
 )
+
+var retryConfig = &RetryConfig{
+	Base: 2 * time.Second,
+	Max:  3 * time.Minute,
+	Ramp: 1.15,
+}
 
 // azureClient offers higher level Azure operations that provide a simpler interface
 // for handlers. It in turn relies on a Provider interface to access the lower level
@@ -118,7 +122,6 @@ func (c *azureClient) deleteApp(ctx context.Context, appObjectID string) error {
 // assignRoles assigns roles to a service principal
 func (c *azureClient) assignRoles(ctx context.Context, sp *graphrbac.ServicePrincipal, roles []*azureRole) ([]string, error) {
 	var ids []string
-	var tries int
 
 	for _, role := range roles {
 		// Generate an assignment ID
@@ -127,27 +130,29 @@ func (c *azureClient) assignRoles(ctx context.Context, sp *graphrbac.ServicePrin
 			return nil, err
 		}
 
-		for ; tries < maxRetries; tries++ {
-			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentID, authorization.RoleAssignmentCreateParameters{
-				RoleAssignmentProperties: &authorization.RoleAssignmentProperties{
-					RoleDefinitionID: to.StringPtr(role.RoleID),
-					PrincipalID:      sp.ObjectID,
-				},
-			})
+		err = Retry(ctx, retryConfig, func() (bool, error) {
+			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentID,
+				authorization.RoleAssignmentCreateParameters{
+					RoleAssignmentProperties: &authorization.RoleAssignmentProperties{
+						RoleDefinitionID: to.StringPtr(role.RoleID),
+						PrincipalID:      sp.ObjectID,
+					},
+				})
 
 			if err == nil {
 				ids = append(ids, *ra.ID)
-				break
+				return true, nil
 			}
 
 			if !strings.Contains(err.Error(), principalNotFoundErr) {
-				return nil, errwrap.Wrapf("error while assigning role: {{err}}", err)
+				return true, errwrap.Wrapf("error while assigning role: {{err}}", err)
 			}
-			time.Sleep(5 * time.Second)
-		}
 
-		if tries >= maxRetries {
-			return nil, errors.New("error assigning role (principal not found)")
+			return false, nil
+		})
+
+		if err != nil {
+			return nil, err
 		}
 	}
 

@@ -16,6 +16,7 @@ import (
 	multierror "github.com/hashicorp/go-multierror"
 	uuid "github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault/plugins/helper/database/credsutil"
+	"github.com/y0ssar1an/q"
 )
 
 const (
@@ -206,9 +207,40 @@ func (c *azureClient) updateMachineIdentities(ctx context.Context, resourceGroup
 		identity.IdentityIds = &resourceIDs
 	}
 
-	_, err := c.provider.VMUpdate(ctx, resourceGroup, vm, compute.VirtualMachineUpdate{
+	var retryConfig = &RetryConfig{
+		Base: 500 * time.Millisecond,
+		Max:  30 * time.Second,
+		Ramp: 1.15,
+	}
+	fut, err := c.provider.VMUpdate(ctx, resourceGroup, vm, compute.VirtualMachineUpdate{
 		Identity: &identity,
 	})
+
+	if err != nil {
+		return err
+	}
+	q.Q("1")
+	fut.Result(*(c.provider.(*azureProvider).vmClient))
+	q.Q("2")
+
+	q.Q("Starting retries")
+	err = Retry(ctx, retryConfig, func() (bool, error) {
+		q.Q("About to call")
+
+		// This call is flaky. Takes a long time to return and sometime ends up
+		// killing the plugin inexplicably.
+		v, err := fut.Result(*(c.provider.(*azureProvider).vmClient))
+
+		//if err != nil {
+		//	return false, nil
+		q.Q(fmt.Sprintf("%v", v)[:100], err)
+		if err == nil {
+			return true, nil
+		}
+
+		return false, nil
+	})
+	q.Q("Ending retries")
 
 	// TODO: recheck the returned promise to verify that the update happened
 

@@ -176,9 +176,11 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 
 func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	config, err := b.getConfig(ctx, req.Storage)
+
 	if err != nil {
 		return nil, err
 	}
+
 	if config == nil {
 		return nil, nil
 	}
@@ -199,9 +201,11 @@ func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Re
 func (b *azureSecretBackend) getConfig(ctx context.Context, s logical.Storage) (*azureConfig, error) {
 	config := new(azureConfig)
 	entry, err := s.Get(ctx, configPath)
+
 	if err != nil {
 		return nil, err
 	}
+
 	if entry == nil {
 		return config, nil
 	}
@@ -209,24 +213,25 @@ func (b *azureSecretBackend) getConfig(ctx context.Context, s logical.Storage) (
 	if err := entry.DecodeJSON(config); err != nil {
 		return nil, err
 	}
+
 	return config, nil
 }
 
 func (b *azureSecretBackend) saveConfig(ctx context.Context, cfg *azureConfig, s logical.Storage) error {
 	entry, err := logical.StorageEntryJSON(configPath, cfg)
+
 	if err != nil {
 		return err
 	}
+
 	err = s.Put(ctx, entry)
 
 	return nil
 }
 
-const confHelpSyn = `Configures the Azure secret backend.`
+const confHelpSyn = `Configure the Azure Secret backend.`
 const confHelpDesc = `
-The Azure secret backend ............... validates the login JWTs using the
-configured credentials.  In order to validate machine information, the
-OAuth2 client id and secret are used to query the Azure API.  The OAuth2
-credentials require Microsoft.Compute/virtualMachines/read permission on
-the resource requesting credentials.
+The Azure secret backend requires credentials for managing applicationa and
+service principals. This endpoint is used to configure those credentials as
+well as default values for the backend in general.
 `

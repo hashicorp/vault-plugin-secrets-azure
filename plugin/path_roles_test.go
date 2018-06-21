@@ -48,7 +48,7 @@ func TestRoleCreate(t *testing.T) {
 		}
 
 		name := newUUID()
-		testRoleCreate(t, b, s, name, spRole1)
+		testRoleUpdate(t, b, s, name, spRole1)
 
 		resp, err := testRoleRead(t, b, s, name)
 		ok(t, err)
@@ -56,7 +56,7 @@ func TestRoleCreate(t *testing.T) {
 		resp.Data["roles"] = encode(resp.Data["roles"])
 		equal(t, spRole1, resp.Data)
 
-		testRoleCreate(t, b, s, name, spRole2)
+		testRoleUpdate(t, b, s, name, spRole2)
 
 		resp, err = testRoleRead(t, b, s, name)
 		ok(t, err)
@@ -71,7 +71,7 @@ func TestRoleCreate(t *testing.T) {
 		}
 
 		name := newUUID()
-		testRoleCreate(t, b, s, name, testRole)
+		testRoleUpdate(t, b, s, name, testRole)
 		testRole["ttl"] = int64(0)
 		testRole["max_ttl"] = int64(0)
 
@@ -167,14 +167,14 @@ func TestRoleCreateBad(t *testing.T) {
 	b, s := getTestBackend(t, true)
 
 	role := map[string]interface{}{}
-	resp := testRoleCreateBasic(t, b, s, "test_role_1", role)
+	resp := testRoleUpdateBasic(t, b, s, "test_role_1", role)
 	msg := "missing Azure role definitions"
 	if !strings.Contains(resp.Error().Error(), msg) {
 		t.Fatalf("expected to find: %s, got: %s", msg, resp.Error().Error())
 	}
 
 	role = map[string]interface{}{"roles": "asdf"}
-	resp = testRoleCreateBasic(t, b, s, "test_role_1", role)
+	resp = testRoleUpdateBasic(t, b, s, "test_role_1", role)
 	msg = "invalid Azure role definitions"
 	if !strings.Contains(resp.Error().Error(), msg) {
 		t.Fatalf("expected to find: %s, got: %s", msg, resp.Error().Error())
@@ -203,9 +203,9 @@ func TestRoleList(t *testing.T) {
 		"credential_type": SecretTypeSP,
 		"roles":           "[]",
 	}
-	testRoleCreate(t, b, s, "r1", role)
-	testRoleCreate(t, b, s, "r2", role)
-	testRoleCreate(t, b, s, "r3", role)
+	testRoleUpdate(t, b, s, "r1", role)
+	testRoleUpdate(t, b, s, "r2", role)
+	testRoleUpdate(t, b, s, "r3", role)
 
 	resp, err = b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.ListOperation,
@@ -259,8 +259,8 @@ func TestRoleDelete(t *testing.T) {
 	}
 
 	// Create two roles and verify they're present
-	testRoleCreate(t, b, s, name, role)
-	testRoleCreate(t, b, s, nameAlt, role)
+	testRoleUpdate(t, b, s, name, role)
+	testRoleUpdate(t, b, s, nameAlt, role)
 
 	// Delete one role and verify it is gone, and the other remains
 	resp, err := b.HandleRequest(context.Background(), &logical.Request{
@@ -296,51 +296,11 @@ func TestRoleDelete(t *testing.T) {
 	}
 }
 
-func TestRoleExistence(t *testing.T) {
-	b, s := getTestBackend(t, true)
-	name := "test_role"
-
-	role := map[string]interface{}{
-		"credential_type": SecretTypeSP,
-		"roles":           "[]",
-	}
-
-	testRoleCreate(t, b, s, name, role)
-
-	_, exists, err := b.HandleExistenceCheck(context.Background(), &logical.Request{
-		Operation: logical.CreateOperation,
-		Path:      fmt.Sprintf("roles/%s", name),
-		Storage:   s,
-	})
-
-	if err != nil {
-		t.Fatalf("expected nil error, actual:%#v", err.Error())
-	}
-
-	if !exists {
-		t.Fatalf("expected role to exist")
-	}
-
-	_, exists, err = b.HandleExistenceCheck(context.Background(), &logical.Request{
-		Operation: logical.CreateOperation,
-		Path:      fmt.Sprintf("roles/%s_not_present", name),
-		Storage:   s,
-	})
-
-	if err != nil {
-		t.Fatalf("expected nil error, actual:%#v", err.Error())
-	}
-
-	if exists {
-		t.Fatalf("expected role to not exist")
-	}
-}
-
 // Utility function to create a role and fail on errors
-func testRoleCreate(t *testing.T, b *azureSecretBackend, s logical.Storage, name string, d map[string]interface{}) {
+func testRoleUpdate(t *testing.T, b *azureSecretBackend, s logical.Storage, name string, d map[string]interface{}) {
 	t.Helper()
 	resp, err := b.HandleRequest(context.Background(), &logical.Request{
-		Operation: logical.CreateOperation,
+		Operation: logical.UpdateOperation,
 		Path:      fmt.Sprintf("roles/%s", name),
 		Data:      d,
 		Storage:   s,
@@ -356,10 +316,10 @@ func testRoleCreate(t *testing.T, b *azureSecretBackend, s logical.Storage, name
 }
 
 // Utility function to create a role while expecting and returning any errors
-func testRoleCreateBasic(t *testing.T, b *azureSecretBackend, s logical.Storage, name string, d map[string]interface{}) *logical.Response {
+func testRoleUpdateBasic(t *testing.T, b *azureSecretBackend, s logical.Storage, name string, d map[string]interface{}) *logical.Response {
 	t.Helper()
 	resp, err := b.HandleRequest(context.Background(), &logical.Request{
-		Operation: logical.CreateOperation,
+		Operation: logical.UpdateOperation,
 		Path:      fmt.Sprintf("roles/%s", name),
 		Data:      d,
 		Storage:   s,

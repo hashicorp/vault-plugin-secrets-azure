@@ -83,9 +83,8 @@ func (b *azureSecretBackend) reset() {
 
 const backendHelp = `
 The Azure secrets backend dynamically generates Azure service
-principals and/or User Assigned Identity assignments. Both types
-of credentials have a configurable lease set and are automatically
-revoked at the end of the lease.
+principals. The credentials have a configurable lease set and
+are automatically revoked at the end of the lease.
 
 After mounting this backend, credentials to manage Azure resources
 must be configured with the "config/" endpoints and policies must be

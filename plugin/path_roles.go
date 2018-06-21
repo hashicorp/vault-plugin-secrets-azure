@@ -54,12 +54,10 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 			},
 			Callbacks: map[logical.Operation]framework.OperationFunc{
 				logical.ReadOperation:   b.pathRoleRead,
-				logical.CreateOperation: b.pathRoleCreateUpdate,
-				logical.UpdateOperation: b.pathRoleCreateUpdate,
+				logical.UpdateOperation: b.pathRoleUpdate,
 				logical.DeleteOperation: b.pathRoleDelete,
 			},
-			ExistenceCheck:  b.pathRoleExistenceCheck,
-			HelpSynopsis:    "TBD",
+			HelpSynopsis:    "Manage the Vault roles used to generate Azure credentials.",
 			HelpDescription: "TBD",
 		},
 		{
@@ -67,17 +65,17 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 			Callbacks: map[logical.Operation]framework.OperationFunc{
 				logical.ListOperation: b.pathRoleList,
 			},
-			HelpSynopsis:    "TBD",
-			HelpDescription: "TBD",
+			HelpSynopsis:    "List existing roles",
+			HelpDescription: "List existing roles by name",
 		},
 	}
 
 }
 
-// pathRoleCreateUpdate creates or updates Vault roles. Basic validity check are made to verify that the
+// pathRoleUpdate creates or updates Vault roles. Basic validity check are made to verify that the
 // provided fields meet the requirements for the secret type. There are no checks of the validity of the Azure
 // data itself (e.g. that identities or roles exist, etc.)
-func (b *azureSecretBackend) pathRoleCreateUpdate(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
+func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
 	var merr *multierror.Error
 	var resp *logical.Response
 
@@ -227,20 +225,6 @@ func (b *azureSecretBackend) pathRoleDelete(ctx context.Context, req *logical.Re
 	return nil, nil
 }
 
-func (b *azureSecretBackend) pathRoleExistenceCheck(ctx context.Context, req *logical.Request, d *framework.FieldData) (bool, error) {
-	nameRaw, ok := d.GetOk("name")
-	if !ok {
-		return false, errors.New("name is required")
-	}
-
-	cr, err := getRole(ctx, nameRaw.(string), req.Storage)
-	if err != nil {
-		return false, errwrap.Wrapf("error reading role: {{err}}", err)
-	}
-
-	return cr != nil, nil
-}
-
 func saveRole(ctx context.Context, c *Role, name string, s logical.Storage) error {
 	entry, err := logical.StorageEntryJSON(fmt.Sprintf("%s/%s", rolePrefix, name), c)
 	if err != nil {
@@ -265,27 +249,3 @@ func getRole(ctx context.Context, name string, s logical.Storage) (*Role, error)
 	}
 	return role, nil
 }
-
-//func (b *azureSecretBackend) lookupRole(ctx context.Context, c *azureClient, role *azureRole) error {
-//	r, err := c.searchRole(role.RoleName)
-//	if err != nil {
-//		return err
-//	}
-//	fmt.Println(*r[0].ID)
-//	fmt.Println(*r[0].Name)
-//	return nil
-//}
-
-//func validateTTL(passwordConf *passwordConf, fieldData *framework.FieldData) (int, error) {
-//	ttl := fieldData.Get("ttl").(int)
-//	if ttl == 0 {
-//		ttl = passwordConf.TTL
-//	}
-//	if ttl > passwordConf.MaxTTL {
-//		return 0, fmt.Errorf("requested ttl of %d seconds is over the max ttl of %d seconds", ttl, passwordConf.MaxTTL)
-//	}
-//	if ttl < 0 {
-//		return 0, fmt.Errorf("ttl can't be negative")
-//	}
-//	return ttl, nil
-//}

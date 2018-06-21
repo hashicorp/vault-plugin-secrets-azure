@@ -36,8 +36,8 @@ func pathServicePrincipal(b *azureSecretBackend) *framework.Path {
 			logical.ReadOperation:   b.pathSPRead,
 			logical.UpdateOperation: b.pathSPRead,
 		},
-		//HelpSynopsis:    pathTokenHelpSyn,
-		//HelpDescription: pathTokenHelpDesc,
+		HelpSynopsis:    pathServicePrincipalHelpSyn,
+		HelpDescription: pathServicePrincipalHelpDesc,
 	}
 }
 
@@ -183,3 +183,13 @@ func (b *azureSecretBackend) spRollback(ctx context.Context, req *logical.Reques
 
 	return c.deleteApp(ctx, entry.AppObjectID)
 }
+
+const pathServicePrincipalHelpSyn = `
+Request Service Principal credentials for a certain role.
+`
+
+const pathServicePrincipalHelpDesc = `
+This path creates Service Principal credentials for a certain role. The
+Service Principal will be generated on demand and will be automatically
+revoked when the lease is expired.
+`

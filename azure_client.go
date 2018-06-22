@@ -14,7 +14,6 @@ import (
 	log "github.com/hashicorp/go-hclog"
 	multierror "github.com/hashicorp/go-multierror"
 	uuid "github.com/hashicorp/go-uuid"
-	"github.com/hashicorp/vault-plugin-secrets-azure/plugin/retry"
 	"github.com/hashicorp/vault/plugins/helper/database/credsutil"
 )
 
@@ -23,7 +22,7 @@ const (
 	passwordLength       = 30
 )
 
-var retryConfig = retry.RetryConfig{
+var retryConfig = RetryConfig{
 	Base:    2 * time.Second,
 	Timeout: 3 * time.Minute,
 	Ramp:    1.15,
@@ -130,7 +129,7 @@ func (c *azureClient) assignRoles(ctx context.Context, sp *graphrbac.ServicePrin
 			return nil, err
 		}
 
-		err = retry.Retry(ctx, retryConfig, func() (bool, error) {
+		err = Retry(ctx, retryConfig, func() (bool, error) {
 			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentID,
 				authorization.RoleAssignmentCreateParameters{
 					RoleAssignmentProperties: &authorization.RoleAssignmentProperties{

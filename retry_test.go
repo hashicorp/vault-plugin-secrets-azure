@@ -1,4 +1,4 @@
-package retry
+package azuresecrets
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 )
 
 func TestRetry(t *testing.T) {
+	t.Skip()
 	f := func() (bool, error) {
 		return false, nil
 	}

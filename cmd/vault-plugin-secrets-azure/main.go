@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	azuresecrets "github.com/hashicorp/vault-plugin-secrets-azure/plugin"
+	azuresecrets "github.com/hashicorp/vault-plugin-secrets-azure"
 	"github.com/hashicorp/vault/helper/pluginutil"
 	"github.com/hashicorp/vault/logical/plugin"
 )

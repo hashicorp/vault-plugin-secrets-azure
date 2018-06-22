@@ -19,20 +19,37 @@ type Provider interface {
 }
 
 type ApplicationsClient interface {
-	CreateApplication(ctx context.Context, parameters graphrbac.ApplicationCreateParameters) (graphrbac.Application, error)
-	DeleteApplication(ctx context.Context, applicationObjectID string) (autorest.Response, error)
+	CreateApplication(
+		ctx context.Context,
+		parameters graphrbac.ApplicationCreateParameters) (graphrbac.Application, error)
+	DeleteApplication(
+		ctx context.Context,
+		applicationObjectID string) (autorest.Response, error)
 }
 
 type ServicePrincipalsClient interface {
-	CreateServicePrincipal(ctx context.Context, parameters graphrbac.ServicePrincipalCreateParameters) (graphrbac.ServicePrincipal, error)
+	CreateServicePrincipal(
+		ctx context.Context,
+		parameters graphrbac.ServicePrincipalCreateParameters) (graphrbac.ServicePrincipal, error)
 }
 
 type RoleAssignmentsClient interface {
-	CreateRoleAssignment(ctx context.Context, scope string, roleAssignmentName string, parameters authorization.RoleAssignmentCreateParameters) (authorization.RoleAssignment, error)
-	DeleteRoleAssignmentByID(ctx context.Context, roleID string) (authorization.RoleAssignment, error)
+	CreateRoleAssignment(
+		ctx context.Context,
+		scope string,
+		roleAssignmentName string,
+		parameters authorization.RoleAssignmentCreateParameters) (authorization.RoleAssignment, error)
+	DeleteRoleAssignmentByID(
+		ctx context.Context,
+		roleID string) (authorization.RoleAssignment, error)
 }
 
 type RoleDefinitionsClient interface {
-	ListRoles(ctx context.Context, scope string, filter string) ([]authorization.RoleDefinition, error)
-	GetRoleByID(ctx context.Context, roleID string) (result authorization.RoleDefinition, err error)
+	ListRoles(
+		ctx context.Context,
+		scope string,
+		filter string) ([]authorization.RoleDefinition, error)
+	GetRoleByID(
+		ctx context.Context,
+		roleID string) (result authorization.RoleDefinition, err error)
 }

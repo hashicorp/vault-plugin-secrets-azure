@@ -47,8 +47,8 @@ func getTestBackend(t *testing.T, initConfig bool) (*azureSecretBackend, logical
 
 	if initConfig {
 		cfg := map[string]interface{}{
-			"subscription_id": newUUID(),
-			"tenant_id":       newUUID(),
+			"subscription_id": generateUUID(),
+			"tenant_id":       generateUUID(),
 			"client_id":       "testClientId",
 			"client_secret":   "testClientSecret",
 			"environment":     "AZURECHINACLOUD",
@@ -69,7 +69,7 @@ type mockProvider struct {
 
 func newMockProvider() Provider {
 	return &mockProvider{
-		subscriptionID: newUUID(),
+		subscriptionID: generateUUID(),
 	}
 }
 
@@ -111,8 +111,8 @@ func (m *mockProvider) CreateApplication(ctx context.Context, parameters graphrb
 	}
 
 	return graphrbac.Application{
-		AppID:    to.StringPtr(newUUID()),
-		ObjectID: to.StringPtr(newUUID()),
+		AppID:    to.StringPtr(generateUUID()),
+		ObjectID: to.StringPtr(generateUUID()),
 	}, nil
 }
 
@@ -134,7 +134,7 @@ func (m *mockProvider) VMUpdate(ctx context.Context, resourceGroupName string, V
 
 func (m *mockProvider) CreateRoleAssignment(ctx context.Context, scope string, roleAssignmentName string, parameters authorization.RoleAssignmentCreateParameters) (authorization.RoleAssignment, error) {
 	return authorization.RoleAssignment{
-		ID: to.StringPtr(newUUID()),
+		ID: to.StringPtr(generateUUID()),
 	}, nil
 }
 

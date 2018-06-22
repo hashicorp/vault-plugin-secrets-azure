@@ -66,13 +66,14 @@ func (b *azureSecretBackend) getProvider(settings *azureSettings) (Provider, err
 		return b.provider, nil
 	}
 
-	if p, err := NewAzureProvider(settings); err != nil {
+	p, err := NewAzureProvider(settings)
+	if err != nil {
 		return nil, err
 	}
 
 	b.provider = p
 
-	return b.provider, nil
+	return p, nil
 }
 
 // reset clears the backend's Provider

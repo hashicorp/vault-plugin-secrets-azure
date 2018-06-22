@@ -22,7 +22,7 @@ const (
 
 var testRole = map[string]interface{}{
 	"credential_type": SecretTypeSP,
-	"roles": encode([]azureRole{
+	"roles": encodeJSON([]azureRole{
 		azureRole{
 			RoleName: "Owner",
 			RoleID:   "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Owner",
@@ -40,7 +40,7 @@ func TestSPRead(t *testing.T) {
 	b, s := getTestBackend(t, true)
 
 	t.Run("Basic", func(t *testing.T) {
-		name := newUUID()
+		name := generateUUID()
 		testRoleUpdate(t, b, s, name, testRole)
 
 		resp, err := b.HandleRequest(context.Background(), &logical.Request{
@@ -74,7 +74,7 @@ func TestSPRead(t *testing.T) {
 		}
 		testConfigUpdate(t, b, s, cfg)
 
-		name := newUUID()
+		name := generateUUID()
 		testRoleUpdate(t, b, s, name, testRole)
 
 		resp, err := b.HandleRequest(context.Background(), &logical.Request{

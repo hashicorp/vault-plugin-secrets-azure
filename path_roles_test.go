@@ -47,13 +47,13 @@ func TestRoleCreate(t *testing.T) {
 			"max_ttl": int64(5000),
 		}
 
-		name := newUUID()
+		name := generateUUID()
 		testRoleUpdate(t, b, s, name, spRole1)
 
 		resp, err := testRoleRead(t, b, s, name)
 		ok(t, err)
 
-		resp.Data["roles"] = encode(resp.Data["roles"])
+		resp.Data["roles"] = encodeJSON(resp.Data["roles"])
 		equal(t, spRole1, resp.Data)
 
 		testRoleUpdate(t, b, s, name, spRole2)
@@ -61,7 +61,7 @@ func TestRoleCreate(t *testing.T) {
 		resp, err = testRoleRead(t, b, s, name)
 		ok(t, err)
 
-		resp.Data["roles"] = encode(resp.Data["roles"])
+		resp.Data["roles"] = encodeJSON(resp.Data["roles"])
 		equal(t, spRole2, resp.Data)
 	})
 
@@ -70,14 +70,14 @@ func TestRoleCreate(t *testing.T) {
 			"roles": "[]",
 		}
 
-		name := newUUID()
+		name := generateUUID()
 		testRoleUpdate(t, b, s, name, testRole)
 		testRole["ttl"] = int64(0)
 		testRole["max_ttl"] = int64(0)
 
 		resp, err := testRoleRead(t, b, s, name)
 		ok(t, err)
-		resp.Data["roles"] = encode(resp.Data["roles"])
+		resp.Data["roles"] = encodeJSON(resp.Data["roles"])
 		equal(t, testRole, resp.Data)
 	})
 
@@ -111,7 +111,7 @@ func TestRoleCreate(t *testing.T) {
 			if test.max_ttl != skip {
 				role["max_ttl"] = test.max_ttl
 			}
-			name := newUUID()
+			name := generateUUID()
 			resp, err := b.HandleRequest(context.Background(), &logical.Request{
 				Operation: logical.UpdateOperation,
 				Path:      "roles/" + name,
@@ -143,7 +143,7 @@ func TestRoleCreate(t *testing.T) {
 			]`),
 		}
 
-		name := newUUID()
+		name := generateUUID()
 		resp, err := b.HandleRequest(context.Background(), &logical.Request{
 			Operation: logical.UpdateOperation,
 			Path:      "roles/" + name,

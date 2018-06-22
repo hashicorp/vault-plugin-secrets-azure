@@ -3,7 +3,6 @@ package azuresecrets
 import (
 	"bytes"
 	"encoding/json"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -12,30 +11,7 @@ import (
 	"github.com/hashicorp/vault/helper/jsonutil"
 )
 
-func equal(tb testing.TB, exp, act interface{}) {
-	tb.Helper()
-	if diff := deep.Equal(exp, act); diff != nil {
-		tb.Fatal(diff)
-	}
-}
-
-// An helpful temporary alternative when looking for
-// diffs in a complicated structure.
-func equalJ(tb testing.TB, exp, act interface{}) {
-	tb.Helper()
-	if !reflect.DeepEqual(exp, act) {
-		e, err := json.MarshalIndent(exp, "", "  ")
-		if err != nil {
-			tb.Fatal(err)
-		}
-		a, err := json.MarshalIndent(act, "", "  ")
-		if err != nil {
-			tb.Fatal(err)
-		}
-		tb.Fatalf("\nexpected:  %s\nactual:    %s", string(e), string(a))
-	}
-}
-
+// ok tests for non-nil errors
 func ok(tb testing.TB, err error) {
 	tb.Helper()
 	if err != nil {
@@ -43,7 +19,17 @@ func ok(tb testing.TB, err error) {
 	}
 }
 
-func encode(data interface{}) string {
+// equal tests for deep equality
+func equal(tb testing.TB, exp, act interface{}) {
+	tb.Helper()
+	if diff := deep.Equal(exp, act); diff != nil {
+		tb.Fatal(diff)
+	}
+}
+
+// encodeJSON is an optimistic JSON encoder that will
+// panic on error.
+func encodeJSON(data interface{}) string {
 	d, err := jsonutil.EncodeJSON(data)
 	if err != nil {
 		panic(err)
@@ -51,6 +37,8 @@ func encode(data interface{}) string {
 	return strings.TrimSpace(string(d))
 }
 
+// compactJSON is a JSON compactor that works on strings
+// and panics on any error
 func compactJSON(s string) string {
 	var b bytes.Buffer
 	if err := json.Compact(&b, []byte(s)); err != nil {
@@ -59,7 +47,12 @@ func compactJSON(s string) string {
 	return b.String()
 }
 
-func newUUID() string {
-	u, _ := uuid.GenerateUUID()
+// generateUUID is an optimistic UUID source that will
+// panic on error.
+func generateUUID() string {
+	u, err := uuid.GenerateUUID()
+	if err != nil {
+		panic(err)
+	}
 	return u
 }

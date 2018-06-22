@@ -93,10 +93,6 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	}
 
 	// update role with any provided parameters
-	if stRaw, ok := d.GetOk("credential_type"); ok {
-		role.CredentialType = stRaw.(string)
-	}
-
 	if ttlRaw, ok := d.GetOk("ttl"); ok {
 		role.DefaultTTL = time.Duration(ttlRaw.(int)) * time.Second
 	}

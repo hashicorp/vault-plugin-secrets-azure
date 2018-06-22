@@ -23,6 +23,9 @@ type azureProvider struct {
 	spClient  *graphrbac.ServicePrincipalsClient
 	raClient  *authorization.RoleAssignmentsClient
 	rdClient  *authorization.RoleDefinitionsClient
+
+	// internal data for testing
+	_spObjId string
 }
 
 // NewAzureProvider creates an azureProvider
@@ -88,7 +91,11 @@ func (p *azureProvider) GetRoleByID(ctx context.Context, roleID string) (result 
 }
 
 func (p *azureProvider) CreateServicePrincipal(ctx context.Context, parameters graphrbac.ServicePrincipalCreateParameters) (graphrbac.ServicePrincipal, error) {
-	return p.spClient.Create(ctx, parameters)
+	sp, err := p.spClient.Create(ctx, parameters)
+	if sp.ObjectID != nil {
+		p._spObjId = *sp.ObjectID
+	}
+	return sp, err
 }
 
 func (p *azureProvider) CreateApplication(ctx context.Context, parameters graphrbac.ApplicationCreateParameters) (graphrbac.Application, error) {
@@ -103,8 +110,24 @@ func (p *azureProvider) CreateRoleAssignment(ctx context.Context, scope string, 
 	return p.raClient.Create(ctx, scope, roleAssignmentName, parameters)
 }
 
+func (p *azureProvider) ListRoleAssignments(ctx context.Context, filter string) ([]authorization.RoleAssignment, error) {
+	page, err := p.raClient.List(ctx, filter)
+
+	v := page.Values()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return v, nil
+}
+
 func (p *azureProvider) DeleteRoleAssignmentByID(ctx context.Context, roleID string) (result authorization.RoleAssignment, err error) {
 	return p.raClient.DeleteByID(ctx, roleID)
+}
+
+func (p *azureProvider) GetRoleAssignmentByID(ctx context.Context, roleID string) (result authorization.RoleAssignment, err error) {
+	return p.raClient.GetByID(ctx, roleID)
 }
 
 // userAgent determines the User Agent to send on HTTP requests. This is mostly copied

@@ -62,10 +62,6 @@ func (b *azureSecretBackend) pathSPRead(ctx context.Context, req *logical.Reques
 		return logical.ErrorResponse(fmt.Sprintf("role '%s' does not exists", roleName)), nil
 	}
 
-	if role.CredentialType != SecretTypeSP {
-		return logical.ErrorResponse(fmt.Sprintf("role '%s' is not a service principal role", roleName)), nil
-	}
-
 	app, err := c.createApp(ctx)
 	if err != nil {
 		return nil, err
@@ -129,7 +125,7 @@ func (b *azureSecretBackend) spRenew(ctx context.Context, req *logical.Request, 
 }
 
 func (b *azureSecretBackend) spRevoke(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-	var resp *logical.Response
+	resp := new(logical.Response)
 
 	appObjectID, err := GetInternalString(req, "appObjectID")
 	if err != nil {

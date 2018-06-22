@@ -39,7 +39,6 @@ func Backend() *azureSecretBackend {
 				"config",
 			},
 		},
-
 		Paths: framework.PathAppend(
 			pathsRole(&b),
 			[]*framework.Path{
@@ -50,7 +49,6 @@ func Backend() *azureSecretBackend {
 		Secrets: []*framework.Secret{
 			secretServicePrincipal(&b),
 		},
-
 		BackendType:       logical.TypeLogical,
 		WALRollback:       b.walRollback,
 		WALRollbackMinAge: 5 * time.Minute,
@@ -59,7 +57,8 @@ func Backend() *azureSecretBackend {
 	return &b
 }
 
-func (b *azureSecretBackend) getProvider(settings *azureSettings) (p Provider, err error) {
+// getProvider returns, and creates if necessary, the backend's Provider.
+func (b *azureSecretBackend) getProvider(settings *azureSettings) (Provider, error) {
 	b.providerLock.Lock()
 	defer b.providerLock.Unlock()
 
@@ -67,13 +66,18 @@ func (b *azureSecretBackend) getProvider(settings *azureSettings) (p Provider, e
 		return b.provider, nil
 	}
 
-	if b.provider, err = NewAzureProvider(settings); err != nil {
+	if p, err := NewAzureProvider(settings); err != nil {
 		return nil, err
 	}
+
+	b.provider = p
 
 	return b.provider, nil
 }
 
+// reset clears the backend's Provider
+// This is useful when the configuration changes and a new Provider should be
+// created with the updated settings.
 func (b *azureSecretBackend) reset() {
 	b.providerLock.Lock()
 	defer b.providerLock.Unlock()
@@ -83,7 +87,7 @@ func (b *azureSecretBackend) reset() {
 
 const backendHelp = `
 The Azure secrets backend dynamically generates Azure service
-principals. The credentials have a configurable lease set and
+principals. The SP credentials have a configurable lease and
 are automatically revoked at the end of the lease.
 
 After mounting this backend, credentials to manage Azure resources

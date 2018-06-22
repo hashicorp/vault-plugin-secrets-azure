@@ -1,4 +1,4 @@
-package azuresecrets
+package retry
 
 import (
 	"context"
@@ -7,16 +7,19 @@ import (
 )
 
 func TestRetry(t *testing.T) {
-	t.Skip()
 	f := func() (bool, error) {
 		return false, nil
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		time.Sleep(114500 * time.Millisecond)
+		time.Sleep(5000 * time.Millisecond)
 		cancel()
 	}()
 
-	Retry(ctx, &RetryConfig{Precise: true, Base: 1000 * time.Millisecond, Max: 5 * time.Second, Ramp: 1.0}, f)
+	Retry(ctx, RetryConfig{
+		Jitter:  false,
+		Base:    1000 * time.Millisecond,
+		Timeout: 50 * time.Second,
+		Ramp:    1.1}, f)
 }

@@ -49,7 +49,7 @@ echo "    Authing"
 vault auth root &>/dev/null
 
 echo "--> Building"
-go build -o "$SCRATCH/plugins/$PLUGIN_NAME"
+go build -o "$SCRATCH/plugins/$PLUGIN_NAME" "./cmd/$PLUGIN_NAME" 
 SHASUM=$(shasum -a 256 "$SCRATCH/plugins/$PLUGIN_NAME" | cut -d " " -f1)
 
 echo "    Registering plugin"

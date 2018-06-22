@@ -37,10 +37,6 @@
   branch = "master"
   name = "github.com/hashicorp/vault"
 
-[[constraint]]
-  branch = "master"
-  name = "github.com/mitchellh/mapstructure"
-
 [prune]
   go-tests = true
   unused-packages = true

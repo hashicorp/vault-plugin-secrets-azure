@@ -2,12 +2,17 @@ package azuresecrets
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"math"
+	"math/rand"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
+	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/hashicorp/errwrap"
@@ -21,12 +26,6 @@ const (
 	principalNotFoundErr = "PrincipalNotFound"
 	passwordLength       = 30
 )
-
-var retryConfig = RetryConfig{
-	Base:    2 * time.Second,
-	Timeout: 3 * time.Minute,
-	Ramp:    1.15,
-}
 
 // azureClient offers higher level Azure operations that provide a simpler interface
 // for handlers. It in turn relies on a Provider interface to access the lower level
@@ -120,6 +119,12 @@ func (c *azureClient) deleteApp(ctx context.Context, appObjectID string) error {
 
 // assignRoles assigns roles to a service principal
 func (c *azureClient) assignRoles(ctx context.Context, sp *graphrbac.ServicePrincipal, roles []*azureRole) ([]string, error) {
+	var retryCfg = retryConfig{
+		Base:    2 * time.Second,
+		Timeout: 3 * time.Minute,
+		Ramp:    1.15,
+	}
+
 	var ids []string
 
 	for _, role := range roles {
@@ -129,7 +134,7 @@ func (c *azureClient) assignRoles(ctx context.Context, sp *graphrbac.ServicePrin
 			return nil, err
 		}
 
-		err = Retry(ctx, retryConfig, func() (bool, error) {
+		err = retry(ctx, retryCfg, func() (bool, error) {
 			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentID,
 				authorization.RoleAssignmentCreateParameters{
 					RoleAssignmentProperties: &authorization.RoleAssignmentProperties{
@@ -184,4 +189,93 @@ func (c *azureClient) lookupRole(ctx context.Context, roleName, roleId string) (
 		return []authorization.RoleDefinition{r}, nil
 	}
 	return c.provider.ListRoles(ctx, fmt.Sprintf("subscriptions/%s", c.settings.SubscriptionID), fmt.Sprintf("roleName eq '%s'", roleName))
+}
+
+// azureSettings is used by a azureClient to connect to Azure. It is created
+// from a combination of Vault config settings and environment variables.
+type azureSettings struct {
+	SubscriptionID string
+	TenantID       string
+	ClientID       string
+	ClientSecret   string
+	Environment    azure.Environment
+	Resource       string
+}
+
+// getAzureSettings creates a new azureSettings object.
+// Environment variables have higher precedence than stored configuration.
+func getAzureSettings(config *azureConfig) (*azureSettings, error) {
+	settings := new(azureSettings)
+
+	settings.TenantID = firstSupplied(os.Getenv("AZURE_TENANT_ID"), config.TenantID)
+	if settings.TenantID == "" {
+		return nil, errors.New("tenant_id is required")
+	}
+
+	settings.SubscriptionID = firstSupplied(os.Getenv("AZURE_SUBSCRIPTION_ID"), config.SubscriptionID)
+	settings.ClientID = firstSupplied(os.Getenv("AZURE_CLIENT_ID"), config.ClientID)
+	settings.ClientSecret = firstSupplied(os.Getenv("AZURE_CLIENT_SECRET"), config.ClientSecret)
+	settings.Resource = firstSupplied(os.Getenv("AZURE_AD_RESOURCE"), config.Resource)
+
+	settings.Environment = azure.PublicCloud
+	envName := firstSupplied(os.Getenv("AZURE_ENVIRONMENT"), config.Environment)
+	if envName != "" {
+		var err error
+		settings.Environment, err = azure.EnvironmentFromName(envName)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return settings, nil
+}
+
+// firstSupplied return the first option that is not an empty string
+func firstSupplied(opts ...string) string {
+	for _, s := range opts {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+type retryConfig struct {
+	Base    time.Duration // start and minimum retry duration
+	Timeout time.Duration // max total retry runtime. 0 == indefinite
+	Ramp    float64       // rate of delay increase
+	Jitter  bool          // randomize between [Base, delay)
+}
+
+// retry calls func f() at a cadence defined by cfg.
+// Retries continue until f() returns true, Timeout has elapsed,
+// or the context is cancelled.
+func retry(ctx context.Context, cfg retryConfig, f func() (bool, error)) error {
+	rand.Seed(time.Now().Unix())
+
+	var endCh <-chan time.Time
+	if cfg.Timeout != 0 {
+		endCh = time.NewTimer(cfg.Timeout).C
+	}
+
+	for count := 0; ; count++ {
+		if done, err := f(); done {
+			return err
+		}
+
+		b := float64(cfg.Base)
+		dur := int64(math.Max(b, b*math.Pow(cfg.Ramp, float64(count))))
+		if cfg.Jitter {
+			dur = rand.Int63n(dur)
+		}
+		delay := time.NewTimer(time.Duration(dur))
+
+		select {
+		case <-delay.C:
+		case <-endCh:
+			return errors.New("retry: timeout")
+		case <-ctx.Done():
+			return errors.New("retry: cancelled")
+		}
+	}
 }

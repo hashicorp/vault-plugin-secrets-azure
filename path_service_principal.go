@@ -127,10 +127,12 @@ func (b *azureSecretBackend) spRenew(ctx context.Context, req *logical.Request, 
 func (b *azureSecretBackend) spRevoke(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
 	resp := new(logical.Response)
 
-	appObjectID, err := GetInternalString(req, "appObjectID")
-	if err != nil {
-		return nil, err
+	appObjectIDRaw, ok := req.Secret.InternalData["appObjectID"]
+	if !ok {
+		return nil, errors.New("internal data not found")
 	}
+
+	appObjectID := appObjectIDRaw.(string)
 
 	var raIDs []string
 	if req.Secret.InternalData["roleAssignmentIDs"] != nil {

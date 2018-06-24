@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/errwrap"
 	"github.com/hashicorp/vault/logical"
 	"github.com/hashicorp/vault/logical/framework"
-	"github.com/mitchellh/mapstructure"
 )
 
 const (
@@ -29,27 +29,32 @@ func pathServicePrincipal(b *azureSecretBackend) *framework.Path {
 		Fields: map[string]*framework.FieldSchema{
 			"role": {
 				Type:        framework.TypeLowerCaseString,
-				Description: "Name of the role.",
+				Description: "Name of the Vault role",
 			},
 		},
 		Callbacks: map[logical.Operation]framework.OperationFunc{
-			logical.ReadOperation:   b.pathSPRead,
-			logical.UpdateOperation: b.pathSPRead,
+			logical.ReadOperation: b.pathSPRead,
 		},
 		HelpSynopsis:    pathServicePrincipalHelpSyn,
 		HelpDescription: pathServicePrincipalHelpDesc,
 	}
 }
 
+// pathSPRead generates Azure an service principal and credentials.
+//
+// This is a multistep process of:
+//   1. Create an Azure application
+//   2. Create a service principal associated with the new App
+//   3. Assign roles
 func (b *azureSecretBackend) pathSPRead(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
 	cfg, err := b.getConfig(ctx, req.Storage)
 	if err != nil {
-		return nil, errors.New("error during service principal create: could not load config")
+		return nil, err
 	}
 
 	c, err := b.newAzureClient(ctx, cfg)
 	if err != nil {
-		return nil, err
+		return logical.ErrorResponse(err.Error()), nil
 	}
 
 	roleName := d.Get("role").(string)
@@ -62,19 +67,17 @@ func (b *azureSecretBackend) pathSPRead(ctx context.Context, req *logical.Reques
 		return logical.ErrorResponse(fmt.Sprintf("role '%s' does not exists", roleName)), nil
 	}
 
+	// Create the App, which is the top level object to be tracked in the secret
+	// and deleted upon revocation. If any subsequent step fails, the App is deleted.
 	app, err := c.createApp(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	walID, err := framework.PutWAL(ctx, req.Storage, walTypeCredential, &walCredential{
-		AppObjectID: *app.ObjectID,
-	})
-	if err != nil {
-		return nil, errwrap.Wrapf("unable to create WAL entry to clean up service account: {{err}}", err)
-	}
-
-	sp, secret, err := c.createSP(ctx, app, cfg.MaxTTL)
+	// Create the SP. Vault is responsible for revocation, but the time-bound password credentials
+	// enforced by Azure are a good defense-in-depth measure. The credentials will expire a short
+	/// time after the MaxTTL, even if Vault fails to revoke them for any reason.
+	sp, password, err := c.createSP(ctx, app, cfg.MaxTTL+5*time.Minute)
 	if err != nil {
 		c.deleteApp(ctx, *app.ObjectID)
 		return nil, err
@@ -86,27 +89,16 @@ func (b *azureSecretBackend) pathSPRead(ctx context.Context, req *logical.Reques
 		return nil, err
 	}
 
-	framework.DeleteWAL(ctx, req.Storage, walID)
-
 	resp := b.Secret(SecretTypeSP).Response(map[string]interface{}{
 		"client_id":     *app.AppID,
-		"client_secret": secret,
+		"client_secret": password,
 	}, map[string]interface{}{
 		"appObjectID":       *app.ObjectID,
 		"roleAssignmentIDs": raIDs,
+		"role":              roleName,
 	})
 
-	if role.DefaultTTL > 0 {
-		resp.Secret.TTL = role.DefaultTTL
-	} else {
-		resp.Secret.TTL = cfg.DefaultTTL
-	}
-
-	if role.MaxTTL > 0 {
-		resp.Secret.MaxTTL = role.MaxTTL
-	} else {
-		resp.Secret.MaxTTL = cfg.MaxTTL
-	}
+	updateTTLs(resp.Secret, role, cfg)
 
 	return resp, nil
 }
@@ -114,12 +106,21 @@ func (b *azureSecretBackend) pathSPRead(ctx context.Context, req *logical.Reques
 func (b *azureSecretBackend) spRenew(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
 	cfg, err := b.getConfig(ctx, req.Storage)
 	if err != nil {
-		return nil, errors.New("error during renew: could not load config")
+		return nil, err
+	}
+
+	roleRaw, ok := req.Secret.InternalData["role"]
+	if !ok {
+		return nil, errors.New("internal data not found")
+	}
+
+	role, err := getRole(ctx, roleRaw.(string), req.Storage)
+	if err != nil {
+		return nil, err
 	}
 
 	resp := &logical.Response{Secret: req.Secret}
-	resp.Secret.TTL = cfg.DefaultTTL
-	resp.Secret.MaxTTL = cfg.MaxTTL
+	updateTTLs(resp.Secret, role, cfg)
 
 	return resp, nil
 }
@@ -143,7 +144,7 @@ func (b *azureSecretBackend) spRevoke(ctx context.Context, req *logical.Request,
 
 	cfg, err := b.getConfig(ctx, req.Storage)
 	if err != nil {
-		return nil, errors.New("error during revoke: could not load config")
+		return nil, errwrap.Wrapf("error during revoke: {{err}}", err)
 	}
 
 	c, err := b.newAzureClient(ctx, cfg)
@@ -162,32 +163,27 @@ func (b *azureSecretBackend) spRevoke(ctx context.Context, req *logical.Request,
 	return resp, err
 }
 
-func (b *azureSecretBackend) spRollback(ctx context.Context, req *logical.Request, data interface{}) error {
-	var entry walCredential
-
-	cfg, err := b.getConfig(ctx, req.Storage)
-	if err != nil {
-		return errors.New("error during rollback: could not load config")
+// updateTTLs sets a secret's TTLs, giving preference to role TTLs if present.
+func updateTTLs(secret *logical.Secret, role *Role, cfg *azureConfig) {
+	if role != nil && role.DefaultTTL > 0 {
+		secret.TTL = role.DefaultTTL
+	} else {
+		secret.TTL = cfg.DefaultTTL
 	}
 
-	if err := mapstructure.Decode(data, &entry); err != nil {
-		return err
+	if role != nil && role.MaxTTL > 0 {
+		secret.MaxTTL = role.MaxTTL
+	} else {
+		secret.MaxTTL = cfg.MaxTTL
 	}
-
-	c, err := b.newAzureClient(ctx, cfg)
-	if err != nil {
-		return err
-	}
-
-	return c.deleteApp(ctx, entry.AppObjectID)
 }
 
 const pathServicePrincipalHelpSyn = `
-Request Service Principal credentials for a certain role.
+Request Service Principal credentials for a given Vault role.
 `
 
 const pathServicePrincipalHelpDesc = `
-This path creates Service Principal credentials for a certain role. The
-Service Principal will be generated on demand and will be automatically
-revoked when the lease is expired.
+This path creates a Service Principal and assigns Azure roles for a
+given Vault role, returning the associated login credentials. The
+Service Principal will be automatically deleted when the lease has expired.
 `

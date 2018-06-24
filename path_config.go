@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	configPath = "config"
+	configStoragePath = "config"
 )
 
 type azureConfig struct {
@@ -35,7 +35,7 @@ func pathConfig(b *azureSecretBackend) *framework.Path {
 			"subscription_id": &framework.FieldSchema{
 				Type: framework.TypeString,
 				Description: `The subscription id for the Azure Active Directory.
-				This value can also be provided with the AZURE_SUBSCREIPTION_ID environment variable.`,
+				This value can also be provided with the AZURE_SUBSCRIPTION_ID environment variable.`,
 			},
 			"tenant_id": &framework.FieldSchema{
 				Type: framework.TypeString,
@@ -49,12 +49,12 @@ func pathConfig(b *azureSecretBackend) *framework.Path {
 			},
 			"client_id": &framework.FieldSchema{
 				Type: framework.TypeString,
-				Description: `The OAuth2 client id to connection to Azure.
+				Description: `The OAuth2 client id to connect to Azure.
 				This value can also be provided with the AZURE_CLIENT_ID environment variable.`,
 			},
 			"client_secret": &framework.FieldSchema{
 				Type: framework.TypeString,
-				Description: `The OAuth2 client secret to connection to Azure.
+				Description: `The OAuth2 client secret to connect to Azure.
 				This value can also be provided with the AZURE_CLIENT_SECRET environment variable.`,
 			},
 			"resource": &framework.FieldSchema{
@@ -64,42 +64,30 @@ func pathConfig(b *azureSecretBackend) *framework.Path {
 			},
 			"ttl": {
 				Type:        framework.TypeDurationSecond,
-				Description: "Default lease for generated credentials. If <= 0, will use system default.",
+				Description: "Default lease for generated credentials. If == 0, will use system default.",
 			},
 			"max_ttl": {
 				Type:        framework.TypeDurationSecond,
-				Description: "Maximum time a service principal. If <= 0, will use system default.",
+				Description: "Maximum time a service principal. If == 0, will use system default.",
 			},
 		},
 		Callbacks: map[logical.Operation]framework.OperationFunc{
 			logical.ReadOperation:   b.pathConfigRead,
-			logical.CreateOperation: b.pathConfigWrite,
 			logical.UpdateOperation: b.pathConfigWrite,
 		},
-		ExistenceCheck:  b.pathConfigExistenceCheck,
 		HelpSynopsis:    confHelpSyn,
 		HelpDescription: confHelpDesc,
 	}
 }
 
-func (b *azureSecretBackend) pathConfigExistenceCheck(ctx context.Context, req *logical.Request, data *framework.FieldData) (bool, error) {
-	config, err := b.getConfig(ctx, req.Storage)
-	if err != nil {
-		return false, err
-	}
-	return config != nil, nil
-}
-
 func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	var merr *multierror.Error
-
-	b.cfgLock.Lock()
-	defer b.cfgLock.Unlock()
 
 	config, err := b.getConfig(ctx, req.Storage)
 	if err != nil {
 		return nil, err
 	}
+
 	if config == nil {
 		config = new(azureConfig)
 	}
@@ -167,7 +155,10 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 	}
 
 	err = b.saveConfig(ctx, config, req.Storage)
+
 	if err == nil {
+		// since credentials might have changed, reset the backend to
+		// force a reload of the Azure provider.
 		b.reset()
 	}
 
@@ -191,6 +182,7 @@ func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Re
 			"tenant_id":       config.TenantID,
 			"environment":     config.Environment,
 			"client_id":       config.ClientID,
+			"resource":        config.Resource,
 			"ttl":             int64(config.DefaultTTL / time.Second),
 			"max_ttl":         int64(config.MaxTTL / time.Second),
 		},
@@ -200,7 +192,7 @@ func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Re
 
 func (b *azureSecretBackend) getConfig(ctx context.Context, s logical.Storage) (*azureConfig, error) {
 	config := new(azureConfig)
-	entry, err := s.Get(ctx, configPath)
+	entry, err := s.Get(ctx, configStoragePath)
 
 	if err != nil {
 		return nil, err
@@ -218,7 +210,7 @@ func (b *azureSecretBackend) getConfig(ctx context.Context, s logical.Storage) (
 }
 
 func (b *azureSecretBackend) saveConfig(ctx context.Context, cfg *azureConfig, s logical.Storage) error {
-	entry, err := logical.StorageEntryJSON(configPath, cfg)
+	entry, err := logical.StorageEntryJSON(configStoragePath, cfg)
 
 	if err != nil {
 		return err
@@ -231,7 +223,7 @@ func (b *azureSecretBackend) saveConfig(ctx context.Context, cfg *azureConfig, s
 
 const confHelpSyn = `Configure the Azure Secret backend.`
 const confHelpDesc = `
-The Azure secret backend requires credentials for managing applicationa and
+The Azure secret backend requires credentials for managing applications and
 service principals. This endpoint is used to configure those credentials as
 well as default values for the backend in general.
 `

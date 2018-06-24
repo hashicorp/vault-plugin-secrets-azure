@@ -14,16 +14,14 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/to"
-	oidc "github.com/coreos/go-oidc"
 	log "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/helper/logging"
 	"github.com/hashicorp/vault/logical"
 )
 
 const (
-	defaultLeaseTTLHr = 1
-	maxLeaseTTLHr     = 12
-
+	defaultLeaseTTLHr = 1 * time.Hour
+	maxLeaseTTLHr     = 12 * time.Hour
 	defaultTestTTL    = 300
 	defaultTestMaxTTL = 3600
 )
@@ -34,8 +32,8 @@ func getTestBackend(t *testing.T, initConfig bool) (*azureSecretBackend, logical
 	config := &logical.BackendConfig{
 		Logger: logging.NewVaultLogger(log.Trace),
 		System: &logical.StaticSystemView{
-			DefaultLeaseTTLVal: defaultLeaseTTLHr * time.Hour,
-			MaxLeaseTTLVal:     maxLeaseTTLHr * time.Hour,
+			DefaultLeaseTTLVal: defaultLeaseTTLHr,
+			MaxLeaseTTLVal:     maxLeaseTTLHr,
 		},
 		StorageView: &logical.InmemStorage{},
 	}
@@ -62,17 +60,21 @@ func getTestBackend(t *testing.T, initConfig bool) (*azureSecretBackend, logical
 	return b, config.StorageView
 }
 
+// mockProvider is a Provider that provides stubs and simple, deterministic responses.
 type mockProvider struct {
-	subscriptionID        string
-	failCreateApplication bool
+	subscriptionID            string
+	applications              map[string]bool
+	failNextCreateApplication bool
 }
 
 func newMockProvider() Provider {
 	return &mockProvider{
 		subscriptionID: generateUUID(),
+		applications:   make(map[string]bool),
 	}
 }
 
+// ListRoles returns a single fake role based on the inbound filter
 func (m *mockProvider) ListRoles(ctx context.Context, scope string, filter string) (result []authorization.RoleDefinition, err error) {
 	reRoleName := regexp.MustCompile("roleName eq '(.*)'")
 
@@ -82,7 +84,9 @@ func (m *mockProvider) ListRoles(ctx context.Context, scope string, filter strin
 		return []authorization.RoleDefinition{
 			{
 				ID: to.StringPtr(fmt.Sprintf("/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-%s", name)),
-				RoleDefinitionProperties: &authorization.RoleDefinitionProperties{RoleName: to.StringPtr(name)},
+				RoleDefinitionProperties: &authorization.RoleDefinitionProperties{
+					RoleName: to.StringPtr(name),
+				},
 			},
 		}, nil
 	}
@@ -90,12 +94,16 @@ func (m *mockProvider) ListRoles(ctx context.Context, scope string, filter strin
 	return []authorization.RoleDefinition{}, nil
 }
 
+// GetRoleByID will returns a fake role definition from the povided ID
+// Assumes an ID format of: .*FAKE_ROLE-{rolename}
 func (m *mockProvider) GetRoleByID(ctx context.Context, roleID string) (result authorization.RoleDefinition, err error) {
 	d := authorization.RoleDefinition{}
 	s := strings.Split(roleID, "FAKE_ROLE-")
 	if len(s) > 1 {
 		d.ID = to.StringPtr(roleID)
-		d.RoleDefinitionProperties = &authorization.RoleDefinitionProperties{RoleName: to.StringPtr(s[1])}
+		d.RoleDefinitionProperties = &authorization.RoleDefinitionProperties{
+			RoleName: to.StringPtr(s[1]),
+		}
 	}
 
 	return d, nil
@@ -106,22 +114,26 @@ func (m *mockProvider) CreateServicePrincipal(ctx context.Context, parameters gr
 }
 
 func (m *mockProvider) CreateApplication(ctx context.Context, parameters graphrbac.ApplicationCreateParameters) (graphrbac.Application, error) {
-	if m.failCreateApplication {
+	if m.failNextCreateApplication {
+		m.failNextCreateApplication = false
 		return graphrbac.Application{}, errors.New("Mock: fail to create application")
 	}
+	appObjID := generateUUID()
+	m.applications[appObjID] = true
 
 	return graphrbac.Application{
 		AppID:    to.StringPtr(generateUUID()),
-		ObjectID: to.StringPtr(generateUUID()),
+		ObjectID: &appObjID,
 	}, nil
 }
 
 func (m *mockProvider) DeleteApplication(ctx context.Context, applicationObjectID string) (autorest.Response, error) {
+	delete(m.applications, applicationObjectID)
 	return autorest.Response{}, nil
 }
 
-func (m *mockProvider) VerifyToken(ctx context.Context, token string) (*oidc.IDToken, error) {
-	return new(oidc.IDToken), nil
+func (m *mockProvider) appExists(s string) bool {
+	return m.applications[s]
 }
 
 func (m *mockProvider) VMGet(ctx context.Context, resourceGroupName string, VMName string, expand compute.InstanceViewTypes) (result compute.VirtualMachine, err error) {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/hashicorp/vault/logical"
 	"github.com/hashicorp/vault/logical/framework"
@@ -15,7 +14,6 @@ type azureSecretBackend struct {
 
 	provider     Provider
 	providerLock sync.RWMutex
-	cfgLock      sync.RWMutex
 }
 
 func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend, error) {
@@ -49,9 +47,8 @@ func Backend() *azureSecretBackend {
 		Secrets: []*framework.Secret{
 			secretServicePrincipal(&b),
 		},
-		BackendType:       logical.TypeLogical,
-		WALRollback:       b.walRollback,
-		WALRollbackMinAge: 5 * time.Minute,
+		BackendType: logical.TypeLogical,
+		Invalidate:  b.invalidate,
 	}
 
 	return &b
@@ -84,6 +81,13 @@ func (b *azureSecretBackend) reset() {
 	defer b.providerLock.Unlock()
 
 	b.provider = nil
+}
+
+func (b *azureSecretBackend) invalidate(ctx context.Context, key string) {
+	switch key {
+	case "config":
+		b.reset()
+	}
 }
 
 const backendHelp = `

@@ -2,7 +2,6 @@ package azuresecrets
 
 import (
 	"context"
-	"reflect"
 	"testing"
 
 	"github.com/hashicorp/vault/logical"
@@ -91,7 +90,7 @@ func TestConfigTTLs(t *testing.T) {
 		{-2, -1, true},
 		{100, 100, false},
 		{101, 100, true},
-		{101, 0, false}, // max_ttl is unset so this is OK
+		{101, 0, false},
 	}
 
 	for i, test := range tests {
@@ -108,7 +107,7 @@ func TestConfigTTLs(t *testing.T) {
 			Data:      cfg,
 			Storage:   s,
 		})
-		ok(t, err)
+		nilErr(t, err)
 
 		if resp.IsError() != test.expError {
 			t.Fatalf("\ncase %d\nexp error: %t\ngot: %v", i, test.expError, err)
@@ -154,7 +153,5 @@ func testConfigRead(t *testing.T, b logical.Backend, s logical.Storage, expected
 		t.Fatal(resp.Error())
 	}
 
-	if !reflect.DeepEqual(expected, resp.Data) {
-		t.Fatalf("expected: %#v  actual:%#v", expected, resp.Data)
-	}
+	equal(t, expected, resp.Data)
 }

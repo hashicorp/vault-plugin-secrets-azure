@@ -16,15 +16,13 @@ import (
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/hashicorp/errwrap"
-	log "github.com/hashicorp/go-hclog"
 	multierror "github.com/hashicorp/go-multierror"
 	uuid "github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault/plugins/helper/database/credsutil"
 )
 
 const (
-	principalNotFoundErr = "PrincipalNotFound"
-	passwordLength       = 30
+	passwordLength = 30
 )
 
 // azureClient offers higher level Azure operations that provide a simpler interface
@@ -32,10 +30,11 @@ const (
 // Azure Client SDK methods.
 type azureClient struct {
 	provider Provider
-	logger   log.Logger
 	settings *azureSettings
 }
 
+// newAzureClient create an azureClient using the given config.
+// If the config is invalid or authentication fails, an error is returned.
 func (b *azureSecretBackend) newAzureClient(ctx context.Context, cfg *azureConfig) (*azureClient, error) {
 	settings, err := getAzureSettings(cfg)
 	if err != nil {
@@ -49,20 +48,21 @@ func (b *azureSecretBackend) newAzureClient(ctx context.Context, cfg *azureConfi
 
 	c := azureClient{
 		provider: p,
-		logger:   b.Logger(),
 		settings: settings,
 	}
 
 	return &c, nil
 }
 
-// createApp creates a new Azure "Application". An Application is a needed to create service
-// principles in subsequent for authentication
+// createApp creates a new Azure application.
+// An Application is a needed to create service principals used by
+// the caller for authentication.
 func (c *azureClient) createApp(ctx context.Context) (app *graphrbac.Application, err error) {
 	name, err := uuid.GenerateUUID()
 	if err != nil {
 		return nil, err
 	}
+
 	url := fmt.Sprintf("https://%s", name)
 
 	result, err := c.provider.CreateApplication(ctx, graphrbac.ApplicationCreateParameters{
@@ -75,10 +75,13 @@ func (c *azureClient) createApp(ctx context.Context) (app *graphrbac.Application
 	return &result, err
 }
 
-// createSP creates a new service principal
-func (c *azureClient) createSP(ctx context.Context, app *graphrbac.Application, duration time.Duration) (sp *graphrbac.ServicePrincipal, password string, err error) {
+// createSP creates a new service principal.
+func (c *azureClient) createSP(
+	ctx context.Context,
+	app *graphrbac.Application,
+	duration time.Duration) (sp *graphrbac.ServicePrincipal, password string, err error) {
 
-	// Generate a random key id (which must be a UUID) and password
+	// Generate a random key (which must be a UUID) and password
 	keyID, err := uuid.GenerateUUID()
 	if err != nil {
 		return nil, "", err
@@ -95,8 +98,8 @@ func (c *azureClient) createSP(ctx context.Context, app *graphrbac.Application, 
 		PasswordCredentials: &[]graphrbac.PasswordCredential{
 			graphrbac.PasswordCredential{
 				StartDate: &date.Time{time.Now()},
-				EndDate:   &date.Time{time.Now().Add(time.Hour)},
-				KeyID:     to.StringPtr(keyID), // NOTE: this has to be a guid, apparently
+				EndDate:   &date.Time{time.Now().Add(duration)},
+				KeyID:     to.StringPtr(keyID),
 				Value:     to.StringPtr(password),
 			},
 		},
@@ -105,7 +108,7 @@ func (c *azureClient) createSP(ctx context.Context, app *graphrbac.Application, 
 	return &result, password, err
 }
 
-// deleteApp deletes an Azure application
+// deleteApp deletes an Azure application.
 func (c *azureClient) deleteApp(ctx context.Context, appObjectID string) error {
 	resp, err := c.provider.DeleteApplication(ctx, appObjectID)
 
@@ -117,7 +120,7 @@ func (c *azureClient) deleteApp(ctx context.Context, appObjectID string) error {
 	return err
 }
 
-// assignRoles assigns roles to a service principal
+// assignRoles assigns Azure roles to a service principal.
 func (c *azureClient) assignRoles(ctx context.Context, sp *graphrbac.ServicePrincipal, roles []*azureRole) ([]string, error) {
 	var retryCfg = retryConfig{
 		Base:    2 * time.Second,
@@ -128,12 +131,15 @@ func (c *azureClient) assignRoles(ctx context.Context, sp *graphrbac.ServicePrin
 	var ids []string
 
 	for _, role := range roles {
-		// Generate an assignment ID
 		assignmentID, err := uuid.GenerateUUID()
 		if err != nil {
 			return nil, err
 		}
 
+		// retries are essential for this operation as there can be a significant deley between
+		// when a service principal is created and when it is visible for other operations. If
+		// it isn't visible yet, "PrincipalNotFound" is the error received and is not treated
+		// as an error here.
 		err = retry(ctx, retryCfg, func() (bool, error) {
 			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentID,
 				authorization.RoleAssignmentCreateParameters{
@@ -148,7 +154,7 @@ func (c *azureClient) assignRoles(ctx context.Context, sp *graphrbac.ServicePrin
 				return true, nil
 			}
 
-			if !strings.Contains(err.Error(), principalNotFoundErr) {
+			if !strings.Contains(err.Error(), "PrincipalNotFound") {
 				return true, errwrap.Wrapf("error while assigning role: {{err}}", err)
 			}
 
@@ -163,8 +169,10 @@ func (c *azureClient) assignRoles(ctx context.Context, sp *graphrbac.ServicePrin
 	return ids, nil
 }
 
-// unassignRoles deletes role assignments, if they existed
-// This is a clean-up operation, and well
+// unassignRoles deletes role assignments, if they existed.
+// This is a clean-up operation that isn't essential to revocation. As such, an
+// attempt is made to remove all assignments, and not return immediately if there
+// is an error.
 func (c *azureClient) unassignRoles(ctx context.Context, roleIDs []string) error {
 	var merr *multierror.Error
 
@@ -177,6 +185,9 @@ func (c *azureClient) unassignRoles(ctx context.Context, roleIDs []string) error
 	return merr.ErrorOrNil()
 }
 
+// lookupRole attempts to find a role definition by ID (if provided) or by name.
+// Role IDs are unique, but names are not. A slice is always returned and it is up
+// to the caller to handle this variability in response count (0, 1, >1).
 func (c *azureClient) lookupRole(ctx context.Context, roleName, roleId string) ([]authorization.RoleDefinition, error) {
 	if roleId != "" {
 		r, err := c.provider.GetRoleByID(ctx, roleId)
@@ -191,8 +202,8 @@ func (c *azureClient) lookupRole(ctx context.Context, roleName, roleId string) (
 	return c.provider.ListRoles(ctx, fmt.Sprintf("subscriptions/%s", c.settings.SubscriptionID), fmt.Sprintf("roleName eq '%s'", roleName))
 }
 
-// azureSettings is used by a azureClient to connect to Azure. It is created
-// from a combination of Vault config settings and environment variables.
+// azureSettings is used by a azureClient to configuret the client connectons to Azure.
+// It is created from a combination of Vault config settings and environment variables.
 type azureSettings struct {
 	SubscriptionID string
 	TenantID       string
@@ -205,41 +216,42 @@ type azureSettings struct {
 // getAzureSettings creates a new azureSettings object.
 // Environment variables have higher precedence than stored configuration.
 func getAzureSettings(config *azureConfig) (*azureSettings, error) {
+	firstAvailable := func(opts ...string) string {
+		for _, s := range opts {
+			if s != "" {
+				return s
+			}
+		}
+		return ""
+	}
+
+	var merr *multierror.Error
+
 	settings := new(azureSettings)
 
-	settings.TenantID = firstSupplied(os.Getenv("AZURE_TENANT_ID"), config.TenantID)
+	settings.ClientID = firstAvailable(os.Getenv("AZURE_CLIENT_ID"), config.ClientID)
+	settings.ClientSecret = firstAvailable(os.Getenv("AZURE_CLIENT_SECRET"), config.ClientSecret)
+	settings.Resource = firstAvailable(os.Getenv("AZURE_AD_RESOURCE"), config.Resource)
+	if settings.SubscriptionID = firstAvailable(os.Getenv("AZURE_SUBSCRIPTION_ID"), config.SubscriptionID); settings.SubscriptionID == "" {
+		merr = multierror.Append(merr, errors.New("subscription_id is required"))
+	}
+
+	settings.TenantID = firstAvailable(os.Getenv("AZURE_TENANT_ID"), config.TenantID)
 	if settings.TenantID == "" {
-		return nil, errors.New("tenant_id is required")
+		merr = multierror.Append(merr, errors.New("tenant_id is required"))
 	}
 
-	settings.SubscriptionID = firstSupplied(os.Getenv("AZURE_SUBSCRIPTION_ID"), config.SubscriptionID)
-	settings.ClientID = firstSupplied(os.Getenv("AZURE_CLIENT_ID"), config.ClientID)
-	settings.ClientSecret = firstSupplied(os.Getenv("AZURE_CLIENT_SECRET"), config.ClientSecret)
-	settings.Resource = firstSupplied(os.Getenv("AZURE_AD_RESOURCE"), config.Resource)
-
-	settings.Environment = azure.PublicCloud
-	envName := firstSupplied(os.Getenv("AZURE_ENVIRONMENT"), config.Environment)
-	if envName != "" {
-		var err error
-		settings.Environment, err = azure.EnvironmentFromName(envName)
-		if err != nil {
-			return nil, err
-		}
+	envName := firstAvailable(os.Getenv("AZURE_ENVIRONMENT"), config.Environment, "AZUREPUBLICCLOUD")
+	env, err := azure.EnvironmentFromName(envName)
+	if err != nil {
+		merr = multierror.Append(merr, err)
 	}
+	settings.Environment = env
 
-	return settings, nil
+	return settings, merr.ErrorOrNil()
 }
 
-// firstSupplied return the first option that is not an empty string
-func firstSupplied(opts ...string) string {
-	for _, s := range opts {
-		if s != "" {
-			return s
-		}
-	}
-	return ""
-}
-
+// retryConfig configures the behavior of retry
 type retryConfig struct {
 	Base    time.Duration // start and minimum retry duration
 	Timeout time.Duration // max total retry runtime. 0 == indefinite

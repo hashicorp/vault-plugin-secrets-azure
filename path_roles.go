@@ -14,20 +14,24 @@ import (
 )
 
 const (
-	rolePrefix = "roles"
+	rolesStoragePath = "roles"
 )
 
+// Roles is a Vault role construct, now mapping to Azure roles, primarily
 type Role struct {
-	CredentialType string        `json:"credential_type"`
+	CredentialType string        `json:"credential_type"` // Reserved. Always "service_principal" at this time.
 	Roles          []*azureRole  `json:"roles"`
 	DefaultTTL     time.Duration `json:"ttl"`
 	MaxTTL         time.Duration `json:"max_ttl"`
 }
 
+// azureRole is an Azure Role (https://docs.microsoft.com/en-us/azure/role-based-access-control/overview) applied
+// to a scope. RoleName and RoleID are both traits of the role. RoleID is the unique identifier, but RoleName is
+// more useful to a human (thought it is not unique).
 type azureRole struct {
-	RoleName string `json:"role_name"`
-	RoleID   string `json:"role_id"`
-	Scope    string `json:"scope"`
+	RoleName string `json:"role_name"` // e.g. Owner
+	RoleID   string `json:"role_id"`   // e.g. /subscriptions/e0a207b2-.../providers/Microsoft.Authorization/roleDefinitions/de139f84-...
+	Scope    string `json:"scope"`     // e.g. /subscriptions/e0a207b2-...
 }
 
 func pathsRole(b *azureSecretBackend) []*framework.Path {
@@ -41,15 +45,15 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 				},
 				"roles": {
 					Type:        framework.TypeString,
-					Description: "Azure roles to assign",
+					Description: "JSON list of Azure roles to assign",
 				},
 				"ttl": {
 					Type:        framework.TypeDurationSecond,
-					Description: "Default lease for generated credentials. If <= 0, will use system default.",
+					Description: "Default lease for generated credentials. If ttl == 0, use system default",
 				},
 				"max_ttl": {
 					Type:        framework.TypeDurationSecond,
-					Description: "Maximum time a service principal. If <= 0, will use system default.",
+					Description: "Maximum time a service principal. If max_ttl == 0, use system default",
 				},
 			},
 			Callbacks: map[logical.Operation]framework.OperationFunc{
@@ -57,24 +61,27 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 				logical.UpdateOperation: b.pathRoleUpdate,
 				logical.DeleteOperation: b.pathRoleDelete,
 			},
-			HelpSynopsis:    "Manage the Vault roles used to generate Azure credentials.",
-			HelpDescription: "TBD",
+			HelpSynopsis:    roleHelpSyn,
+			HelpDescription: roleHelpDesc,
 		},
 		{
 			Pattern: "roles/?",
 			Callbacks: map[logical.Operation]framework.OperationFunc{
 				logical.ListOperation: b.pathRoleList,
 			},
-			HelpSynopsis:    "List existing roles",
-			HelpDescription: "List existing roles by name",
+			HelpSynopsis:    roleListHelpSyn,
+			HelpDescription: roleListHelpDesc,
 		},
 	}
 
 }
 
-// pathRoleUpdate creates or updates Vault roles. Basic validity check are made to verify that the
-// provided fields meet the requirements for the secret type. There are no checks of the validity of the Azure
-// data itself (e.g. that identities or roles exist, etc.)
+// pathRoleUpdate creates or updates Vault roles.
+//
+// Basic validity check are made to verify that the provided fields meet requirements
+// and the Azure roles exist. The Azure role lookup step will all the operator to provide
+// a role name or ID.  ID is unambigious and will be used if provided. Given just role name,
+// a search will be performed and if exactly one match is found, that role will be used.
 func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
 	var merr *multierror.Error
 	var resp *logical.Response
@@ -102,7 +109,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	}
 
 	if roles, ok := d.GetOk("roles"); ok {
-		parsedRoles := []*azureRole{} // non-nil to suppress the "missing roles" error later
+		parsedRoles := []*azureRole{} // non-nil to avoid a "missing roles" error later
 
 		err := jsonutil.DecodeJSON([]byte(roles.(string)), &parsedRoles)
 		if err != nil {
@@ -111,6 +118,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		role.Roles = parsedRoles
 	}
 
+	// verify Azure roles
 	cfg, err := b.getConfig(ctx, req.Storage)
 	if err != nil {
 		return nil, err
@@ -128,14 +136,12 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 			return nil, errwrap.Wrapf("unable to lookup Azure role: {{err}}", err)
 		}
 
-		switch len(roleDefs) {
-		case 0:
+		if l := len(roleDefs); l == 0 {
 			return logical.ErrorResponse(
 				fmt.Sprintf("no role found for role_name: '%s', role_id: '%s'", r.RoleName, r.RoleID)), nil
-		case 1:
-		default:
+		} else if l > 1 {
 			return logical.ErrorResponse(
-				fmt.Sprintf("multiple matches found for role_name: '%s'", r.RoleName)), nil
+				fmt.Sprintf("multiple matches found for role_name: '%s'. Specify role by ID instead.", r.RoleName)), nil
 		}
 
 		rd := roleDefs[0]
@@ -165,6 +171,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		return logical.ErrorResponse(merr.Error()), nil
 	}
 
+	// save role
 	err = saveRole(ctx, role, name, req.Storage)
 	if err != nil {
 		return nil, errwrap.Wrapf("error storing role: {{err}}", err)
@@ -200,29 +207,27 @@ func (b *azureSecretBackend) pathRoleRead(ctx context.Context, req *logical.Requ
 }
 
 func (b *azureSecretBackend) pathRoleList(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-	roles, err := req.Storage.List(ctx, rolePrefix+"/")
+	roles, err := req.Storage.List(ctx, rolesStoragePath+"/")
 	if err != nil {
 		return nil, errwrap.Wrapf("error listing roles: {{err}}", err)
 	}
-	_ = roles
+
 	return logical.ListResponse(roles), nil
 }
 
 func (b *azureSecretBackend) pathRoleDelete(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-	nameRaw, ok := d.GetOk("name")
-	if !ok {
-		return logical.ErrorResponse("name is required"), nil
-	}
+	name := d.Get("name").(string)
 
-	err := req.Storage.Delete(ctx, rolePrefix+"/"+nameRaw.(string))
+	err := req.Storage.Delete(ctx, fmt.Sprintf("%s/%s", rolesStoragePath, name))
 	if err != nil {
 		return nil, errwrap.Wrapf("error deleting role: {{err}}", err)
 	}
+
 	return nil, nil
 }
 
 func saveRole(ctx context.Context, c *Role, name string, s logical.Storage) error {
-	entry, err := logical.StorageEntryJSON(fmt.Sprintf("%s/%s", rolePrefix, name), c)
+	entry, err := logical.StorageEntryJSON(fmt.Sprintf("%s/%s", rolesStoragePath, name), c)
 	if err != nil {
 		return err
 	}
@@ -231,10 +236,11 @@ func saveRole(ctx context.Context, c *Role, name string, s logical.Storage) erro
 }
 
 func getRole(ctx context.Context, name string, s logical.Storage) (*Role, error) {
-	entry, err := s.Get(ctx, fmt.Sprintf("%s/%s", rolePrefix, name))
+	entry, err := s.Get(ctx, fmt.Sprintf("%s/%s", rolesStoragePath, name))
 	if err != nil {
 		return nil, err
 	}
+
 	if entry == nil {
 		return nil, nil
 	}
@@ -245,3 +251,21 @@ func getRole(ctx context.Context, name string, s logical.Storage) (*Role, error)
 	}
 	return role, nil
 }
+
+const roleHelpSyn = "Manage the Vault roles used to generate Azure credentials."
+const roleHelpDesc = `
+This path allows you to read and write roles that are used to generate Azure login
+credentials. These roles are associated with Azure roles, which are in turn used to
+control permissions to Azure resources.
+
+If the backend is mounted at "azure", you would create a Vault role at "azure/roles/my_role",
+and request credentials from "azure/creds/my_role".
+
+Each Vault roles is configured with the standard ttl parameters and a list of Azure
+roles and scopes. These Azure roles will be fetched during the Vault role creation
+and must exist for the request to succeed. Multiple Azure roles may be specified. When
+a used requests credentials against the Vault role, and new service principal is created
+and the configured set of Azure roles are assigned to it.
+`
+const roleListHelpSyn = `List existing roles.`
+const roleListHelpDesc = `List existing roles by name.`

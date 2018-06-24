@@ -21,7 +21,6 @@ const (
 )
 
 var testRole = map[string]interface{}{
-	"credential_type": SecretTypeSP,
 	"roles": encodeJSON([]azureRole{
 		azureRole{
 			RoleName: "Owner",
@@ -39,6 +38,7 @@ var testRole = map[string]interface{}{
 func TestSPRead(t *testing.T) {
 	b, s := getTestBackend(t, true)
 
+	// verify basic cred issuance
 	t.Run("Basic", func(t *testing.T) {
 		name := generateUUID()
 		testRoleUpdate(t, b, s, name, testRole)
@@ -49,24 +49,33 @@ func TestSPRead(t *testing.T) {
 			Storage:   s,
 		})
 
-		ok(t, err)
+		nilErr(t, err)
 
 		if resp.IsError() {
 			t.Fatalf("expected no response error, actual:%#v", resp.Error())
 		}
 
+		// verify client_id format, and that the corresponding app actually exists
 		_, err = uuid.ParseUUID(resp.Data["client_id"].(string))
-		ok(t, err)
+		nilErr(t, err)
 
+		appObjID := resp.Secret.InternalData["appObjectID"].(string)
+		if !b.provider.(*mockProvider).appExists(appObjID) {
+			t.Fatalf("application was not created")
+		}
+
+		// verify password format
 		p := resp.Data["client_secret"].(string)
 		if len(p) != passwordLength {
 			t.Fatalf("expected password of length %d, got: %s", len(p), p)
 		}
 
+		// verify secret ttls
 		equal(t, time.Duration(defaultTestTTL)*time.Second, resp.Secret.TTL)
 		equal(t, time.Duration(defaultTestMaxTTL)*time.Second, resp.Secret.MaxTTL)
 	})
 
+	// verify role TTLs are reflected in secret
 	t.Run("TTLs", func(t *testing.T) {
 		cfg := map[string]interface{}{
 			"ttl":     5,
@@ -83,7 +92,7 @@ func TestSPRead(t *testing.T) {
 			Storage:   s,
 		})
 
-		ok(t, err)
+		nilErr(t, err)
 
 		equal(t, 5*time.Second, resp.Secret.TTL)
 		equal(t, 10*time.Second, resp.Secret.MaxTTL)
@@ -100,7 +109,7 @@ func TestSPRead(t *testing.T) {
 			Storage:   s,
 		})
 
-		ok(t, err)
+		nilErr(t, err)
 
 		equal(t, 20*time.Second, resp.Secret.TTL)
 		equal(t, 30*time.Second, resp.Secret.MaxTTL)
@@ -118,7 +127,12 @@ func TestSPRevoke(t *testing.T) {
 		Storage:   s,
 	})
 
-	// Serialize and deserialize to lose typing as will really happen
+	appObjID := resp.Secret.InternalData["appObjectID"].(string)
+	if !b.provider.(*mockProvider).appExists(appObjID) {
+		t.Fatalf("application was not created")
+	}
+
+	// Serialize and deserialize the secret to lose typing, as will really happen
 	secret := new(logical.Secret)
 	enc, err := jsonutil.EncodeJSON(resp.Secret)
 	if err != nil {
@@ -132,30 +146,27 @@ func TestSPRevoke(t *testing.T) {
 		Storage:   s,
 	})
 
-	if err != nil {
-		t.Fatalf("expected nil error, actual:%#v", err.Error())
-	}
+	nilErr(t, err)
 
 	if resp.IsError() {
 		t.Fatalf("receive response error: %v", resp.Error())
+	}
+
+	if b.provider.(*mockProvider).appExists(appObjID) {
+		t.Fatalf("application present but should have been deleted")
 	}
 }
 
 func TestSPReadMissingRole(t *testing.T) {
 	b, s := getTestBackend(t, true)
-	data := testRole
-
-	testRoleUpdate(t, b, s, "test_role", data)
 
 	resp, err := b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.ReadOperation,
-		Path:      "creds/test_role_other",
+		Path:      "creds/some_role_that_doesnt_exist",
 		Storage:   s,
 	})
 
-	if err != nil {
-		t.Fatalf("expected nil error, actual:%#v", err.Error())
-	}
+	nilErr(t, err)
 
 	if !resp.IsError() {
 		t.Fatal("expected a response error")
@@ -164,12 +175,10 @@ func TestSPReadMissingRole(t *testing.T) {
 
 func TestCredentialReadProviderError(t *testing.T) {
 	b, s := getTestBackend(t, true)
-	data := testRole
 
-	testRoleUpdate(t, b, s, "test_role", data)
+	testRoleUpdate(t, b, s, "test_role", testRole)
 
-	mock := b.provider.(*mockProvider)
-	mock.failCreateApplication = true
+	b.provider.(*mockProvider).failNextCreateApplication = true
 
 	_, err := b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.ReadOperation,
@@ -182,6 +191,8 @@ func TestCredentialReadProviderError(t *testing.T) {
 	}
 }
 
+// TestCredentialInteg is an integration test against the live Azure service. It requires
+// valid, sufficiently-privileged Azure credentials in env variables.
 func TestCredentialInteg(t *testing.T) {
 	if os.Getenv("VAULT_ACC") != "1" {
 		t.SkipNow()
@@ -198,13 +209,13 @@ func TestCredentialInteg(t *testing.T) {
 	config := &logical.BackendConfig{
 		Logger: logging.NewVaultLogger(log.Trace),
 		System: &logical.StaticSystemView{
-			DefaultLeaseTTLVal: defaultLeaseTTLHr * time.Hour,
-			MaxLeaseTTLVal:     maxLeaseTTLHr * time.Hour,
+			DefaultLeaseTTLVal: defaultLeaseTTLHr,
+			MaxLeaseTTLVal:     maxLeaseTTLHr,
 		},
 		StorageView: s,
 	}
 	err := b.Setup(context.Background(), config)
-	ok(t, err)
+	nilErr(t, err)
 
 	// Add a Vault role that will provide creds with Azure "Reader" permissions
 	rolename := "test_role"
@@ -220,7 +231,7 @@ func TestCredentialInteg(t *testing.T) {
 		Data:      role,
 		Storage:   s,
 	})
-	ok(t, err)
+	nilErr(t, err)
 
 	if resp != nil && resp.IsError() {
 		t.Fatal(resp.Error())
@@ -233,7 +244,7 @@ func TestCredentialInteg(t *testing.T) {
 		Data:      role,
 		Storage:   s,
 	})
-	ok(t, err)
+	nilErr(t, err)
 
 	if resp != nil && resp.IsError() {
 		t.Fatal(resp.Error())
@@ -243,6 +254,7 @@ func TestCredentialInteg(t *testing.T) {
 	client := b.provider.(*azureProvider)
 	spObjId := client._spObjId
 
+	// verify the new SP can be accessed
 	_, err = client.spClient.Get(context.Background(), spObjId)
 	if err != nil {
 		t.Fatalf("Expected nil error on GET of new SP, got: %#v", err)
@@ -254,10 +266,10 @@ func TestCredentialInteg(t *testing.T) {
 	equal(t, 1, len(raIDs))
 
 	ra, err := client.raClient.GetByID(context.Background(), raIDs[0])
-	ok(t, err)
+	nilErr(t, err)
 
 	roleDefs, err := b.provider.ListRoles(context.Background(), fmt.Sprintf("subscriptions/%s", subscriptionID), "")
-	ok(t, err)
+	nilErr(t, err)
 
 	defID := *ra.RoleAssignmentPropertiesWithScope.RoleDefinitionID
 	found := false
@@ -272,7 +284,7 @@ func TestCredentialInteg(t *testing.T) {
 		t.Fatal("'Reader' role assignment not found")
 	}
 
-	// Revoke the Service Principal by send back the secret we just
+	// Revoke the Service Principal by sending back the secret we just
 	// received, with a little type tweaking to make it work.
 	resp.Secret.InternalData["roleAssignmentIDs"] = []interface{}{
 		resp.Secret.InternalData["roleAssignmentIDs"].([]string)[0],

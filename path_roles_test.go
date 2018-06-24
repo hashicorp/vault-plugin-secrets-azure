@@ -3,7 +3,6 @@ package azuresecrets
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -47,11 +46,12 @@ func TestRoleCreate(t *testing.T) {
 			"max_ttl": int64(5000),
 		}
 
+		// Verify basic updates of the name role
 		name := generateUUID()
 		testRoleUpdate(t, b, s, name, spRole1)
 
 		resp, err := testRoleRead(t, b, s, name)
-		ok(t, err)
+		nilErr(t, err)
 
 		resp.Data["roles"] = encodeJSON(resp.Data["roles"])
 		equal(t, spRole1, resp.Data)
@@ -59,7 +59,7 @@ func TestRoleCreate(t *testing.T) {
 		testRoleUpdate(t, b, s, name, spRole2)
 
 		resp, err = testRoleRead(t, b, s, name)
-		ok(t, err)
+		nilErr(t, err)
 
 		resp.Data["roles"] = encodeJSON(resp.Data["roles"])
 		equal(t, spRole2, resp.Data)
@@ -70,13 +70,15 @@ func TestRoleCreate(t *testing.T) {
 			"roles": "[]",
 		}
 
+		// Verify that ttl and max_ttl are 0 if not provided
 		name := generateUUID()
 		testRoleUpdate(t, b, s, name, testRole)
+
 		testRole["ttl"] = int64(0)
 		testRole["max_ttl"] = int64(0)
 
 		resp, err := testRoleRead(t, b, s, name)
-		ok(t, err)
+		nilErr(t, err)
 		resp.Data["roles"] = encodeJSON(resp.Data["roles"])
 		equal(t, testRole, resp.Data)
 	})
@@ -98,7 +100,7 @@ func TestRoleCreate(t *testing.T) {
 			{-2, -1, true},
 			{100, 100, false},
 			{101, 100, true},
-			{101, 0, false}, // max_ttl is unset so this is OK
+			{101, 0, false},
 		}
 
 		for i, test := range tests {
@@ -118,7 +120,7 @@ func TestRoleCreate(t *testing.T) {
 				Data:      role,
 				Storage:   s,
 			})
-			ok(t, err)
+			nilErr(t, err)
 
 			if resp.IsError() != test.expError {
 				t.Fatalf("\ncase %d\nexp error: %t\ngot: %v", i, test.expError, err)
@@ -150,10 +152,10 @@ func TestRoleCreate(t *testing.T) {
 			Data:      role,
 			Storage:   s,
 		})
-		ok(t, err)
+		nilErr(t, err)
 
 		resp, err = testRoleRead(t, b, s, name)
-		ok(t, err)
+		nilErr(t, err)
 		roles := resp.Data["roles"].([]*azureRole)
 		equal(t, "Owner", roles[0].RoleName)
 		equal(t, "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Owner", roles[0].RoleID)
@@ -166,6 +168,7 @@ func TestRoleCreate(t *testing.T) {
 func TestRoleCreateBad(t *testing.T) {
 	b, s := getTestBackend(t, true)
 
+	// missing roles
 	role := map[string]interface{}{}
 	resp := testRoleUpdateBasic(t, b, s, "test_role_1", role)
 	msg := "missing Azure role definitions"
@@ -173,6 +176,7 @@ func TestRoleCreateBad(t *testing.T) {
 		t.Fatalf("expected to find: %s, got: %s", msg, resp.Error().Error())
 	}
 
+	// invalid roles
 	role = map[string]interface{}{"roles": "asdf"}
 	resp = testRoleUpdateBasic(t, b, s, "test_role_1", role)
 	msg = "invalid Azure role definitions"
@@ -211,15 +215,11 @@ func TestRoleList(t *testing.T) {
 		Path:      "roles/",
 		Storage:   s,
 	})
-	if err != nil {
-		t.Fatalf("expected nil error, actual:%#v", err.Error())
-	}
+	nilErr(t, err)
 
 	exp := []string{"r1", "r2", "r3"}
 	sort.Strings(resp.Data["keys"].([]string))
-	if !reflect.DeepEqual(exp, resp.Data["keys"]) {
-		t.Fatalf("expected %#v, actual %#v", exp, resp.Data["keys"])
-	}
+	equal(t, exp, resp.Data["keys"])
 
 	// Delete a role and verify list is updated
 	resp, err = b.HandleRequest(context.Background(), &logical.Request{
@@ -227,24 +227,18 @@ func TestRoleList(t *testing.T) {
 		Path:      "roles/r2",
 		Storage:   s,
 	})
-	if err != nil {
-		t.Fatalf("expected nil error, actual:%#v", err.Error())
-	}
+	nilErr(t, err)
 
 	resp, err = b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.ListOperation,
 		Path:      "roles/",
 		Storage:   s,
 	})
-	if err != nil {
-		t.Fatalf("expected nil error, actual:%#v", err.Error())
-	}
+	nilErr(t, err)
 
 	exp = []string{"r1", "r3"}
 	sort.Strings(resp.Data["keys"].([]string))
-	if !reflect.DeepEqual(exp, resp.Data["keys"]) {
-		t.Fatalf("expected %#v, actual %#v", exp, resp.Data["keys"])
-	}
+	equal(t, exp, resp.Data["keys"])
 }
 
 func TestRoleDelete(t *testing.T) {
@@ -266,9 +260,7 @@ func TestRoleDelete(t *testing.T) {
 		Path:      fmt.Sprintf("roles/%s", name),
 		Storage:   s,
 	})
-	if err != nil {
-		t.Fatalf("expected nil error, actual:%#v", err)
-	}
+	nilErr(t, err)
 
 	resp, err = testRoleRead(t, b, s, name)
 	if resp != nil || err != nil {
@@ -276,11 +268,9 @@ func TestRoleDelete(t *testing.T) {
 	}
 
 	resp, err = testRoleRead(t, b, s, nameAlt)
+	nilErr(t, err)
 	if resp == nil {
 		t.Fatalf("expected non-nil response, actual:%#v", resp)
-	}
-	if err != nil {
-		t.Fatalf("expected nil error, actual:%#v", err.Error())
 	}
 
 	// Verify that delete against a missing role is a succesful no-op
@@ -313,7 +303,7 @@ func testRoleUpdate(t *testing.T, b *azureSecretBackend, s logical.Storage, name
 	}
 }
 
-// Utility function to create a role while expecting and returning any errors
+// Utility function to create a role while, returning any response (including errors)
 func testRoleUpdateBasic(t *testing.T, b *azureSecretBackend, s logical.Storage, name string, d map[string]interface{}) *logical.Response {
 	t.Helper()
 	resp, err := b.HandleRequest(context.Background(), &logical.Request{

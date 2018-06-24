@@ -11,8 +11,12 @@ import (
 	"github.com/hashicorp/vault/helper/jsonutil"
 )
 
-// ok tests for non-nil errors
-func ok(tb testing.TB, err error) {
+func init() {
+	deep.CompareUnexportedFields = true
+}
+
+// nilErr tests for non-nil errors
+func nilErr(tb testing.TB, err error) {
 	tb.Helper()
 	if err != nil {
 		tb.Fatalf("\nunexpected error: %s", err.Error())

@@ -8,8 +8,8 @@ import (
 	"github.com/Azure/go-autorest/autorest"
 )
 
-// Provider is an interface to access underlying Azure client objects an supporting services.
-// Where practical the underlying function signature is preserved. AzureClient provider higher
+// Provider is an interface to access underlying Azure client objects and supporting services.
+// Where practical the original function signature is preserved. azureClient provides higher
 // level operations atop Provider.
 type Provider interface {
 	ApplicationsClient
@@ -19,18 +19,12 @@ type Provider interface {
 }
 
 type ApplicationsClient interface {
-	CreateApplication(
-		ctx context.Context,
-		parameters graphrbac.ApplicationCreateParameters) (graphrbac.Application, error)
-	DeleteApplication(
-		ctx context.Context,
-		applicationObjectID string) (autorest.Response, error)
+	CreateApplication(ctx context.Context, parameters graphrbac.ApplicationCreateParameters) (graphrbac.Application, error)
+	DeleteApplication(ctx context.Context, applicationObjectID string) (autorest.Response, error)
 }
 
 type ServicePrincipalsClient interface {
-	CreateServicePrincipal(
-		ctx context.Context,
-		parameters graphrbac.ServicePrincipalCreateParameters) (graphrbac.ServicePrincipal, error)
+	CreateServicePrincipal(ctx context.Context, parameters graphrbac.ServicePrincipalCreateParameters) (graphrbac.ServicePrincipal, error)
 }
 
 type RoleAssignmentsClient interface {
@@ -39,17 +33,10 @@ type RoleAssignmentsClient interface {
 		scope string,
 		roleAssignmentName string,
 		parameters authorization.RoleAssignmentCreateParameters) (authorization.RoleAssignment, error)
-	DeleteRoleAssignmentByID(
-		ctx context.Context,
-		roleID string) (authorization.RoleAssignment, error)
+	DeleteRoleAssignmentByID(ctx context.Context, roleID string) (authorization.RoleAssignment, error)
 }
 
 type RoleDefinitionsClient interface {
-	ListRoles(
-		ctx context.Context,
-		scope string,
-		filter string) ([]authorization.RoleDefinition, error)
-	GetRoleByID(
-		ctx context.Context,
-		roleID string) (result authorization.RoleDefinition, err error)
+	ListRoles(ctx context.Context, scope string, filter string) ([]authorization.RoleDefinition, error)
+	GetRoleByID(ctx context.Context, roleID string) (result authorization.RoleDefinition, err error)
 }

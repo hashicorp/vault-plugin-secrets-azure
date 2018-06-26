@@ -24,7 +24,6 @@ type azureConfig struct {
 	ClientSecret   string        `json:"client_secret"`
 	DefaultTTL     time.Duration `json:"ttl"`
 	MaxTTL         time.Duration `json:"max_ttl"`
-	Resource       string        `json:"resource"`
 	Environment    string        `json:"environment"`
 }
 
@@ -56,11 +55,6 @@ func pathConfig(b *azureSecretBackend) *framework.Path {
 				Type: framework.TypeString,
 				Description: `The OAuth2 client secret to connect to Azure.
 				This value can also be provided with the AZURE_CLIENT_SECRET environment variable.`,
-			},
-			"resource": &framework.FieldSchema{
-				Type: framework.TypeString,
-				Description: `The resource URL for the vault application in Azure Active Directory.
-				This value can also be provided with the AZURE_AD_RESOURCE environment variable.`,
 			},
 			"ttl": {
 				Type:        framework.TypeDurationSecond,
@@ -117,10 +111,6 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 		} else {
 			config.Environment = e
 		}
-	}
-
-	if resource, ok := data.GetOk("resource"); ok {
-		config.Resource = resource.(string)
 	}
 
 	if clientID, ok := data.GetOk("client_id"); ok {
@@ -182,7 +172,6 @@ func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Re
 			"tenant_id":       config.TenantID,
 			"environment":     config.Environment,
 			"client_id":       config.ClientID,
-			"resource":        config.Resource,
 			"ttl":             int64(config.DefaultTTL / time.Second),
 			"max_ttl":         int64(config.MaxTTL / time.Second),
 		},

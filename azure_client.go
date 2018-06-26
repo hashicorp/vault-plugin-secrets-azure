@@ -210,7 +210,6 @@ type azureSettings struct {
 	ClientID       string
 	ClientSecret   string
 	Environment    azure.Environment
-	Resource       string
 }
 
 // getAzureSettings creates a new azureSettings object.
@@ -231,7 +230,6 @@ func getAzureSettings(config *azureConfig) (*azureSettings, error) {
 
 	settings.ClientID = firstAvailable(os.Getenv("AZURE_CLIENT_ID"), config.ClientID)
 	settings.ClientSecret = firstAvailable(os.Getenv("AZURE_CLIENT_SECRET"), config.ClientSecret)
-	settings.Resource = firstAvailable(os.Getenv("AZURE_AD_RESOURCE"), config.Resource)
 	if settings.SubscriptionID = firstAvailable(os.Getenv("AZURE_SUBSCRIPTION_ID"), config.SubscriptionID); settings.SubscriptionID == "" {
 		merr = multierror.Append(merr, errors.New("subscription_id is required"))
 	}

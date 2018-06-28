@@ -205,9 +205,7 @@ func (b *azureSecretBackend) saveConfig(ctx context.Context, cfg *azureConfig, s
 		return err
 	}
 
-	err = s.Put(ctx, entry)
-
-	return nil
+	return s.Put(ctx, entry)
 }
 
 const confHelpSyn = `Configure the Azure Secret backend.`

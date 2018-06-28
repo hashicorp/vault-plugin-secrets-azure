@@ -2,7 +2,7 @@
 
 set -e
 
-TOOL=vault-plugin-secrets-gcp
+TOOL=vault-plugin-secrets-azure
 
 ## Make a temp dir
 tempdir=$(mktemp -d update-${TOOL}-deps.XXXXXX)

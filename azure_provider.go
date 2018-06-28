@@ -6,8 +6,8 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/Azure/azure-sdk-for-go/services/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
+	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/hashicorp/vault/helper/pluginutil"
@@ -100,13 +100,11 @@ func (p *azureProvider) CreateServicePrincipal(ctx context.Context, parameters g
 func (p *azureProvider) ListRoles(ctx context.Context, scope string, filter string) (result []authorization.RoleDefinition, err error) {
 	page, err := p.rdClient.List(ctx, scope, filter)
 
-	v := page.Values()
-
 	if err != nil {
 		return nil, err
 	}
 
-	return v, nil
+	return page.Values(), nil
 }
 
 // GetRoleByID fetches the full role definition given a roleID.
@@ -130,18 +128,16 @@ func (p *azureProvider) DeleteRoleAssignmentByID(ctx context.Context, roleAssign
 }
 
 // ListRoleAssignments lists all role assignments.
+// There is no need for paging; the caller only cares about the the first match and whether
+// there are 0, 1 or >1 items. Unpacking here is a simpler interface.
 func (p *azureProvider) ListRoleAssignments(ctx context.Context, filter string) ([]authorization.RoleAssignment, error) {
 	page, err := p.raClient.List(ctx, filter)
-
-	// There is no need for paging; the caller only cares about the the first match and whether
-	// there are 0, 1 or >1 items. Unpacking here is a simpler interface.
-	v := page.Values()
 
 	if err != nil {
 		return nil, err
 	}
 
-	return v, nil
+	return page.Values(), nil
 }
 
 // userAgent determines the User Agent to send on HTTP requests.

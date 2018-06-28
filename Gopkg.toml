@@ -37,6 +37,10 @@
   branch = "master"
   name = "github.com/hashicorp/vault"
 
+[[constraint]]
+  name = "github.com/Azure/azure-sdk-for-go"
+  version = "17.4.0"
+
 [prune]
   go-tests = true
   unused-packages = true

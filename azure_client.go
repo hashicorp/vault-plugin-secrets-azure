@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
+	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/Azure/go-autorest/autorest/to"
@@ -63,13 +63,13 @@ func (c *azureClient) createApp(ctx context.Context) (app *graphrbac.Application
 		return nil, err
 	}
 
-	url := fmt.Sprintf("https://%s", name)
+	appURL := fmt.Sprintf("https://%s", name)
 
 	result, err := c.provider.CreateApplication(ctx, graphrbac.ApplicationCreateParameters{
 		AvailableToOtherTenants: to.BoolPtr(false),
 		DisplayName:             to.StringPtr(name),
-		Homepage:                to.StringPtr(url),
-		IdentifierUris:          &[]string{url},
+		Homepage:                to.StringPtr(appURL),
+		IdentifierUris:          &[]string{appURL},
 	})
 
 	return &result, err
@@ -136,7 +136,7 @@ func (c *azureClient) assignRoles(ctx context.Context, sp *graphrbac.ServicePrin
 			return nil, err
 		}
 
-		// retries are essential for this operation as there can be a significant deley between
+		// retries are essential for this operation as there can be a significant delay between
 		// when a service principal is created and when it is visible for other operations. If
 		// it isn't visible yet, "PrincipalNotFound" is the error received and is not treated
 		// as an error here.
@@ -202,7 +202,7 @@ func (c *azureClient) lookupRole(ctx context.Context, roleName, roleId string) (
 	return c.provider.ListRoles(ctx, fmt.Sprintf("subscriptions/%s", c.settings.SubscriptionID), fmt.Sprintf("roleName eq '%s'", roleName))
 }
 
-// azureSettings is used by a azureClient to configuret the client connectons to Azure.
+// azureSettings is used by a azureClient to configure the client connectons to Azure.
 // It is created from a combination of Vault config settings and environment variables.
 type azureSettings struct {
 	SubscriptionID string
@@ -230,7 +230,10 @@ func getAzureSettings(config *azureConfig) (*azureSettings, error) {
 
 	settings.ClientID = firstAvailable(os.Getenv("AZURE_CLIENT_ID"), config.ClientID)
 	settings.ClientSecret = firstAvailable(os.Getenv("AZURE_CLIENT_SECRET"), config.ClientSecret)
-	if settings.SubscriptionID = firstAvailable(os.Getenv("AZURE_SUBSCRIPTION_ID"), config.SubscriptionID); settings.SubscriptionID == "" {
+	settings.SubscriptionID = firstAvailable(os.Getenv("AZURE_SUBSCRIPTION_ID"))
+
+	settings.SubscriptionID = firstAvailable(os.Getenv("AZURE_SUBSCRIPTION_ID"), config.SubscriptionID)
+	if settings.SubscriptionID == "" {
 		merr = multierror.Append(merr, errors.New("subscription_id is required"))
 	}
 

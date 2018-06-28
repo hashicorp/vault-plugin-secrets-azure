@@ -5,9 +5,9 @@
   name = "github.com/Azure/azure-sdk-for-go"
   packages = [
     "profiles/latest/compute/mgmt/compute",
-    "services/authorization/mgmt/2018-01-01-preview/authorization",
     "services/compute/mgmt/2018-04-01/compute",
     "services/graphrbac/1.6/graphrbac",
+    "services/preview/authorization/mgmt/2018-01-01-preview/authorization",
     "version"
   ]
   revision = "7971189ecf5a584b9211f2527737f94bb979644e"
@@ -368,6 +368,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "3bc5b8563757bed5f5ab13a4ea8596a3592d737f0b51758709319606ce4a21bb"
+  inputs-digest = "f5d76429c6c68035ce0f1f762361eca0dd87498997dabfd83a110529e55b6e99"
   solver-name = "gps-cdcl"
   solver-version = 1

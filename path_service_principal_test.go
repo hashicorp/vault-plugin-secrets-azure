@@ -251,7 +251,7 @@ func TestCredentialInteg(t *testing.T) {
 	}
 
 	// Use the underlying provider to access clients directly for testing
-	client := b.provider.(*azureProvider)
+	client := b.provider.(*provider)
 	spObjId := client._spObjId
 
 	// verify the new SP can be accessed

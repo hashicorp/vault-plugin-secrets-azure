@@ -12,7 +12,7 @@ import (
 type azureSecretBackend struct {
 	*framework.Backend
 
-	provider     Provider
+	provider     AzureProvider
 	providerLock sync.Mutex
 }
 
@@ -55,7 +55,7 @@ func Backend() *azureSecretBackend {
 }
 
 // getProvider returns, and creates if necessary, the backend's Provider.
-func (b *azureSecretBackend) getProvider(settings *azureSettings) (Provider, error) {
+func (b *azureSecretBackend) getProvider(settings *clientSettings) (AzureProvider, error) {
 	b.providerLock.Lock()
 	defer b.providerLock.Unlock()
 

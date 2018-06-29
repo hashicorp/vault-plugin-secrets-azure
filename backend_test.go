@@ -67,7 +67,7 @@ type mockProvider struct {
 	failNextCreateApplication bool
 }
 
-func newMockProvider() Provider {
+func newMockProvider() AzureProvider {
 	return &mockProvider{
 		subscriptionID: generateUUID(),
 		applications:   make(map[string]bool),

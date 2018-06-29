@@ -124,7 +124,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		return nil, err
 	}
 
-	c, err := b.newAzureClient(ctx, cfg)
+	c, err := b.newClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}

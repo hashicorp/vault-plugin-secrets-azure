@@ -52,7 +52,7 @@ func (b *azureSecretBackend) pathSPRead(ctx context.Context, req *logical.Reques
 		return nil, err
 	}
 
-	c, err := b.newAzureClient(ctx, cfg)
+	c, err := b.newClient(ctx, cfg)
 	if err != nil {
 		return logical.ErrorResponse(err.Error()), nil
 	}
@@ -147,7 +147,7 @@ func (b *azureSecretBackend) spRevoke(ctx context.Context, req *logical.Request,
 		return nil, errwrap.Wrapf("error during revoke: {{err}}", err)
 	}
 
-	c, err := b.newAzureClient(ctx, cfg)
+	c, err := b.newClient(ctx, cfg)
 	if err != nil {
 		return nil, errwrap.Wrapf("error during revoke: {{err}}", err)
 	}

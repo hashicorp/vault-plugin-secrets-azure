@@ -11,6 +11,7 @@ import (
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/hashicorp/vault/helper/pluginutil"
+	"github.com/hashicorp/vault/helper/useragent"
 )
 
 // AzureProvider is an interface to access underlying Azure client objects and supporting services.
@@ -175,8 +176,10 @@ func (p *provider) ListRoleAssignments(ctx context.Context, filter string) ([]au
 
 // userAgent determines the User Agent to send on HTTP requests.
 func userAgent() string {
-	version := os.Getenv(pluginutil.PluginVaultVersionEnv)
-	projectURL := "https://www.vaultproject.io/"
-	rt := runtime.Version()
-	return fmt.Sprintf("Vault/%s (+%s; %s)", version, projectURL, rt)
+	if version := os.Getenv(pluginutil.PluginVaultVersionEnv); version != "" {
+		projectURL := "https://www.vaultproject.io/"
+		rt := runtime.Version()
+		return fmt.Sprintf("Vault/%s (+%s; %s)", version, projectURL, rt)
+	}
+	return useragent.String()
 }

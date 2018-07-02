@@ -13,7 +13,7 @@ type azureSecretBackend struct {
 	*framework.Backend
 
 	provider     AzureProvider
-	providerLock sync.Mutex
+	providerLock sync.RWMutex
 }
 
 func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend, error) {
@@ -56,8 +56,18 @@ func Backend() *azureSecretBackend {
 
 // getProvider returns, and creates if necessary, the backend's Provider.
 func (b *azureSecretBackend) getProvider(settings *clientSettings) (AzureProvider, error) {
+	b.providerLock.RLock()
+	unlockFunc := b.providerLock.RUnlock
+	defer func() { unlockFunc() }()
+
+	if b.provider != nil {
+		return b.provider, nil
+	}
+
+	// Upgrade lock
+	b.providerLock.RUnlock()
 	b.providerLock.Lock()
-	defer b.providerLock.Unlock()
+	unlockFunc = b.providerLock.Unlock
 
 	if b.provider != nil {
 		return b.provider, nil

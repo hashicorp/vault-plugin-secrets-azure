@@ -316,7 +316,7 @@ control permissions to Azure resources.
 If the backend is mounted at "azure", you would create a Vault role at "azure/roles/my_role",
 and request credentials from "azure/creds/my_role".
 
-Each Vault roles is configured with the standard ttl parameters and a list of Azure
+Each Vault role is configured with the standard ttl parameters and a list of Azure
 roles and scopes. These Azure roles will be fetched during the Vault role creation
 and must exist for the request to succeed. Multiple Azure roles may be specified. When
 a used requests credentials against the Vault role, and new service principal is created

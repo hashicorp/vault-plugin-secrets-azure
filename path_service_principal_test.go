@@ -225,7 +225,7 @@ func TestCredentialInteg(t *testing.T) {
 		}]`, subscriptionID),
 	}
 	resp, err := b.HandleRequest(context.Background(), &logical.Request{
-		Operation: logical.UpdateOperation,
+		Operation: logical.CreateOperation,
 		Path:      fmt.Sprintf("roles/%s", rolename),
 		Data:      role,
 		Storage:   s,

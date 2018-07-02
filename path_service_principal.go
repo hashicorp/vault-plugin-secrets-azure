@@ -119,6 +119,10 @@ func (b *azureSecretBackend) spRenew(ctx context.Context, req *logical.Request, 
 		return nil, err
 	}
 
+	if role == nil {
+		return nil, nil
+	}
+
 	resp := &logical.Response{Secret: req.Secret}
 	updateTTLs(resp.Secret, role, cfg)
 

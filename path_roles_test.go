@@ -153,6 +153,9 @@ func TestRoleCreate(t *testing.T) {
 			Storage:   s,
 		})
 		nilErr(t, err)
+		if resp.IsError() {
+			t.Fatal("received unxpected error response")
+		}
 
 		resp, err = testRoleRead(t, b, s, name)
 		nilErr(t, err)
@@ -161,6 +164,38 @@ func TestRoleCreate(t *testing.T) {
 		equal(t, "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Owner", roles[0].RoleID)
 		equal(t, "Contributor", roles[1].RoleName)
 		equal(t, "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Contributor", roles[1].RoleID)
+	})
+
+	t.Run("Role name lookup (multiple match)", func(t *testing.T) {
+		b, s := getTestBackend(t, true)
+
+		// if role_name=="multiple", the mock will return multiple IDs, which are not allowed
+		var role = map[string]interface{}{
+			"roles": compactJSON(`[
+				{
+					"role_name": "multiple",
+					"role_id": "",
+					"scope":  "test_scope_1"
+				},
+				{
+					"role_name": "will be replaced",
+					"role_id": "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Contributor",
+					"scope":  "test_scope_2"
+				}
+			]`),
+		}
+
+		name := generateUUID()
+		resp, err := b.HandleRequest(context.Background(), &logical.Request{
+			Operation: logical.UpdateOperation,
+			Path:      "roles/" + name,
+			Data:      role,
+			Storage:   s,
+		})
+		nilErr(t, err)
+		if !resp.IsError() {
+			t.Fatal("expected error response")
+		}
 	})
 
 }

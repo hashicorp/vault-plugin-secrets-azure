@@ -185,20 +185,8 @@ func (c *client) unassignRoles(ctx context.Context, roleIDs []string) error {
 	return merr.ErrorOrNil()
 }
 
-// lookupRole attempts to find a role definition by ID (if provided) or by name.
-// Role IDs are unique, but names are not. A slice is always returned and it is up
-// to the caller to handle this variability in response count (0, 1, >1).
-func (c *client) lookupRole(ctx context.Context, roleName, roleId string) ([]authorization.RoleDefinition, error) {
-	if roleId != "" {
-		r, err := c.provider.GetRoleByID(ctx, roleId)
-		if err != nil {
-			return nil, err
-		}
-		if r.ID == nil {
-			return nil, nil
-		}
-		return []authorization.RoleDefinition{r}, nil
-	}
+// search for roles by name
+func (c *client) findRoles(ctx context.Context, roleName string) ([]authorization.RoleDefinition, error) {
 	return c.provider.ListRoles(ctx, fmt.Sprintf("subscriptions/%s", c.settings.SubscriptionID), fmt.Sprintf("roleName eq '%s'", roleName))
 }
 

@@ -81,14 +81,31 @@ func (m *mockProvider) ListRoles(ctx context.Context, scope string, filter strin
 	match := reRoleName.FindAllStringSubmatch(filter, -1)
 	if len(match) > 0 {
 		name := match[0][1]
-		return []authorization.RoleDefinition{
-			{
-				ID: to.StringPtr(fmt.Sprintf("/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-%s", name)),
-				RoleDefinitionProperties: &authorization.RoleDefinitionProperties{
-					RoleName: to.StringPtr(name),
+		if name == "multiple" {
+			return []authorization.RoleDefinition{
+				{
+					ID: to.StringPtr(fmt.Sprintf("/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-%s-1", name)),
+					RoleDefinitionProperties: &authorization.RoleDefinitionProperties{
+						RoleName: to.StringPtr(name),
+					},
 				},
-			},
-		}, nil
+				{
+					ID: to.StringPtr(fmt.Sprintf("/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-%s-2", name)),
+					RoleDefinitionProperties: &authorization.RoleDefinitionProperties{
+						RoleName: to.StringPtr(name),
+					},
+				},
+			}, nil
+		} else {
+			return []authorization.RoleDefinition{
+				{
+					ID: to.StringPtr(fmt.Sprintf("/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-%s", name)),
+					RoleDefinitionProperties: &authorization.RoleDefinitionProperties{
+						RoleName: to.StringPtr(name),
+					},
+				},
+			}, nil
+		}
 	}
 
 	return []authorization.RoleDefinition{}, nil

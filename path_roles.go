@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/hashicorp/errwrap"
 	multierror "github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/vault/helper/jsonutil"
@@ -118,7 +120,8 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		role.Roles = parsedRoles
 	}
 
-	// verify Azure roles
+	// verify Azure roles, including looking up each role
+	// by ID or name.
 	cfg, err := b.getConfig(ctx, req.Storage)
 	if err != nil {
 		return nil, err
@@ -131,25 +134,33 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 
 	roleIDs := make(map[string]bool)
 	for _, r := range role.Roles {
-		roleDefs, err := c.lookupRole(ctx, r.RoleName, r.RoleID)
-		if err != nil {
-			return nil, errwrap.Wrapf("unable to lookup Azure role: {{err}}", err)
+		var roleDef authorization.RoleDefinition
+		if r.RoleID != "" {
+			roleDef, err = c.provider.GetRoleByID(ctx, r.RoleID)
+			if err != nil {
+				if strings.Contains(err.Error(), "RoleDefinitionDoesNotExist") {
+					return logical.ErrorResponse(fmt.Sprintf("no role found for role_id: '%s'", r.RoleID)), nil
+				}
+				return nil, errwrap.Wrapf("unable to lookup Azure role: {{err}}", err)
+			}
+		} else {
+			defs, err := c.findRoles(ctx, r.RoleName)
+			if err != nil {
+				return nil, errwrap.Wrapf("unable to lookup Azure role: {{err}}", err)
+			}
+			if l := len(defs); l == 0 {
+				return logical.ErrorResponse(fmt.Sprintf("no role found for role_name: '%s'", r.RoleName)), nil
+			} else if l > 1 {
+				return logical.ErrorResponse(fmt.Sprintf("multiple matches found for role_name: '%s'. Specify role by ID instead.", r.RoleName)), nil
+			}
+			roleDef = defs[0]
 		}
 
-		if l := len(roleDefs); l == 0 {
-			return logical.ErrorResponse(
-				fmt.Sprintf("no role found for role_name: '%s', role_id: '%s'", r.RoleName, r.RoleID)), nil
-		} else if l > 1 {
-			return logical.ErrorResponse(
-				fmt.Sprintf("multiple matches found for role_name: '%s'. Specify role by ID instead.", r.RoleName)), nil
+		if roleIDs[*roleDef.ID] {
+			return logical.ErrorResponse(fmt.Sprintf("duplicate role_id: '%s'", *roleDef.ID)), nil
 		}
-
-		rd := roleDefs[0]
-		if roleIDs[*rd.ID] {
-			return logical.ErrorResponse(fmt.Sprintf("duplicate role_id: '%s'", *rd.ID)), nil
-		}
-		roleIDs[*rd.ID] = true
-		r.RoleName, r.RoleID = *rd.RoleName, *rd.ID
+		roleIDs[*roleDef.ID] = true
+		r.RoleName, r.RoleID = *roleDef.RoleName, *roleDef.ID
 	}
 
 	// validate role definition constraints

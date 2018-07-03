@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
-	"math/rand"
 	"os"
 	"strings"
 	"time"
@@ -118,12 +116,6 @@ func (c *client) deleteApp(ctx context.Context, appObjectID string) error {
 
 // assignRoles assigns Azure roles to a service principal.
 func (c *client) assignRoles(ctx context.Context, sp *graphrbac.ServicePrincipal, roles []*azureRole) ([]string, error) {
-	var retryCfg = retryConfig{
-		Base:    2 * time.Second,
-		Timeout: 3 * time.Minute,
-		Ramp:    1.15,
-	}
-
 	var ids []string
 
 	for _, role := range roles {
@@ -135,8 +127,10 @@ func (c *client) assignRoles(ctx context.Context, sp *graphrbac.ServicePrincipal
 		// retries are essential for this operation as there can be a significant delay between
 		// when a service principal is created and when it is visible for other operations. If
 		// it isn't visible yet, "PrincipalNotFound" is the error received and is not treated
-		// as an error here.
-		err = retry(ctx, retryCfg, func() (bool, error) {
+		// as an error here. The retry logic (5 seconds sleeps, max 36 tries) is straight from
+		// the az cli behavior and was confirmed as acceptable by Microsoft.
+		found := false
+		for i := 0; i < 36; i++ {
 			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentID,
 				authorization.RoleAssignmentCreateParameters{
 					RoleAssignmentProperties: &authorization.RoleAssignmentProperties{
@@ -146,19 +140,25 @@ func (c *client) assignRoles(ctx context.Context, sp *graphrbac.ServicePrincipal
 				})
 
 			if err == nil {
-				ids = append(ids, *ra.ID)
-				return true, nil
+				ids = append(ids, to.String(ra.ID))
+				found = true
+				break
 			}
 
 			if !strings.Contains(err.Error(), "PrincipalNotFound") {
-				return true, errwrap.Wrapf("error while assigning role: {{err}}", err)
+				return nil, errwrap.Wrapf("error while assigning role: {{err}}", err)
 			}
 
-			return false, nil
-		})
+			t := time.NewTimer(5 * time.Second)
+			select {
+			case <-t.C:
+			case <-ctx.Done():
+				return nil, errors.New("role assignment operation cancelled")
+			}
+		}
 
-		if err != nil {
-			return nil, err
+		if !found {
+			return nil, fmt.Errorf("unable to assign roles. Principal ID not found: %s", to.String(sp.ObjectID))
 		}
 	}
 
@@ -234,45 +234,4 @@ func getClientSettings(config *azureConfig) (*clientSettings, error) {
 	settings.Environment = env
 
 	return settings, merr.ErrorOrNil()
-}
-
-// retryConfig configures the behavior of retry
-type retryConfig struct {
-	Base    time.Duration // start and minimum retry duration
-	Timeout time.Duration // max total retry runtime. 0 == indefinite
-	Ramp    float64       // rate of delay increase
-	Jitter  bool          // randomize between [Base, delay)
-}
-
-// retry calls func f() at a cadence defined by cfg.
-// Retries continue until f() returns true, Timeout has elapsed,
-// or the context is cancelled.
-func retry(ctx context.Context, cfg retryConfig, f func() (bool, error)) error {
-	rand.Seed(time.Now().Unix())
-
-	var endCh <-chan time.Time
-	if cfg.Timeout != 0 {
-		endCh = time.NewTimer(cfg.Timeout).C
-	}
-
-	for count := 0; ; count++ {
-		if done, err := f(); done {
-			return err
-		}
-
-		b := float64(cfg.Base)
-		dur := int64(math.Max(b, b*math.Pow(cfg.Ramp, float64(count))))
-		if cfg.Jitter {
-			dur = rand.Int63n(dur)
-		}
-		delay := time.NewTimer(time.Duration(dur))
-
-		select {
-		case <-delay.C:
-		case <-endCh:
-			return errors.New("retry: timeout")
-		case <-ctx.Done():
-			return errors.New("retry: cancelled")
-		}
-	}
 }

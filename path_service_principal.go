@@ -170,18 +170,19 @@ func (b *azureSecretBackend) spRevoke(ctx context.Context, req *logical.Request,
 	return resp, err
 }
 
-// updateTTLs sets a secret's TTLs, giving preference to role TTLs if present.
+// updateTTLs sets a secret's TTLs
 func updateTTLs(secret *logical.Secret, role *Role, cfg *azureConfig) {
-	if role != nil && role.DefaultTTL > 0 {
-		secret.TTL = role.DefaultTTL
-	} else {
-		secret.TTL = cfg.DefaultTTL
-	}
+	secret.TTL = cfg.DefaultTTL
+	secret.MaxTTL = cfg.MaxTTL
 
-	if role != nil && role.MaxTTL > 0 {
-		secret.MaxTTL = role.MaxTTL
-	} else {
-		secret.MaxTTL = cfg.MaxTTL
+	if role != nil {
+		if role.DefaultTTL > 0 && (cfg.DefaultTTL == 0 || role.DefaultTTL < cfg.DefaultTTL) {
+			secret.TTL = role.DefaultTTL
+		}
+
+		if role.MaxTTL > 0 && (cfg.MaxTTL == 0 || role.MaxTTL < cfg.DefaultTTL) {
+			secret.MaxTTL = role.MaxTTL
+		}
 	}
 }
 

@@ -43,7 +43,7 @@ func TestRoleCreate(t *testing.T) {
 			"scope":  "test_scope_3"
 		}]`),
 			"ttl":     int64(300),
-			"max_ttl": int64(5000),
+			"max_ttl": int64(3000),
 		}
 
 		// Verify basic updates of the name role

@@ -124,6 +124,15 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 	if config.MaxTTL < 0 {
 		merr = multierror.Append(merr, errors.New("max_ttl < 0"))
 	}
+
+	if config.DefaultTTL > b.System().DefaultLeaseTTL() {
+		merr = multierror.Append(merr, errors.New("ttl > system defined TTL"))
+	}
+
+	if config.MaxTTL > b.System().MaxLeaseTTL() {
+		merr = multierror.Append(merr, errors.New("max_ttl > system defined max TTL"))
+	}
+
 	if config.DefaultTTL > config.MaxTTL && config.MaxTTL != 0 {
 		merr = multierror.Append(merr, errors.New("ttl > max_ttl"))
 	}

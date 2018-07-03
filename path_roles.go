@@ -174,6 +174,27 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	if role.MaxTTL < 0 {
 		merr = multierror.Append(merr, errors.New("max_ttl < 0"))
 	}
+
+	if cfg.DefaultTTL > 0 {
+		if role.DefaultTTL > cfg.DefaultTTL {
+			merr = multierror.Append(merr, errors.New("ttl > config TTL"))
+		}
+	} else {
+		if role.DefaultTTL > b.System().DefaultLeaseTTL() {
+			merr = multierror.Append(merr, errors.New("ttl > system TTL"))
+		}
+	}
+
+	if cfg.MaxTTL > 0 {
+		if role.MaxTTL > cfg.MaxTTL {
+			merr = multierror.Append(merr, errors.New("max_ttl > config max TTL"))
+		}
+	} else {
+		if role.MaxTTL > b.System().MaxLeaseTTL() {
+			merr = multierror.Append(merr, errors.New("max_ttl > system max TTL"))
+		}
+	}
+
 	if role.DefaultTTL > role.MaxTTL && role.MaxTTL != 0 {
 		merr = multierror.Append(merr, errors.New("ttl > max_ttl"))
 	}

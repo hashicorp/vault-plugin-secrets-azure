@@ -77,8 +77,8 @@ func TestSPRead(t *testing.T) {
 	// verify role TTLs are reflected in secret
 	t.Run("TTLs", func(t *testing.T) {
 		cfg := map[string]interface{}{
-			"ttl":     5,
-			"max_ttl": 10,
+			"ttl":     50,
+			"max_ttl": 100,
 		}
 		testConfigUpdate(t, b, s, cfg)
 
@@ -93,8 +93,8 @@ func TestSPRead(t *testing.T) {
 
 		nilErr(t, err)
 
-		equal(t, 5*time.Second, resp.Secret.TTL)
-		equal(t, 10*time.Second, resp.Secret.MaxTTL)
+		equal(t, 50*time.Second, resp.Secret.TTL)
+		equal(t, 100*time.Second, resp.Secret.MaxTTL)
 
 		roleUpdate := map[string]interface{}{
 			"ttl":     20,

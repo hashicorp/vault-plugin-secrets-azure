@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
+	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/hashicorp/errwrap"
 	multierror "github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/vault/helper/jsonutil"
@@ -39,7 +40,7 @@ type azureRole struct {
 func pathsRole(b *azureSecretBackend) []*framework.Path {
 	return []*framework.Path{
 		{
-			Pattern: fmt.Sprintf("roles/%s", framework.GenericNameRegex("name")),
+			Pattern: "roles/" + framework.GenericNameRegex("name"),
 			Fields: map[string]*framework.FieldSchema{
 				"name": {
 					Type:        framework.TypeLowerCaseString,
@@ -51,11 +52,11 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 				},
 				"ttl": {
 					Type:        framework.TypeDurationSecond,
-					Description: "Default lease for generated credentials. If ttl == 0, use system default",
+					Description: "Default lease for generated credentials. If not set or set to 0, will use system default.",
 				},
 				"max_ttl": {
 					Type:        framework.TypeDurationSecond,
-					Description: "Maximum time a service principal. If max_ttl == 0, use system default",
+					Description: "Maximum time a service principal. If not set or set to 0, will use system default.",
 				},
 			},
 			Callbacks: map[logical.Operation]framework.OperationFunc{
@@ -111,7 +112,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	}
 
 	if roles, ok := d.GetOk("roles"); ok {
-		parsedRoles := []*azureRole{} // non-nil to avoid a "missing roles" error later
+		parsedRoles := make([]*azureRole, 0) // non-nil to avoid a "missing roles" error later
 
 		err := jsonutil.DecodeJSON([]byte(roles.(string)), &parsedRoles)
 		if err != nil {
@@ -156,11 +157,14 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 			roleDef = defs[0]
 		}
 
-		if roleIDs[*roleDef.ID] {
+		roleDefID := to.String(roleDef.ID)
+		roleDefName := to.String(roleDef.RoleName)
+		if roleIDs[roleDefID] {
 			return logical.ErrorResponse(fmt.Sprintf("duplicate role_id: '%s'", *roleDef.ID)), nil
 		}
-		roleIDs[*roleDef.ID] = true
-		r.RoleName, r.RoleID = *roleDef.RoleName, *roleDef.ID
+		roleIDs[roleDefID] = true
+
+		r.RoleName, r.RoleID = roleDefName, roleDefID
 	}
 
 	// validate role definition constraints
@@ -174,7 +178,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		merr = multierror.Append(merr, errors.New("ttl > max_ttl"))
 	}
 
-	if role.Roles == nil {
+	if role.Roles == nil || len(role.Roles) == 0 {
 		merr = multierror.Append(merr, errors.New("missing Azure role definitions"))
 	}
 
@@ -183,7 +187,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	}
 
 	// save role
-	err = saveRole(ctx, role, name, req.Storage)
+	err = saveRole(ctx, req.Storage, role, name)
 	if err != nil {
 		return nil, errwrap.Wrapf("error storing role: {{err}}", err)
 	}
@@ -194,12 +198,9 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 func (b *azureSecretBackend) pathRoleRead(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
 	var data = make(map[string]interface{})
 
-	nameRaw, ok := d.GetOk("name")
-	if !ok {
-		return logical.ErrorResponse("name is required"), nil
-	}
+	name := d.Get("name").(string)
 
-	r, err := getRole(ctx, nameRaw.(string), req.Storage)
+	r, err := getRole(ctx, name, req.Storage)
 	if err != nil {
 		return nil, errwrap.Wrapf("error reading role: {{err}}", err)
 	}
@@ -237,7 +238,7 @@ func (b *azureSecretBackend) pathRoleDelete(ctx context.Context, req *logical.Re
 	return nil, nil
 }
 
-func saveRole(ctx context.Context, c *Role, name string, s logical.Storage) error {
+func saveRole(ctx context.Context, s logical.Storage, c *Role, name string) error {
 	entry, err := logical.StorageEntryJSON(fmt.Sprintf("%s/%s", rolesStoragePath, name), c)
 	if err != nil {
 		return err

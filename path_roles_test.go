@@ -67,8 +67,13 @@ func TestRoleCreate(t *testing.T) {
 
 	t.Run("Optional role TTLs", func(t *testing.T) {
 		testRole := map[string]interface{}{
-			"roles": "[]",
-		}
+			"roles": compactJSON(`[
+				{
+					"role_name": "Contributor",
+					"role_id": "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Contributor",
+					"scope":  "test_scope_3"
+				}]`,
+			)}
 
 		// Verify that ttl and max_ttl are 0 if not provided
 		name := generateUUID()
@@ -105,8 +110,9 @@ func TestRoleCreate(t *testing.T) {
 
 		for i, test := range tests {
 			role := map[string]interface{}{
-				"roles": "[]",
+				"roles": compactJSON(`[{}]`),
 			}
+
 			if test.ttl != skip {
 				role["ttl"] = test.ttl
 			}
@@ -239,7 +245,7 @@ func TestRoleList(t *testing.T) {
 
 	// Add some roles and verify the resulting list
 	role := map[string]interface{}{
-		"roles": "[]",
+		"roles": compactJSON(`[{}]`),
 	}
 	testRoleUpdate(t, b, s, "r1", role)
 	testRoleUpdate(t, b, s, "r2", role)
@@ -282,7 +288,7 @@ func TestRoleDelete(t *testing.T) {
 	nameAlt := "test_role_alt"
 
 	role := map[string]interface{}{
-		"roles": "[]",
+		"roles": compactJSON(`[{}]`),
 	}
 
 	// Create two roles and verify they're present

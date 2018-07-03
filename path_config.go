@@ -6,9 +6,7 @@ import (
 	"time"
 
 	"github.com/Azure/go-autorest/autorest/azure"
-	"github.com/hashicorp/errwrap"
 	multierror "github.com/hashicorp/go-multierror"
-	uuid "github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault/logical"
 	"github.com/hashicorp/vault/logical/framework"
 )
@@ -58,11 +56,11 @@ func pathConfig(b *azureSecretBackend) *framework.Path {
 			},
 			"ttl": {
 				Type:        framework.TypeDurationSecond,
-				Description: "Default lease for generated credentials. If == 0, will use system default.",
+				Description: "Default lease for generated credentials. If not set or set to 0, will use system default.",
 			},
 			"max_ttl": {
 				Type:        framework.TypeDurationSecond,
-				Description: "Maximum time a service principal. If == 0, will use system default.",
+				Description: "Maximum time a service principal. If not set or set to 0, will use system default.",
 			},
 		},
 		Callbacks: map[logical.Operation]framework.OperationFunc{
@@ -87,21 +85,11 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 	}
 
 	if subscriptionID, ok := data.GetOk("subscription_id"); ok {
-		s := subscriptionID.(string)
-		if _, err := uuid.ParseUUID(s); err != nil {
-			merr = multierror.Append(merr, errwrap.Wrapf("subscription_id format error: {{err}}", err))
-		} else {
-			config.SubscriptionID = s
-		}
+		config.SubscriptionID = subscriptionID.(string)
 	}
 
 	if tenantID, ok := data.GetOk("tenant_id"); ok {
-		t := tenantID.(string)
-		if _, err := uuid.ParseUUID(t); err != nil {
-			merr = multierror.Append(merr, errwrap.Wrapf("tenant_id format error: {{err}}", err))
-		} else {
-			config.TenantID = t
-		}
+		config.TenantID = tenantID.(string)
 	}
 
 	if environment, ok := data.GetOk("environment"); ok {
@@ -180,32 +168,59 @@ func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Re
 }
 
 func (b *azureSecretBackend) getConfig(ctx context.Context, s logical.Storage) (*azureConfig, error) {
-	config := new(azureConfig)
+	b.configLock.RLock()
+	unlockFunc := b.configLock.RUnlock
+	defer func() { unlockFunc() }()
+
+	if b.config != nil {
+		return b.config, nil
+	}
+
+	// Upgrade lock
+	b.configLock.RUnlock()
+	b.configLock.Lock()
+	unlockFunc = b.configLock.Unlock
+
+	if b.config != nil {
+		return b.config, nil
+	}
+
+	cfg := new(azureConfig)
 	entry, err := s.Get(ctx, configStoragePath)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if entry == nil {
-		return config, nil
+	if entry != nil {
+		if err := entry.DecodeJSON(cfg); err != nil {
+			return nil, err
+		}
 	}
 
-	if err := entry.DecodeJSON(config); err != nil {
-		return nil, err
-	}
+	b.config = cfg
 
-	return config, nil
+	return cfg, nil
 }
 
 func (b *azureSecretBackend) saveConfig(ctx context.Context, cfg *azureConfig, s logical.Storage) error {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+
 	entry, err := logical.StorageEntryJSON(configStoragePath, cfg)
 
 	if err != nil {
 		return err
 	}
 
-	return s.Put(ctx, entry)
+	err = s.Put(ctx, entry)
+	if err != nil {
+		return err
+	}
+
+	b.config = cfg
+
+	return nil
 }
 
 const confHelpSyn = `Configure the Azure Secret backend.`

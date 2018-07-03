@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/hashicorp/errwrap"
 	"github.com/hashicorp/vault/logical"
 	"github.com/hashicorp/vault/logical/framework"
@@ -73,27 +74,29 @@ func (b *azureSecretBackend) pathSPRead(ctx context.Context, req *logical.Reques
 	if err != nil {
 		return nil, err
 	}
+	appID := to.String(app.AppID)
+	appObjID := to.String(app.ObjectID)
 
 	// Create the SP. Vault is responsible for revocation, but the time-bound password credentials
 	// enforced by Azure are a good defense-in-depth measure. The credentials will expire a short
 	/// time after the MaxTTL, even if Vault fails to revoke them for any reason.
 	sp, password, err := c.createSP(ctx, app, cfg.MaxTTL+5*time.Minute)
 	if err != nil {
-		c.deleteApp(ctx, *app.ObjectID)
+		c.deleteApp(ctx, appObjID)
 		return nil, err
 	}
 
 	raIDs, err := c.assignRoles(ctx, sp, role.Roles)
 	if err != nil {
-		c.deleteApp(ctx, *app.ObjectID)
+		c.deleteApp(ctx, appObjID)
 		return nil, err
 	}
 
 	resp := b.Secret(SecretTypeSP).Response(map[string]interface{}{
-		"client_id":     *app.AppID,
+		"client_id":     appID,
 		"client_secret": password,
 	}, map[string]interface{}{
-		"appObjectID":       *app.ObjectID,
+		"appObjectID":       appObjID,
 		"roleAssignmentIDs": raIDs,
 		"role":              roleName,
 	})

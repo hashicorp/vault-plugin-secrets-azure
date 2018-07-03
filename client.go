@@ -18,11 +18,6 @@ import (
 	"github.com/hashicorp/errwrap"
 	multierror "github.com/hashicorp/go-multierror"
 	uuid "github.com/hashicorp/go-uuid"
-	"github.com/hashicorp/vault/plugins/helper/database/credsutil"
-)
-
-const (
-	passwordLength = 30
 )
 
 // client offers higher level Azure operations that provide a simpler interface
@@ -69,7 +64,7 @@ func (c *client) createApp(ctx context.Context) (app *graphrbac.Application, err
 		AvailableToOtherTenants: to.BoolPtr(false),
 		DisplayName:             to.StringPtr(name),
 		Homepage:                to.StringPtr(appURL),
-		IdentifierUris:          &[]string{appURL},
+		IdentifierUris:          to.StringSlicePtr([]string{appURL}),
 	})
 
 	return &result, err
@@ -79,7 +74,7 @@ func (c *client) createApp(ctx context.Context) (app *graphrbac.Application, err
 func (c *client) createSP(
 	ctx context.Context,
 	app *graphrbac.Application,
-	duration time.Duration) (sp *graphrbac.ServicePrincipal, password string, err error) {
+	duration time.Duration) (*graphrbac.ServicePrincipal, string, error) {
 
 	// Generate a random key (which must be a UUID) and password
 	keyID, err := uuid.GenerateUUID()
@@ -87,18 +82,19 @@ func (c *client) createSP(
 		return nil, "", err
 	}
 
-	password, err = credsutil.RandomAlphaNumeric(passwordLength, false)
+	password, err := uuid.GenerateUUID()
 	if err != nil {
 		return nil, "", err
 	}
 
+	now := time.Now()
 	result, err := c.provider.CreateServicePrincipal(ctx, graphrbac.ServicePrincipalCreateParameters{
 		AppID:          app.AppID,
 		AccountEnabled: to.BoolPtr(true),
 		PasswordCredentials: &[]graphrbac.PasswordCredential{
 			graphrbac.PasswordCredential{
-				StartDate: &date.Time{time.Now()},
-				EndDate:   &date.Time{time.Now().Add(duration)},
+				StartDate: &date.Time{Time: now},
+				EndDate:   &date.Time{Time: now.Add(duration)},
 				KeyID:     to.StringPtr(keyID),
 				Value:     to.StringPtr(password),
 			},

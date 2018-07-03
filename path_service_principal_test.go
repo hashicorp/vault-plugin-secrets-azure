@@ -65,10 +65,8 @@ func TestSPRead(t *testing.T) {
 		}
 
 		// verify password format
-		p := resp.Data["client_secret"].(string)
-		if len(p) != passwordLength {
-			t.Fatalf("expected password of length %d, got: %s", len(p), p)
-		}
+		_, err = uuid.ParseUUID(resp.Data["client_secret"].(string))
+		nilErr(t, err)
 
 		// verify secret ttls
 		equal(t, time.Duration(defaultTestTTL)*time.Second, resp.Secret.TTL)

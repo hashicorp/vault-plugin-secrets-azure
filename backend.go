@@ -14,6 +14,9 @@ type azureSecretBackend struct {
 
 	provider     AzureProvider
 	providerLock sync.RWMutex
+
+	config     *azureConfig
+	configLock sync.RWMutex
 }
 
 func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend, error) {
@@ -30,9 +33,6 @@ func Backend() *azureSecretBackend {
 	b.Backend = &framework.Backend{
 		Help: strings.TrimSpace(backendHelp),
 		PathsSpecial: &logical.Paths{
-			LocalStorage: []string{
-				framework.WALPrefix,
-			},
 			SealWrapStorage: []string{
 				"config",
 			},

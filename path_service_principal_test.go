@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/go-autorest/autorest/to"
 	log "github.com/hashicorp/go-hclog"
 	uuid "github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault/helper/jsonutil"
@@ -248,10 +249,29 @@ func TestCredentialInteg(t *testing.T) {
 		t.Fatal(resp.Error())
 	}
 
+	appID := resp.Data["client_id"].(string)
+
 	// Use the underlying provider to access clients directly for testing
 	client := b.provider.(*provider)
-	spObjId := client._spObjId
 
+	// recover the SP Object ID, which is not used by the application but
+	// is helpful for verification testing
+	spList, err := client.spClient.List(context.Background(), "")
+	nilErr(t, err)
+
+	var spObjId string
+	for spList.NotDone() {
+		for _, v := range spList.Values() {
+			if to.String(v.AppID) == appID {
+				spObjId = to.String(v.ObjectID)
+				goto FOUND
+			}
+		}
+		spList.Next()
+	}
+	t.Fatal("Couldn't find SP Object ID")
+
+FOUND:
 	// verify the new SP can be accessed
 	_, err = client.spClient.Get(context.Background(), spObjId)
 	if err != nil {

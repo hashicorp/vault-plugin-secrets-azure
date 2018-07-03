@@ -57,9 +57,6 @@ type provider struct {
 	spClient  *graphrbac.ServicePrincipalsClient
 	raClient  *authorization.RoleAssignmentsClient
 	rdClient  *authorization.RoleDefinitionsClient
-
-	// internal data to facilitate testing
-	_spObjId string
 }
 
 // NewAzureProvider creates an azureProvider, backed by Azure client objects for underlying services.
@@ -123,11 +120,7 @@ func (p *provider) DeleteApplication(ctx context.Context, applicationObjectID st
 // CreateServicePrincipal creates a new Azure service principal.
 // An Application must be created prior to calling this and pass in parameters.
 func (p *provider) CreateServicePrincipal(ctx context.Context, parameters graphrbac.ServicePrincipalCreateParameters) (graphrbac.ServicePrincipal, error) {
-	sp, err := p.spClient.Create(ctx, parameters)
-	if sp.ObjectID != nil {
-		p._spObjId = *sp.ObjectID
-	}
-	return sp, err
+	return p.spClient.Create(ctx, parameters)
 }
 
 // ListRoles like all Azure roles with a scope (often subscription).

@@ -60,7 +60,7 @@ func TestSPRead(t *testing.T) {
 		_, err = uuid.ParseUUID(resp.Data["client_id"].(string))
 		nilErr(t, err)
 
-		appObjID := resp.Secret.InternalData["appObjectID"].(string)
+		appObjID := resp.Secret.InternalData["app_object_id"].(string)
 		if !b.provider.(*mockProvider).appExists(appObjID) {
 			t.Fatalf("application was not created")
 		}
@@ -126,7 +126,7 @@ func TestSPRevoke(t *testing.T) {
 		Storage:   s,
 	})
 
-	appObjID := resp.Secret.InternalData["appObjectID"].(string)
+	appObjID := resp.Secret.InternalData["app_object_id"].(string)
 	if !b.provider.(*mockProvider).appExists(appObjID) {
 		t.Fatalf("application was not created")
 	}
@@ -280,7 +280,7 @@ FOUND:
 
 	// Verify that a role assignment was created. Get the assignment
 	// info from Azure and verify it matches the Reader role.
-	raIDs := resp.Secret.InternalData["roleAssignmentIDs"].([]string)
+	raIDs := resp.Secret.InternalData["role_assignment_ids"].([]string)
 	equal(t, 1, len(raIDs))
 
 	ra, err := client.raClient.GetByID(context.Background(), raIDs[0])
@@ -304,8 +304,8 @@ FOUND:
 
 	// Revoke the Service Principal by sending back the secret we just
 	// received, with a little type tweaking to make it work.
-	resp.Secret.InternalData["roleAssignmentIDs"] = []interface{}{
-		resp.Secret.InternalData["roleAssignmentIDs"].([]string)[0],
+	resp.Secret.InternalData["role_assignment_ids"] = []interface{}{
+		resp.Secret.InternalData["role_assignment_ids"].([]string)[0],
 	}
 
 	req := &logical.Request{

@@ -96,9 +96,9 @@ func (b *azureSecretBackend) pathSPRead(ctx context.Context, req *logical.Reques
 		"client_id":     appID,
 		"client_secret": password,
 	}, map[string]interface{}{
-		"appObjectID":       appObjID,
-		"roleAssignmentIDs": raIDs,
-		"role":              roleName,
+		"app_object_id":       appObjID,
+		"role_assignment_ids": raIDs,
+		"role":                roleName,
 	})
 
 	updateTTLs(resp.Secret, role, cfg)
@@ -135,7 +135,7 @@ func (b *azureSecretBackend) spRenew(ctx context.Context, req *logical.Request, 
 func (b *azureSecretBackend) spRevoke(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
 	resp := new(logical.Response)
 
-	appObjectIDRaw, ok := req.Secret.InternalData["appObjectID"]
+	appObjectIDRaw, ok := req.Secret.InternalData["app_object_id"]
 	if !ok {
 		return nil, errors.New("internal data not found")
 	}
@@ -143,8 +143,8 @@ func (b *azureSecretBackend) spRevoke(ctx context.Context, req *logical.Request,
 	appObjectID := appObjectIDRaw.(string)
 
 	var raIDs []string
-	if req.Secret.InternalData["roleAssignmentIDs"] != nil {
-		for _, v := range req.Secret.InternalData["roleAssignmentIDs"].([]interface{}) {
+	if req.Secret.InternalData["role_assignment_ids"] != nil {
+		for _, v := range req.Secret.InternalData["role_assignment_ids"].([]interface{}) {
 			raIDs = append(raIDs, v.(string))
 		}
 	}

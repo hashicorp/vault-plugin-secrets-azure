@@ -77,10 +77,8 @@ func (b *azureSecretBackend) pathSPRead(ctx context.Context, req *logical.Reques
 	appID := to.String(app.AppID)
 	appObjID := to.String(app.ObjectID)
 
-	// Create the SP. Vault is responsible for revocation, but the time-bound password credentials
-	// enforced by Azure are a good defense-in-depth measure. The credentials will expire a short
-	/// time after the MaxTTL, even if Vault fails to revoke them for any reason.
-	sp, password, err := c.createSP(ctx, app, cfg.MaxTTL+5*time.Minute)
+	// Create the SP. A far future credential expiration is set on the Azure side.
+	sp, password, err := c.createSP(ctx, app, 10*365*24*time.Hour)
 	if err != nil {
 		c.deleteApp(ctx, appObjID)
 		return nil, err

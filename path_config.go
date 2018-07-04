@@ -65,8 +65,10 @@ func pathConfig(b *azureSecretBackend) *framework.Path {
 		},
 		Callbacks: map[logical.Operation]framework.OperationFunc{
 			logical.ReadOperation:   b.pathConfigRead,
+			logical.CreateOperation: b.pathConfigWrite,
 			logical.UpdateOperation: b.pathConfigWrite,
 		},
+		ExistenceCheck:  b.pathConfigExistenceCheck,
 		HelpSynopsis:    confHelpSyn,
 		HelpDescription: confHelpDesc,
 	}
@@ -174,6 +176,14 @@ func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Re
 		},
 	}
 	return resp, nil
+}
+
+func (b *azureSecretBackend) pathConfigExistenceCheck(ctx context.Context, req *logical.Request, data *framework.FieldData) (bool, error) {
+	config, err := b.getConfig(ctx, req.Storage)
+	if err != nil {
+		return false, err
+	}
+	return config != nil, nil
 }
 
 func (b *azureSecretBackend) getConfig(ctx context.Context, s logical.Storage) (*azureConfig, error) {

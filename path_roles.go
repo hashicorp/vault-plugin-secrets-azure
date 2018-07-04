@@ -61,6 +61,7 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 			},
 			Callbacks: map[logical.Operation]framework.OperationFunc{
 				logical.ReadOperation:   b.pathRoleRead,
+				logical.CreateOperation: b.pathRoleUpdate,
 				logical.UpdateOperation: b.pathRoleUpdate,
 				logical.DeleteOperation: b.pathRoleDelete,
 			},
@@ -257,6 +258,17 @@ func (b *azureSecretBackend) pathRoleDelete(ctx context.Context, req *logical.Re
 	}
 
 	return nil, nil
+}
+
+func (b *azureSecretBackend) pathRoleExistenceCheck(ctx context.Context, req *logical.Request, d *framework.FieldData) (bool, error) {
+	name := d.Get("name").(string)
+
+	role, err := getRole(ctx, name, req.Storage)
+	if err != nil {
+		return false, errwrap.Wrapf("error reading role: {{err}}", err)
+	}
+
+	return role != nil, nil
 }
 
 func saveRole(ctx context.Context, s logical.Storage, c *Role, name string) error {

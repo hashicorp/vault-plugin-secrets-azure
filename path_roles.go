@@ -25,7 +25,7 @@ const (
 // Roles is a Vault role construct, now mapping to Azure roles, primarily
 type Role struct {
 	CredentialType int           `json:"credential_type"` // Reserved. Always SP at this time.
-	Roles          []*azureRole  `json:"roles"`
+	AzureRoles     []*azureRole  `json:"azure_roles"`
 	DefaultTTL     time.Duration `json:"ttl"`
 	MaxTTL         time.Duration `json:"max_ttl"`
 }
@@ -48,7 +48,7 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 					Type:        framework.TypeLowerCaseString,
 					Description: "Name of the role",
 				},
-				"roles": {
+				"azure_roles": {
 					Type:        framework.TypeString,
 					Description: "JSON list of Azure roles to assign",
 				},
@@ -114,14 +114,14 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		role.MaxTTL = time.Duration(maxTTLRaw.(int)) * time.Second
 	}
 
-	if roles, ok := d.GetOk("roles"); ok {
+	if roles, ok := d.GetOk("azure_roles"); ok {
 		parsedRoles := make([]*azureRole, 0) // non-nil to avoid a "missing roles" error later
 
 		err := jsonutil.DecodeJSON([]byte(roles.(string)), &parsedRoles)
 		if err != nil {
 			merr = multierror.Append(merr, errors.New("invalid Azure role definitions"))
 		}
-		role.Roles = parsedRoles
+		role.AzureRoles = parsedRoles
 	}
 
 	// verify Azure roles, including looking up each role
@@ -137,7 +137,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	}
 
 	roleIDs := make(map[string]bool)
-	for _, r := range role.Roles {
+	for _, r := range role.AzureRoles {
 		var roleDef authorization.RoleDefinition
 		if r.RoleID != "" {
 			roleDef, err = c.provider.GetRoleByID(ctx, r.RoleID)
@@ -202,7 +202,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		merr = multierror.Append(merr, errors.New("ttl > max_ttl"))
 	}
 
-	if role.Roles == nil || len(role.Roles) == 0 {
+	if role.AzureRoles == nil || len(role.AzureRoles) == 0 {
 		merr = multierror.Append(merr, errors.New("missing Azure role definitions"))
 	}
 
@@ -235,7 +235,7 @@ func (b *azureSecretBackend) pathRoleRead(ctx context.Context, req *logical.Requ
 
 	data["ttl"] = int64(r.DefaultTTL / time.Second)
 	data["max_ttl"] = int64(r.MaxTTL / time.Second)
-	data["roles"] = r.Roles
+	data["azure_roles"] = r.AzureRoles
 
 	return &logical.Response{
 		Data: data,

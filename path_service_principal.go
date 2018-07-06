@@ -84,7 +84,7 @@ func (b *azureSecretBackend) pathSPRead(ctx context.Context, req *logical.Reques
 		return nil, err
 	}
 
-	raIDs, err := c.assignRoles(ctx, sp, role.Roles)
+	raIDs, err := c.assignRoles(ctx, sp, role.AzureRoles)
 	if err != nil {
 		c.deleteApp(ctx, appObjID)
 		return nil, err

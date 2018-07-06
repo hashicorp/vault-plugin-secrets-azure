@@ -22,7 +22,7 @@ const (
 )
 
 var testRole = map[string]interface{}{
-	"roles": encodeJSON([]azureRole{
+	"azure_roles": encodeJSON([]azureRole{
 		azureRole{
 			RoleName: "Owner",
 			RoleID:   "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Owner",
@@ -219,7 +219,7 @@ func TestCredentialInteg(t *testing.T) {
 	// Add a Vault role that will provide creds with Azure "Reader" permissions
 	rolename := "test_role"
 	role := map[string]interface{}{
-		"roles": fmt.Sprintf(`[{
+		"azure_roles": fmt.Sprintf(`[{
 			"role_name": "Reader",
 			"scope":  "/subscriptions/%s"
 		}]`, subscriptionID),

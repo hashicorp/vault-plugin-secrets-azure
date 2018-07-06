@@ -15,7 +15,7 @@ func TestRoleCreate(t *testing.T) {
 
 	t.Run("SP role", func(t *testing.T) {
 		spRole1 := map[string]interface{}{
-			"roles": compactJSON(`[
+			"azure_roles": compactJSON(`[
 		{
 			"role_name": "Owner",
 			"role_id": "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Owner",
@@ -31,7 +31,7 @@ func TestRoleCreate(t *testing.T) {
 		}
 
 		spRole2 := map[string]interface{}{
-			"roles": compactJSON(`[
+			"azure_roles": compactJSON(`[
 		{
 			"role_name": "Contributor",
 			"role_id": "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Contributor",
@@ -53,7 +53,7 @@ func TestRoleCreate(t *testing.T) {
 		resp, err := testRoleRead(t, b, s, name)
 		nilErr(t, err)
 
-		resp.Data["roles"] = encodeJSON(resp.Data["roles"])
+		resp.Data["azure_roles"] = encodeJSON(resp.Data["azure_roles"])
 		equal(t, spRole1, resp.Data)
 
 		testRoleUpdate(t, b, s, name, spRole2)
@@ -61,13 +61,13 @@ func TestRoleCreate(t *testing.T) {
 		resp, err = testRoleRead(t, b, s, name)
 		nilErr(t, err)
 
-		resp.Data["roles"] = encodeJSON(resp.Data["roles"])
+		resp.Data["azure_roles"] = encodeJSON(resp.Data["azure_roles"])
 		equal(t, spRole2, resp.Data)
 	})
 
 	t.Run("Optional role TTLs", func(t *testing.T) {
 		testRole := map[string]interface{}{
-			"roles": compactJSON(`[
+			"azure_roles": compactJSON(`[
 				{
 					"role_name": "Contributor",
 					"role_id": "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Contributor",
@@ -84,7 +84,7 @@ func TestRoleCreate(t *testing.T) {
 
 		resp, err := testRoleRead(t, b, s, name)
 		nilErr(t, err)
-		resp.Data["roles"] = encodeJSON(resp.Data["roles"])
+		resp.Data["azure_roles"] = encodeJSON(resp.Data["azure_roles"])
 		equal(t, testRole, resp.Data)
 	})
 
@@ -110,7 +110,7 @@ func TestRoleCreate(t *testing.T) {
 
 		for i, test := range tests {
 			role := map[string]interface{}{
-				"roles": compactJSON(`[{}]`),
+				"azure_roles": compactJSON(`[{}]`),
 			}
 
 			if test.ttl != skip {
@@ -137,7 +137,7 @@ func TestRoleCreate(t *testing.T) {
 	t.Run("Role name lookup", func(t *testing.T) {
 		b, s := getTestBackend(t, true)
 		var role = map[string]interface{}{
-			"roles": compactJSON(`[
+			"azure_roles": compactJSON(`[
 				{
 					"role_name": "Owner",
 					"role_id": "",
@@ -165,7 +165,7 @@ func TestRoleCreate(t *testing.T) {
 
 		resp, err = testRoleRead(t, b, s, name)
 		nilErr(t, err)
-		roles := resp.Data["roles"].([]*azureRole)
+		roles := resp.Data["azure_roles"].([]*azureRole)
 		equal(t, "Owner", roles[0].RoleName)
 		equal(t, "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Owner", roles[0].RoleID)
 		equal(t, "Contributor", roles[1].RoleName)
@@ -177,7 +177,7 @@ func TestRoleCreate(t *testing.T) {
 
 		// if role_name=="multiple", the mock will return multiple IDs, which are not allowed
 		var role = map[string]interface{}{
-			"roles": compactJSON(`[
+			"azure_roles": compactJSON(`[
 				{
 					"role_name": "multiple",
 					"role_id": "",
@@ -218,7 +218,7 @@ func TestRoleCreateBad(t *testing.T) {
 	}
 
 	// invalid roles
-	role = map[string]interface{}{"roles": "asdf"}
+	role = map[string]interface{}{"azure_roles": "asdf"}
 	resp = testRoleUpdateBasic(t, b, s, "test_role_1", role)
 	msg = "invalid Azure role definitions"
 	if !strings.Contains(resp.Error().Error(), msg) {
@@ -245,7 +245,7 @@ func TestRoleList(t *testing.T) {
 
 	// Add some roles and verify the resulting list
 	role := map[string]interface{}{
-		"roles": compactJSON(`[{}]`),
+		"azure_roles": compactJSON(`[{}]`),
 	}
 	testRoleUpdate(t, b, s, "r1", role)
 	testRoleUpdate(t, b, s, "r2", role)
@@ -288,7 +288,7 @@ func TestRoleDelete(t *testing.T) {
 	nameAlt := "test_role_alt"
 
 	role := map[string]interface{}{
-		"roles": compactJSON(`[{}]`),
+		"azure_roles": compactJSON(`[{}]`),
 	}
 
 	// Create two roles and verify they're present

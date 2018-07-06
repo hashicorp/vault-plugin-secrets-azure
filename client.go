@@ -208,8 +208,6 @@ func getClientSettings(config *azureConfig) (*clientSettings, error) {
 		return ""
 	}
 
-	var merr *multierror.Error
-
 	settings := new(clientSettings)
 
 	settings.ClientID = firstAvailable(os.Getenv("AZURE_CLIENT_ID"), config.ClientID)
@@ -218,20 +216,20 @@ func getClientSettings(config *azureConfig) (*clientSettings, error) {
 
 	settings.SubscriptionID = firstAvailable(os.Getenv("AZURE_SUBSCRIPTION_ID"), config.SubscriptionID)
 	if settings.SubscriptionID == "" {
-		merr = multierror.Append(merr, errors.New("subscription_id is required"))
+		return nil, errors.New("subscription_id is required")
 	}
 
 	settings.TenantID = firstAvailable(os.Getenv("AZURE_TENANT_ID"), config.TenantID)
 	if settings.TenantID == "" {
-		merr = multierror.Append(merr, errors.New("tenant_id is required"))
+		return nil, errors.New("tenant_id is required")
 	}
 
 	envName := firstAvailable(os.Getenv("AZURE_ENVIRONMENT"), config.Environment, "AZUREPUBLICCLOUD")
 	env, err := azure.EnvironmentFromName(envName)
 	if err != nil {
-		merr = multierror.Append(merr, err)
+		return nil, err
 	}
 	settings.Environment = env
 
-	return settings, merr.ErrorOrNil()
+	return settings, nil
 }

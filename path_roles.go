@@ -18,11 +18,13 @@ import (
 
 const (
 	rolesStoragePath = "roles"
+
+	credentialTypeSP = 0
 )
 
 // Roles is a Vault role construct, now mapping to Azure roles, primarily
 type Role struct {
-	CredentialType string        `json:"credential_type"` // Reserved. Always "service_principal" at this time.
+	CredentialType int           `json:"credential_type"` // Reserved. Always SP at this time.
 	Roles          []*azureRole  `json:"roles"`
 	DefaultTTL     time.Duration `json:"ttl"`
 	MaxTTL         time.Duration `json:"max_ttl"`
@@ -99,7 +101,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 
 	if role == nil {
 		role = &Role{
-			CredentialType: SecretTypeSP,
+			CredentialType: credentialTypeSP,
 		}
 	}
 

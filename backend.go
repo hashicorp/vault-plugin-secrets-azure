@@ -20,14 +20,14 @@ type azureSecretBackend struct {
 }
 
 func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend, error) {
-	b := Backend()
+	b := backend()
 	if err := b.Setup(ctx, conf); err != nil {
 		return nil, err
 	}
 	return b, nil
 }
 
-func Backend() *azureSecretBackend {
+func backend() *azureSecretBackend {
 	var b = azureSecretBackend{}
 
 	b.Backend = &framework.Backend{

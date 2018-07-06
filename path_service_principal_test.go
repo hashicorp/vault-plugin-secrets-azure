@@ -201,7 +201,7 @@ func TestCredentialInteg(t *testing.T) {
 		t.Skip("Azure Secrets: Azure environment variables not set. Skipping.")
 	}
 
-	b := Backend()
+	b := backend()
 	s := new(logical.InmemStorage)
 	subscriptionID := os.Getenv("AZURE_SUBSCRIPTION_ID")
 

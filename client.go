@@ -129,7 +129,7 @@ func (c *client) assignRoles(ctx context.Context, sp *graphrbac.ServicePrincipal
 		// it isn't visible yet, "PrincipalNotFound" is the error received and is not treated
 		// as an error here. The retry logic (5 seconds sleeps, max 36 tries) is straight from
 		// the az cli behavior and was confirmed as acceptable by Microsoft.
-		found := false
+		assigned := false
 		for i := 0; i < 36; i++ {
 			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentID,
 				authorization.RoleAssignmentCreateParameters{
@@ -141,7 +141,7 @@ func (c *client) assignRoles(ctx context.Context, sp *graphrbac.ServicePrincipal
 
 			if err == nil {
 				ids = append(ids, to.String(ra.ID))
-				found = true
+				assigned = true
 				break
 			}
 
@@ -157,7 +157,7 @@ func (c *client) assignRoles(ctx context.Context, sp *graphrbac.ServicePrincipal
 			}
 		}
 
-		if !found {
+		if !assigned {
 			return nil, fmt.Errorf("unable to assign roles. Principal ID not found: %s", to.String(sp.ObjectID))
 		}
 	}

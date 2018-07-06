@@ -187,8 +187,8 @@ func (b *azureSecretBackend) pathConfigExistenceCheck(ctx context.Context, req *
 }
 
 func (b *azureSecretBackend) getConfig(ctx context.Context, s logical.Storage) (*azureConfig, error) {
-	b.configLock.RLock()
-	unlockFunc := b.configLock.RUnlock
+	b.lock.RLock()
+	unlockFunc := b.lock.RUnlock
 	defer func() { unlockFunc() }()
 
 	if b.config != nil {
@@ -196,9 +196,9 @@ func (b *azureSecretBackend) getConfig(ctx context.Context, s logical.Storage) (
 	}
 
 	// Upgrade lock
-	b.configLock.RUnlock()
-	b.configLock.Lock()
-	unlockFunc = b.configLock.Unlock
+	b.lock.RUnlock()
+	b.lock.Lock()
+	unlockFunc = b.lock.Unlock
 
 	if b.config != nil {
 		return b.config, nil
@@ -223,8 +223,8 @@ func (b *azureSecretBackend) getConfig(ctx context.Context, s logical.Storage) (
 }
 
 func (b *azureSecretBackend) saveConfig(ctx context.Context, cfg *azureConfig, s logical.Storage) error {
-	b.configLock.Lock()
-	defer b.configLock.Unlock()
+	b.lock.Lock()
+	defer b.lock.Unlock()
 
 	entry, err := logical.StorageEntryJSON(configStoragePath, cfg)
 

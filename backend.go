@@ -12,11 +12,10 @@ import (
 type azureSecretBackend struct {
 	*framework.Backend
 
-	provider     AzureProvider
-	providerLock sync.RWMutex
+	provider AzureProvider
+	lock     sync.RWMutex
 
-	config     *azureConfig
-	configLock sync.RWMutex
+	config *azureConfig
 }
 
 func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend, error) {
@@ -56,8 +55,8 @@ func backend() *azureSecretBackend {
 
 // getProvider returns, and creates if necessary, the backend's Provider.
 func (b *azureSecretBackend) getProvider(settings *clientSettings) (AzureProvider, error) {
-	b.providerLock.RLock()
-	unlockFunc := b.providerLock.RUnlock
+	b.lock.RLock()
+	unlockFunc := b.lock.RUnlock
 	defer func() { unlockFunc() }()
 
 	if b.provider != nil {
@@ -65,9 +64,9 @@ func (b *azureSecretBackend) getProvider(settings *clientSettings) (AzureProvide
 	}
 
 	// Upgrade lock
-	b.providerLock.RUnlock()
-	b.providerLock.Lock()
-	unlockFunc = b.providerLock.Unlock
+	b.lock.RUnlock()
+	b.lock.Lock()
+	unlockFunc = b.lock.Unlock
 
 	if b.provider != nil {
 		return b.provider, nil
@@ -87,8 +86,8 @@ func (b *azureSecretBackend) getProvider(settings *clientSettings) (AzureProvide
 // This is useful when the configuration changes and a new Provider should be
 // created with the updated settings.
 func (b *azureSecretBackend) reset() {
-	b.providerLock.Lock()
-	defer b.providerLock.Unlock()
+	b.lock.Lock()
+	defer b.lock.Unlock()
 
 	b.provider = nil
 }

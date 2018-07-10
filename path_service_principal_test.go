@@ -42,7 +42,7 @@ func TestSPRead(t *testing.T) {
 	// verify basic cred issuance
 	t.Run("Basic", func(t *testing.T) {
 		name := generateUUID()
-		testRoleUpdate(t, b, s, name, testRole)
+		testRoleCreate(t, b, s, name, testRole)
 
 		resp, err := b.HandleRequest(context.Background(), &logical.Request{
 			Operation: logical.ReadOperation,
@@ -80,10 +80,10 @@ func TestSPRead(t *testing.T) {
 			"ttl":     50,
 			"max_ttl": 100,
 		}
-		testConfigUpdate(t, b, s, cfg)
+		testConfigCreate(t, b, s, cfg)
 
 		name := generateUUID()
-		testRoleUpdate(t, b, s, name, testRole)
+		testRoleCreate(t, b, s, name, testRole)
 
 		resp, err := b.HandleRequest(context.Background(), &logical.Request{
 			Operation: logical.ReadOperation,
@@ -100,7 +100,7 @@ func TestSPRead(t *testing.T) {
 			"ttl":     20,
 			"max_ttl": 30,
 		}
-		testRoleUpdate(t, b, s, name, roleUpdate)
+		testRoleCreate(t, b, s, name, roleUpdate)
 
 		resp, err = b.HandleRequest(context.Background(), &logical.Request{
 			Operation: logical.ReadOperation,
@@ -118,7 +118,7 @@ func TestSPRead(t *testing.T) {
 func TestSPRevoke(t *testing.T) {
 	b, s := getTestBackend(t, true)
 
-	testRoleUpdate(t, b, s, "test_role", testRole)
+	testRoleCreate(t, b, s, "test_role", testRole)
 
 	resp, err := b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.ReadOperation,
@@ -175,7 +175,7 @@ func TestSPReadMissingRole(t *testing.T) {
 func TestCredentialReadProviderError(t *testing.T) {
 	b, s := getTestBackend(t, true)
 
-	testRoleUpdate(t, b, s, "test_role", testRole)
+	testRoleCreate(t, b, s, "test_role", testRole)
 
 	b.provider.(*mockProvider).failNextCreateApplication = true
 

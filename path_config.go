@@ -83,6 +83,9 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 	}
 
 	if config == nil {
+		if req.Operation == logical.UpdateOperation {
+			return nil, errors.New("config not found during update operation")
+		}
 		config = new(azureConfig)
 	}
 
@@ -113,10 +116,14 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 
 	if ttlRaw, ok := data.GetOk("ttl"); ok {
 		config.DefaultTTL = time.Duration(ttlRaw.(int)) * time.Second
+	} else if req.Operation == logical.CreateOperation {
+		config.DefaultTTL = time.Duration(data.Get("ttl").(int)) * time.Second
 	}
 
 	if maxTTLRaw, ok := data.GetOk("max_ttl"); ok {
 		config.MaxTTL = time.Duration(maxTTLRaw.(int)) * time.Second
+	} else if req.Operation == logical.CreateOperation {
+		config.MaxTTL = time.Duration(data.Get("max_ttl").(int)) * time.Second
 	}
 
 	// validate ttl constraints
@@ -204,17 +211,19 @@ func (b *azureSecretBackend) getConfig(ctx context.Context, s logical.Storage) (
 		return b.config, nil
 	}
 
-	cfg := new(azureConfig)
 	entry, err := s.Get(ctx, configStoragePath)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if entry != nil {
-		if err := entry.DecodeJSON(cfg); err != nil {
-			return nil, err
-		}
+	if entry == nil {
+		return nil, nil
+	}
+
+	cfg := new(azureConfig)
+	if err := entry.DecodeJSON(cfg); err != nil {
+		return nil, err
 	}
 
 	b.config = cfg

@@ -54,7 +54,7 @@ func getTestBackend(t *testing.T, initConfig bool) (*azureSecretBackend, logical
 			"max_ttl":         defaultTestMaxTTL,
 		}
 
-		testConfigUpdate(t, b, config.StorageView, cfg)
+		testConfigCreate(t, b, config.StorageView, cfg)
 	}
 
 	return b, config.StorageView

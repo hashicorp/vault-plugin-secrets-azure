@@ -48,7 +48,7 @@ func TestRoleCreate(t *testing.T) {
 
 		// Verify basic updates of the name role
 		name := generateUUID()
-		testRoleUpdate(t, b, s, name, spRole1)
+		testRoleCreate(t, b, s, name, spRole1)
 
 		resp, err := testRoleRead(t, b, s, name)
 		nilErr(t, err)
@@ -56,7 +56,7 @@ func TestRoleCreate(t *testing.T) {
 		resp.Data["azure_roles"] = encodeJSON(resp.Data["azure_roles"])
 		equal(t, spRole1, resp.Data)
 
-		testRoleUpdate(t, b, s, name, spRole2)
+		testRoleCreate(t, b, s, name, spRole2)
 
 		resp, err = testRoleRead(t, b, s, name)
 		nilErr(t, err)
@@ -77,7 +77,7 @@ func TestRoleCreate(t *testing.T) {
 
 		// Verify that ttl and max_ttl are 0 if not provided
 		name := generateUUID()
-		testRoleUpdate(t, b, s, name, testRole)
+		testRoleCreate(t, b, s, name, testRole)
 
 		testRole["ttl"] = int64(0)
 		testRole["max_ttl"] = int64(0)
@@ -94,7 +94,7 @@ func TestRoleCreate(t *testing.T) {
 		const skip = -999
 		tests := []struct {
 			ttl      int64
-			max_ttl  int64
+			maxTTL   int64
 			expError bool
 		}{
 			{5, 10, false},
@@ -116,12 +116,12 @@ func TestRoleCreate(t *testing.T) {
 			if test.ttl != skip {
 				role["ttl"] = test.ttl
 			}
-			if test.max_ttl != skip {
-				role["max_ttl"] = test.max_ttl
+			if test.maxTTL != skip {
+				role["max_ttl"] = test.maxTTL
 			}
 			name := generateUUID()
 			resp, err := b.HandleRequest(context.Background(), &logical.Request{
-				Operation: logical.UpdateOperation,
+				Operation: logical.CreateOperation,
 				Path:      "roles/" + name,
 				Data:      role,
 				Storage:   s,
@@ -153,7 +153,7 @@ func TestRoleCreate(t *testing.T) {
 
 		name := generateUUID()
 		resp, err := b.HandleRequest(context.Background(), &logical.Request{
-			Operation: logical.UpdateOperation,
+			Operation: logical.CreateOperation,
 			Path:      "roles/" + name,
 			Data:      role,
 			Storage:   s,
@@ -193,7 +193,7 @@ func TestRoleCreate(t *testing.T) {
 
 		name := generateUUID()
 		resp, err := b.HandleRequest(context.Background(), &logical.Request{
-			Operation: logical.UpdateOperation,
+			Operation: logical.CreateOperation,
 			Path:      "roles/" + name,
 			Data:      role,
 			Storage:   s,
@@ -211,7 +211,7 @@ func TestRoleCreateBad(t *testing.T) {
 
 	// missing roles
 	role := map[string]interface{}{}
-	resp := testRoleUpdateBasic(t, b, s, "test_role_1", role)
+	resp := testRoleCreateBasic(t, b, s, "test_role_1", role)
 	msg := "missing Azure role definitions"
 	if !strings.Contains(resp.Error().Error(), msg) {
 		t.Fatalf("expected to find: %s, got: %s", msg, resp.Error().Error())
@@ -219,10 +219,30 @@ func TestRoleCreateBad(t *testing.T) {
 
 	// invalid roles
 	role = map[string]interface{}{"azure_roles": "asdf"}
-	resp = testRoleUpdateBasic(t, b, s, "test_role_1", role)
+	resp = testRoleCreateBasic(t, b, s, "test_role_1", role)
 	msg = "invalid Azure role definitions"
 	if !strings.Contains(resp.Error().Error(), msg) {
 		t.Fatalf("expected to find: %s, got: %s", msg, resp.Error().Error())
+	}
+}
+
+func TestRoleUpdateError(t *testing.T) {
+	b, s := getTestBackend(t, true)
+
+	role := map[string]interface{}{
+		"azure_roles": compactJSON(`[{}]`),
+	}
+
+	name := generateUUID()
+	_, err := b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.UpdateOperation,
+		Path:      "roles/" + name,
+		Data:      role,
+		Storage:   s,
+	})
+
+	if err == nil {
+		t.Fatal("expected error trying to update nonexistent role")
 	}
 }
 
@@ -247,9 +267,9 @@ func TestRoleList(t *testing.T) {
 	role := map[string]interface{}{
 		"azure_roles": compactJSON(`[{}]`),
 	}
-	testRoleUpdate(t, b, s, "r1", role)
-	testRoleUpdate(t, b, s, "r2", role)
-	testRoleUpdate(t, b, s, "r3", role)
+	testRoleCreate(t, b, s, "r1", role)
+	testRoleCreate(t, b, s, "r2", role)
+	testRoleCreate(t, b, s, "r3", role)
 
 	resp, err = b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.ListOperation,
@@ -292,8 +312,8 @@ func TestRoleDelete(t *testing.T) {
 	}
 
 	// Create two roles and verify they're present
-	testRoleUpdate(t, b, s, name, role)
-	testRoleUpdate(t, b, s, nameAlt, role)
+	testRoleCreate(t, b, s, name, role)
+	testRoleCreate(t, b, s, nameAlt, role)
 
 	// Delete one role and verify it is gone, and the other remains
 	resp, err := b.HandleRequest(context.Background(), &logical.Request{
@@ -326,10 +346,10 @@ func TestRoleDelete(t *testing.T) {
 }
 
 // Utility function to create a role and fail on errors
-func testRoleUpdate(t *testing.T, b *azureSecretBackend, s logical.Storage, name string, d map[string]interface{}) {
+func testRoleCreate(t *testing.T, b *azureSecretBackend, s logical.Storage, name string, d map[string]interface{}) {
 	t.Helper()
 	resp, err := b.HandleRequest(context.Background(), &logical.Request{
-		Operation: logical.UpdateOperation,
+		Operation: logical.CreateOperation,
 		Path:      fmt.Sprintf("roles/%s", name),
 		Data:      d,
 		Storage:   s,
@@ -345,10 +365,10 @@ func testRoleUpdate(t *testing.T, b *azureSecretBackend, s logical.Storage, name
 }
 
 // Utility function to create a role while, returning any response (including errors)
-func testRoleUpdateBasic(t *testing.T, b *azureSecretBackend, s logical.Storage, name string, d map[string]interface{}) *logical.Response {
+func testRoleCreateBasic(t *testing.T, b *azureSecretBackend, s logical.Storage, name string, d map[string]interface{}) *logical.Response {
 	t.Helper()
 	resp, err := b.HandleRequest(context.Background(), &logical.Request{
-		Operation: logical.UpdateOperation,
+		Operation: logical.CreateOperation,
 		Path:      fmt.Sprintf("roles/%s", name),
 		Data:      d,
 		Storage:   s,

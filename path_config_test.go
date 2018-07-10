@@ -11,18 +11,6 @@ import (
 func TestConfig(t *testing.T) {
 	b, s := getTestBackend(t, false)
 
-	// Test that initial config is empty
-	emptyCfg := map[string]interface{}{
-		"subscription_id": "",
-		"tenant_id":       "",
-		"client_id":       "",
-		"environment":     "",
-		"ttl":             int64(0),
-		"max_ttl":         int64(0),
-	}
-
-	testConfigRead(t, b, s, emptyCfg)
-
 	// Test valid config
 	cfg := map[string]interface{}{
 		"subscription_id": "a228ceec-bf1a-4411-9f95-39678d8cdb34",
@@ -34,7 +22,7 @@ func TestConfig(t *testing.T) {
 		"max_ttl":         int64(18000),
 	}
 
-	testConfigUpdate(t, b, s, cfg)
+	testConfigCreate(t, b, s, cfg)
 
 	delete(cfg, "client_secret")
 	testConfigRead(t, b, s, cfg)
@@ -45,7 +33,7 @@ func TestConfig(t *testing.T) {
 	cfg2["ttl"] = "5s"
 	cfg2["max_ttl"] = "5h"
 
-	testConfigUpdate(t, b, s, cfg2)
+	testConfigCreate(t, b, s, cfg2)
 	testConfigRead(t, b, s, cfg)
 
 	// Test test updating one element retains the others
@@ -53,8 +41,8 @@ func TestConfig(t *testing.T) {
 	cfgSubset := map[string]interface{}{
 		"tenant_id": "800e371d-ee51-4145-9ac8-5c43e4ceb79b",
 	}
-	testConfigUpdate(t, b, s, cfgSubset)
-	testConfigRead(t, b, s, cfg)
+	testConfigCreate(t, b, s, cfgSubset)
+	testConfigUpdate(t, b, s, cfg)
 
 	// Test bad environment
 	cfg = map[string]interface{}{
@@ -102,7 +90,7 @@ func TestConfigTTLs(t *testing.T) {
 			cfg["max_ttl"] = test.max_ttl
 		}
 		resp, err := b.HandleRequest(context.Background(), &logical.Request{
-			Operation: logical.UpdateOperation,
+			Operation: logical.CreateOperation,
 			Path:      "config",
 			Data:      cfg,
 			Storage:   s,
@@ -115,13 +103,23 @@ func TestConfigTTLs(t *testing.T) {
 	}
 }
 
+func testConfigCreate(t *testing.T, b logical.Backend, s logical.Storage, d map[string]interface{}) {
+	t.Helper()
+	testConfigCreateUpdate(t, b, logical.CreateOperation, s, d)
+}
+
 func testConfigUpdate(t *testing.T, b logical.Backend, s logical.Storage, d map[string]interface{}) {
+	t.Helper()
+	testConfigCreateUpdate(t, b, logical.UpdateOperation, s, d)
+}
+
+func testConfigCreateUpdate(t *testing.T, b logical.Backend, op logical.Operation, s logical.Storage, d map[string]interface{}) {
 	t.Helper()
 
 	// save and restore the mock provider since the config change will clear it
 	provider := b.(*azureSecretBackend).provider
 	resp, err := b.HandleRequest(context.Background(), &logical.Request{
-		Operation: logical.UpdateOperation,
+		Operation: op,
 		Path:      "config",
 		Data:      d,
 		Storage:   s,

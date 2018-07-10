@@ -100,6 +100,9 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	}
 
 	if role == nil {
+		if req.Operation == logical.UpdateOperation {
+			return nil, errors.New("role entry not found during update operation")
+		}
 		role = &Role{
 			CredentialType: credentialTypeSP,
 		}
@@ -108,10 +111,14 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	// update role with any provided parameters
 	if ttlRaw, ok := d.GetOk("ttl"); ok {
 		role.DefaultTTL = time.Duration(ttlRaw.(int)) * time.Second
+	} else if req.Operation == logical.CreateOperation {
+		role.DefaultTTL = time.Duration(d.Get("ttl").(int)) * time.Second
 	}
 
 	if maxTTLRaw, ok := d.GetOk("max_ttl"); ok {
 		role.MaxTTL = time.Duration(maxTTLRaw.(int)) * time.Second
+	} else if req.Operation == logical.CreateOperation {
+		role.MaxTTL = time.Duration(d.Get("max_ttl").(int)) * time.Second
 	}
 
 	if roles, ok := d.GetOk("azure_roles"); ok {

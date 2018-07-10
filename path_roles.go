@@ -69,6 +69,7 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 			},
 			HelpSynopsis:    roleHelpSyn,
 			HelpDescription: roleHelpDesc,
+			ExistenceCheck:  b.pathRoleExistenceCheck,
 		},
 		{
 			Pattern: "roles/?",

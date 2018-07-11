@@ -28,7 +28,7 @@ type client struct {
 
 // newClient create an client using the given config.
 // If the config is invalid or authentication fails, an error is returned.
-func (b *azureSecretBackend) newClient(ctx context.Context, cfg *azureConfig) (*client, error) {
+func (b *azureSecretBackend) newClient(ctx context.Context, cfg azureConfig) (*client, error) {
 	settings, err := getClientSettings(cfg)
 	if err != nil {
 		return nil, err
@@ -198,7 +198,7 @@ type clientSettings struct {
 
 // getClientSettings creates a new clientSettings object.
 // Environment variables have higher precedence than stored configuration.
-func getClientSettings(config *azureConfig) (*clientSettings, error) {
+func getClientSettings(config azureConfig) (*clientSettings, error) {
 	firstAvailable := func(opts ...string) string {
 		for _, s := range opts {
 			if s != "" {

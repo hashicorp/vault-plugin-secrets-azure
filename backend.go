@@ -14,8 +14,7 @@ type azureSecretBackend struct {
 
 	provider AzureProvider
 	lock     sync.RWMutex
-
-	config *azureConfig
+	config   *azureConfig
 }
 
 func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend, error) {

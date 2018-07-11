@@ -15,14 +15,17 @@ const (
 	configStoragePath = "config"
 )
 
+// azureConfig contains values to configure Azure clients and
+// defaults for roles. The zero value is useful and results in
+// environments variable and system defaults being used.
 type azureConfig struct {
 	SubscriptionID string        `json:"subscription_id"`
 	TenantID       string        `json:"tenant_id"`
 	ClientID       string        `json:"client_id"`
 	ClientSecret   string        `json:"client_secret"`
+	Environment    string        `json:"environment"`
 	DefaultTTL     time.Duration `json:"ttl"`
 	MaxTTL         time.Duration `json:"max_ttl"`
-	Environment    string        `json:"environment"`
 }
 
 func pathConfig(b *azureSecretBackend) *framework.Path {
@@ -82,11 +85,14 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 		return nil, err
 	}
 
-	if config == nil {
+	exists, err := b.configExists(ctx, req.Storage)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
 		if req.Operation == logical.UpdateOperation {
 			return nil, errors.New("config not found during update operation")
 		}
-		config = new(azureConfig)
 	}
 
 	if subscriptionID, ok := data.GetOk("subscription_id"); ok {
@@ -168,10 +174,6 @@ func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Re
 		return nil, err
 	}
 
-	if config == nil {
-		return nil, nil
-	}
-
 	resp := &logical.Response{
 		Data: map[string]interface{}{
 			"subscription_id": config.SubscriptionID,
@@ -186,20 +188,29 @@ func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Re
 }
 
 func (b *azureSecretBackend) pathConfigExistenceCheck(ctx context.Context, req *logical.Request, data *framework.FieldData) (bool, error) {
-	config, err := b.getConfig(ctx, req.Storage)
+	return b.configExists(ctx, req.Storage)
+}
+
+// configExists checks for a persisted config. Useful as a standalone function as it is also
+// needed during pathConfigWrite.
+func (b *azureSecretBackend) configExists(ctx context.Context, s logical.Storage) (bool, error) {
+	entry, err := s.Get(ctx, configStoragePath)
+
 	if err != nil {
 		return false, err
 	}
-	return config != nil, nil
+
+	return entry != nil, nil
 }
 
-func (b *azureSecretBackend) getConfig(ctx context.Context, s logical.Storage) (*azureConfig, error) {
+// getConfig returns the stored config, or an empty (not nil) config
+func (b *azureSecretBackend) getConfig(ctx context.Context, s logical.Storage) (azureConfig, error) {
 	b.lock.RLock()
 	unlockFunc := b.lock.RUnlock
 	defer func() { unlockFunc() }()
 
 	if b.config != nil {
-		return b.config, nil
+		return *b.config, nil
 	}
 
 	// Upgrade lock
@@ -208,30 +219,26 @@ func (b *azureSecretBackend) getConfig(ctx context.Context, s logical.Storage) (
 	unlockFunc = b.lock.Unlock
 
 	if b.config != nil {
-		return b.config, nil
+		return *b.config, nil
 	}
 
+	var cfg azureConfig
 	entry, err := s.Get(ctx, configStoragePath)
 
-	if err != nil {
-		return nil, err
+	if entry == nil || err != nil {
+		return cfg, err
 	}
 
-	if entry == nil {
-		return nil, nil
+	if err := entry.DecodeJSON(&cfg); err != nil {
+		return cfg, err
 	}
 
-	cfg := new(azureConfig)
-	if err := entry.DecodeJSON(cfg); err != nil {
-		return nil, err
-	}
-
-	b.config = cfg
+	b.config = &cfg
 
 	return cfg, nil
 }
 
-func (b *azureSecretBackend) saveConfig(ctx context.Context, cfg *azureConfig, s logical.Storage) error {
+func (b *azureSecretBackend) saveConfig(ctx context.Context, cfg azureConfig, s logical.Storage) error {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
@@ -246,7 +253,7 @@ func (b *azureSecretBackend) saveConfig(ctx context.Context, cfg *azureConfig, s
 		return err
 	}
 
-	b.config = cfg
+	b.config = &cfg
 
 	return nil
 }

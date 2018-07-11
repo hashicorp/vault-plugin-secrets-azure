@@ -169,7 +169,7 @@ func (b *azureSecretBackend) spRevoke(ctx context.Context, req *logical.Request,
 }
 
 // updateTTLs sets a secret's TTLs
-func updateTTLs(secret *logical.Secret, role *Role, cfg *azureConfig) {
+func updateTTLs(secret *logical.Secret, role *Role, cfg azureConfig) {
 	secret.TTL = cfg.DefaultTTL
 	secret.MaxTTL = cfg.MaxTTL
 

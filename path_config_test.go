@@ -11,7 +11,7 @@ func TestConfig(t *testing.T) {
 	b, s := getTestBackend(t, false)
 
 	// Test valid config
-	cfg := map[string]interface{}{
+	config := map[string]interface{}{
 		"subscription_id": "a228ceec-bf1a-4411-9f95-39678d8cdb34",
 		"tenant_id":       "7ac36e27-80fc-4209-a453-e8ad83dc18c2",
 		"client_id":       "testClientId",
@@ -19,28 +19,28 @@ func TestConfig(t *testing.T) {
 		"environment":     "AZURECHINACLOUD",
 	}
 
-	testConfigCreate(t, b, s, cfg)
+	testConfigCreate(t, b, s, config)
 
-	delete(cfg, "client_secret")
-	testConfigRead(t, b, s, cfg)
+	delete(config, "client_secret")
+	testConfigRead(t, b, s, config)
 
 	// Test test updating one element retains the others
-	cfg["tenant_id"] = "800e371d-ee51-4145-9ac8-5c43e4ceb79b"
-	cfgSubset := map[string]interface{}{
+	config["tenant_id"] = "800e371d-ee51-4145-9ac8-5c43e4ceb79b"
+	configSubset := map[string]interface{}{
 		"tenant_id": "800e371d-ee51-4145-9ac8-5c43e4ceb79b",
 	}
-	testConfigCreate(t, b, s, cfgSubset)
-	testConfigUpdate(t, b, s, cfg)
+	testConfigCreate(t, b, s, configSubset)
+	testConfigUpdate(t, b, s, config)
 
 	// Test bad environment
-	cfg = map[string]interface{}{
+	config = map[string]interface{}{
 		"environment": "invalidEnv",
 	}
 
 	resp, _ := b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.UpdateOperation,
 		Path:      "config",
-		Data:      cfg,
+		Data:      config,
 		Storage:   s,
 	})
 

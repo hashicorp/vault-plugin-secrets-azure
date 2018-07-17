@@ -177,27 +177,27 @@ func (b *azureSecretBackend) getConfig(ctx context.Context, s logical.Storage) (
 		return *b.config, nil
 	}
 
-	var cfg azureConfig
+	var config azureConfig
 	entry, err := s.Get(ctx, configStoragePath)
 
 	if entry == nil || err != nil {
-		return cfg, err
+		return config, err
 	}
 
-	if err := entry.DecodeJSON(&cfg); err != nil {
-		return cfg, err
+	if err := entry.DecodeJSON(&config); err != nil {
+		return config, err
 	}
 
-	b.config = &cfg
+	b.config = &config
 
-	return cfg, nil
+	return config, nil
 }
 
-func (b *azureSecretBackend) saveConfig(ctx context.Context, cfg azureConfig, s logical.Storage) error {
+func (b *azureSecretBackend) saveConfig(ctx context.Context, config azureConfig, s logical.Storage) error {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	entry, err := logical.StorageEntryJSON(configStoragePath, cfg)
+	entry, err := logical.StorageEntryJSON(configStoragePath, config)
 
 	if err != nil {
 		return err
@@ -208,7 +208,7 @@ func (b *azureSecretBackend) saveConfig(ctx context.Context, cfg azureConfig, s 
 		return err
 	}
 
-	b.config = &cfg
+	b.config = &config
 
 	return nil
 }

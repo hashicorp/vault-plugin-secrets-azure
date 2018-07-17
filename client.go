@@ -28,8 +28,8 @@ type client struct {
 
 // newClient create an client using the given config.
 // If the config is invalid or authentication fails, an error is returned.
-func (b *azureSecretBackend) newClient(ctx context.Context, cfg azureConfig) (*client, error) {
-	settings, err := getClientSettings(cfg)
+func (b *azureSecretBackend) newClient(ctx context.Context, config azureConfig) (*client, error) {
+	settings, err := getClientSettings(config)
 	if err != nil {
 		return nil, err
 	}

@@ -48,12 +48,12 @@ func pathServicePrincipal(b *azureSecretBackend) *framework.Path {
 //   2. Create a service principal associated with the new App
 //   3. Assign roles
 func (b *azureSecretBackend) pathSPRead(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-	cfg, err := b.getConfig(ctx, req.Storage)
+	config, err := b.getConfig(ctx, req.Storage)
 	if err != nil {
 		return nil, err
 	}
 
-	c, err := b.newClient(ctx, cfg)
+	c, err := b.newClient(ctx, config)
 	if err != nil {
 		return logical.ErrorResponse(err.Error()), nil
 	}
@@ -144,12 +144,12 @@ func (b *azureSecretBackend) spRevoke(ctx context.Context, req *logical.Request,
 		}
 	}
 
-	cfg, err := b.getConfig(ctx, req.Storage)
+	config, err := b.getConfig(ctx, req.Storage)
 	if err != nil {
 		return nil, errwrap.Wrapf("error during revoke: {{err}}", err)
 	}
 
-	c, err := b.newClient(ctx, cfg)
+	c, err := b.newClient(ctx, config)
 	if err != nil {
 		return nil, errwrap.Wrapf("error during revoke: {{err}}", err)
 	}

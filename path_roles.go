@@ -26,7 +26,7 @@ const (
 type Role struct {
 	CredentialType int           `json:"credential_type"` // Reserved. Always SP at this time.
 	AzureRoles     []*azureRole  `json:"azure_roles"`
-	DefaultTTL     time.Duration `json:"ttl"`
+	TTL            time.Duration `json:"ttl"`
 	MaxTTL         time.Duration `json:"max_ttl"`
 }
 
@@ -111,9 +111,9 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 
 	// update role with any provided parameters
 	if ttlRaw, ok := d.GetOk("ttl"); ok {
-		role.DefaultTTL = time.Duration(ttlRaw.(int)) * time.Second
+		role.TTL = time.Duration(ttlRaw.(int)) * time.Second
 	} else if req.Operation == logical.CreateOperation {
-		role.DefaultTTL = time.Duration(d.Get("ttl").(int)) * time.Second
+		role.TTL = time.Duration(d.Get("ttl").(int)) * time.Second
 	}
 
 	if maxTTLRaw, ok := d.GetOk("max_ttl"); ok {
@@ -179,34 +179,22 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	}
 
 	// validate role definition constraints
-	if role.DefaultTTL < 0 {
+	if role.TTL < 0 {
 		merr = multierror.Append(merr, errors.New("ttl < 0"))
 	}
 	if role.MaxTTL < 0 {
 		merr = multierror.Append(merr, errors.New("max_ttl < 0"))
 	}
 
-	if cfg.DefaultTTL > 0 {
-		if role.DefaultTTL > cfg.DefaultTTL {
-			merr = multierror.Append(merr, errors.New("ttl > config TTL"))
-		}
-	} else {
-		if role.DefaultTTL > b.System().DefaultLeaseTTL() {
-			merr = multierror.Append(merr, errors.New("ttl > system TTL"))
-		}
+	if role.TTL > b.System().DefaultLeaseTTL() {
+		merr = multierror.Append(merr, errors.New("ttl > system TTL"))
 	}
 
-	if cfg.MaxTTL > 0 {
-		if role.MaxTTL > cfg.MaxTTL {
-			merr = multierror.Append(merr, errors.New("max_ttl > config max TTL"))
-		}
-	} else {
-		if role.MaxTTL > b.System().MaxLeaseTTL() {
-			merr = multierror.Append(merr, errors.New("max_ttl > system max TTL"))
-		}
+	if role.MaxTTL > b.System().MaxLeaseTTL() {
+		merr = multierror.Append(merr, errors.New("max_ttl > system max TTL"))
 	}
 
-	if role.DefaultTTL > role.MaxTTL && role.MaxTTL != 0 {
+	if role.TTL > role.MaxTTL && role.MaxTTL != 0 {
 		merr = multierror.Append(merr, errors.New("ttl > max_ttl"))
 	}
 
@@ -241,7 +229,7 @@ func (b *azureSecretBackend) pathRoleRead(ctx context.Context, req *logical.Requ
 		return nil, nil
 	}
 
-	data["ttl"] = int64(r.DefaultTTL / time.Second)
+	data["ttl"] = int64(r.TTL / time.Second)
 	data["max_ttl"] = int64(r.MaxTTL / time.Second)
 	data["azure_roles"] = r.AzureRoles
 

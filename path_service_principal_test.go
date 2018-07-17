@@ -68,20 +68,10 @@ func TestSPRead(t *testing.T) {
 		// verify password format
 		_, err = uuid.ParseUUID(resp.Data["client_secret"].(string))
 		nilErr(t, err)
-
-		// verify secret ttls
-		equal(t, time.Duration(defaultTestTTL)*time.Second, resp.Secret.TTL)
-		equal(t, time.Duration(defaultTestMaxTTL)*time.Second, resp.Secret.MaxTTL)
 	})
 
 	// verify role TTLs are reflected in secret
 	t.Run("TTLs", func(t *testing.T) {
-		cfg := map[string]interface{}{
-			"ttl":     50,
-			"max_ttl": 100,
-		}
-		testConfigCreate(t, b, s, cfg)
-
 		name := generateUUID()
 		testRoleCreate(t, b, s, name, testRole)
 
@@ -93,8 +83,8 @@ func TestSPRead(t *testing.T) {
 
 		nilErr(t, err)
 
-		equal(t, 50*time.Second, resp.Secret.TTL)
-		equal(t, 100*time.Second, resp.Secret.MaxTTL)
+		equal(t, 0*time.Second, resp.Secret.TTL)
+		equal(t, 0*time.Second, resp.Secret.MaxTTL)
 
 		roleUpdate := map[string]interface{}{
 			"ttl":     20,

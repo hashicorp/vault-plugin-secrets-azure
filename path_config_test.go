@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/hashicorp/vault/logical"
-	"github.com/mitchellh/copystructure"
 )
 
 func TestConfig(t *testing.T) {
@@ -18,22 +17,11 @@ func TestConfig(t *testing.T) {
 		"client_id":       "testClientId",
 		"client_secret":   "testClientSecret",
 		"environment":     "AZURECHINACLOUD",
-		"ttl":             int64(5),
-		"max_ttl":         int64(18000),
 	}
 
 	testConfigCreate(t, b, s, cfg)
 
 	delete(cfg, "client_secret")
-	testConfigRead(t, b, s, cfg)
-
-	// Test string versions of ttls
-	c, _ := copystructure.Copy(cfg)
-	cfg2 := c.(map[string]interface{})
-	cfg2["ttl"] = "5s"
-	cfg2["max_ttl"] = "5h"
-
-	testConfigCreate(t, b, s, cfg2)
 	testConfigRead(t, b, s, cfg)
 
 	// Test test updating one element retains the others
@@ -58,48 +46,6 @@ func TestConfig(t *testing.T) {
 
 	if !resp.IsError() {
 		t.Fatal("expected a response error")
-	}
-}
-
-func TestConfigTTLs(t *testing.T) {
-	b, s := getTestBackend(t, false)
-
-	const skip = -999
-	tests := []struct {
-		ttl      int64
-		max_ttl  int64
-		expError bool
-	}{
-		{5, 10, false},
-		{5, skip, false},
-		{skip, 10, false},
-		{-1, skip, true},
-		{skip, -1, true},
-		{-2, -1, true},
-		{100, 100, false},
-		{101, 100, true},
-		{101, 0, false},
-	}
-
-	for i, test := range tests {
-		cfg := map[string]interface{}{}
-		if test.ttl != skip {
-			cfg["ttl"] = test.ttl
-		}
-		if test.max_ttl != skip {
-			cfg["max_ttl"] = test.max_ttl
-		}
-		resp, err := b.HandleRequest(context.Background(), &logical.Request{
-			Operation: logical.CreateOperation,
-			Path:      "config",
-			Data:      cfg,
-			Storage:   s,
-		})
-		nilErr(t, err)
-
-		if resp.IsError() != test.expError {
-			t.Fatalf("\ncase %d\nexp error: %t\ngot: %v", i, test.expError, err)
-		}
 	}
 }
 

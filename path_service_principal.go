@@ -99,17 +99,13 @@ func (b *azureSecretBackend) pathSPRead(ctx context.Context, req *logical.Reques
 		"role":                roleName,
 	})
 
-	updateTTLs(resp.Secret, role, cfg)
+	resp.Secret.TTL = role.TTL
+	resp.Secret.MaxTTL = role.MaxTTL
 
 	return resp, nil
 }
 
 func (b *azureSecretBackend) spRenew(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-	cfg, err := b.getConfig(ctx, req.Storage)
-	if err != nil {
-		return nil, err
-	}
-
 	roleRaw, ok := req.Secret.InternalData["role"]
 	if !ok {
 		return nil, errors.New("internal data not found")
@@ -125,7 +121,8 @@ func (b *azureSecretBackend) spRenew(ctx context.Context, req *logical.Request, 
 	}
 
 	resp := &logical.Response{Secret: req.Secret}
-	updateTTLs(resp.Secret, role, cfg)
+	resp.Secret.TTL = role.TTL
+	resp.Secret.MaxTTL = role.MaxTTL
 
 	return resp, nil
 }
@@ -166,22 +163,6 @@ func (b *azureSecretBackend) spRevoke(ctx context.Context, req *logical.Request,
 	err = c.deleteApp(ctx, appObjectID)
 
 	return resp, err
-}
-
-// updateTTLs sets a secret's TTLs
-func updateTTLs(secret *logical.Secret, role *Role, cfg azureConfig) {
-	secret.TTL = cfg.DefaultTTL
-	secret.MaxTTL = cfg.MaxTTL
-
-	if role != nil {
-		if role.DefaultTTL > 0 && (cfg.DefaultTTL == 0 || role.DefaultTTL < cfg.DefaultTTL) {
-			secret.TTL = role.DefaultTTL
-		}
-
-		if role.MaxTTL > 0 && (cfg.MaxTTL == 0 || role.MaxTTL < cfg.DefaultTTL) {
-			secret.MaxTTL = role.MaxTTL
-		}
-	}
 }
 
 const pathServicePrincipalHelpSyn = `

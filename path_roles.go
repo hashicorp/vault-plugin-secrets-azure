@@ -10,7 +10,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/hashicorp/errwrap"
-	multierror "github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/vault/helper/jsonutil"
 	"github.com/hashicorp/vault/logical"
 	"github.com/hashicorp/vault/logical/framework"
@@ -22,7 +21,7 @@ const (
 	credentialTypeSP = 0
 )
 
-// Roles is a Vault role construct, now mapping to Azure roles, primarily
+// Role is a Vault role construct that maps to Azure roles
 type Role struct {
 	CredentialType int           `json:"credential_type"` // Reserved. Always SP at this time.
 	AzureRoles     []*azureRole  `json:"azure_roles"`
@@ -90,7 +89,6 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 // a role name or ID.  ID is unambigious and will be used if provided. Given just role name,
 // a search will be performed and if exactly one match is found, that role will be used.
 func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-	var merr *multierror.Error
 	var resp *logical.Response
 
 	// load or create role
@@ -127,7 +125,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 
 		err := jsonutil.DecodeJSON([]byte(roles.(string)), &parsedRoles)
 		if err != nil {
-			merr = multierror.Append(merr, errors.New("invalid Azure role definitions"))
+			return logical.ErrorResponse("invalid Azure role definitions"), nil
 		}
 		role.AzureRoles = parsedRoles
 	}
@@ -179,31 +177,12 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	}
 
 	// validate role definition constraints
-	if role.TTL < 0 {
-		merr = multierror.Append(merr, errors.New("ttl < 0"))
-	}
-	if role.MaxTTL < 0 {
-		merr = multierror.Append(merr, errors.New("max_ttl < 0"))
-	}
-
-	if role.TTL > b.System().DefaultLeaseTTL() {
-		merr = multierror.Append(merr, errors.New("ttl > system TTL"))
-	}
-
-	if role.MaxTTL > b.System().MaxLeaseTTL() {
-		merr = multierror.Append(merr, errors.New("max_ttl > system max TTL"))
-	}
-
-	if role.TTL > role.MaxTTL && role.MaxTTL != 0 {
-		merr = multierror.Append(merr, errors.New("ttl > max_ttl"))
+	if role.MaxTTL != 0 && role.TTL > role.MaxTTL {
+		return logical.ErrorResponse("ttl cannot be greater than max_ttl"), nil
 	}
 
 	if role.AzureRoles == nil || len(role.AzureRoles) == 0 {
-		merr = multierror.Append(merr, errors.New("missing Azure role definitions"))
-	}
-
-	if merr.ErrorOrNil() != nil {
-		return logical.ErrorResponse(merr.Error()), nil
+		return logical.ErrorResponse("missing Azure role definitions"), nil
 	}
 
 	// save role

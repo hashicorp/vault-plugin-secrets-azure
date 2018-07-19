@@ -61,7 +61,7 @@ func TestSPRead(t *testing.T) {
 		nilErr(t, err)
 
 		appObjID := resp.Secret.InternalData["app_object_id"].(string)
-		if !b.provider.(*mockProvider).appExists(appObjID) {
+		if !b.client.provider.(*mockProvider).appExists(appObjID) {
 			t.Fatalf("application was not created")
 		}
 
@@ -117,7 +117,7 @@ func TestSPRevoke(t *testing.T) {
 	})
 
 	appObjID := resp.Secret.InternalData["app_object_id"].(string)
-	if !b.provider.(*mockProvider).appExists(appObjID) {
+	if !b.client.provider.(*mockProvider).appExists(appObjID) {
 		t.Fatalf("application was not created")
 	}
 
@@ -141,7 +141,7 @@ func TestSPRevoke(t *testing.T) {
 		t.Fatalf("receive response error: %v", resp.Error())
 	}
 
-	if b.provider.(*mockProvider).appExists(appObjID) {
+	if b.client.provider.(*mockProvider).appExists(appObjID) {
 		t.Fatalf("application present but should have been deleted")
 	}
 }
@@ -167,7 +167,7 @@ func TestCredentialReadProviderError(t *testing.T) {
 
 	testRoleCreate(t, b, s, "test_role", testRole)
 
-	b.provider.(*mockProvider).failNextCreateApplication = true
+	b.client.provider.(*mockProvider).failNextCreateApplication = true
 
 	_, err := b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.ReadOperation,
@@ -242,7 +242,7 @@ func TestCredentialInteg(t *testing.T) {
 	appID := resp.Data["client_id"].(string)
 
 	// Use the underlying provider to access clients directly for testing
-	client := b.provider.(*provider)
+	client := b.client.provider.(*provider)
 
 	// recover the SP Object ID, which is not used by the application but
 	// is helpful for verification testing
@@ -276,7 +276,7 @@ FOUND:
 	ra, err := client.raClient.GetByID(context.Background(), raIDs[0])
 	nilErr(t, err)
 
-	roleDefs, err := b.provider.ListRoles(context.Background(), fmt.Sprintf("subscriptions/%s", subscriptionID), "")
+	roleDefs, err := b.client.provider.ListRoles(context.Background(), fmt.Sprintf("subscriptions/%s", subscriptionID), "")
 	nilErr(t, err)
 
 	defID := *ra.RoleAssignmentPropertiesWithScope.RoleDefinitionID

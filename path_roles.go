@@ -132,12 +132,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 
 	// verify Azure roles, including looking up each role
 	// by ID or name.
-	config, err := b.getConfig(ctx, req.Storage)
-	if err != nil {
-		return nil, err
-	}
-
-	c, err := b.newClient(ctx, config)
+	c, err := b.getClient(ctx, req.Storage)
 	if err != nil {
 		return nil, err
 	}

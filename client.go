@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/errwrap"
 	multierror "github.com/hashicorp/go-multierror"
 	uuid "github.com/hashicorp/go-uuid"
+	"github.com/hashicorp/vault/logical"
 )
 
 // client offers higher level Azure operations that provide a simpler interface
@@ -26,25 +27,51 @@ type client struct {
 	settings *clientSettings
 }
 
-// newClient create an client using the given config.
-// If the config is invalid or authentication fails, an error is returned.
-func (b *azureSecretBackend) newClient(ctx context.Context, config azureConfig) (*client, error) {
+func (b *azureSecretBackend) getClient(ctx context.Context, s logical.Storage) (*client, error) {
+	b.lock.RLock()
+	unlockFunc := b.lock.RUnlock
+	defer func() { unlockFunc() }()
+
+	if b.client != nil {
+		return b.client, nil
+	}
+
+	// Upgrade lock
+	b.lock.RUnlock()
+	b.lock.Lock()
+	unlockFunc = b.lock.Unlock
+
+	if b.client != nil {
+		return b.client, nil
+	}
+
+	// Create a new client from the stored or empty config
+	config, err := b.getConfig(ctx, s)
+	if err != nil {
+		return nil, err
+	}
+	if config == nil {
+		config = new(azureConfig)
+	}
+
 	settings, err := getClientSettings(config)
 	if err != nil {
 		return nil, err
 	}
 
-	p, err := b.getProvider(settings)
+	p, err := NewAzureProvider(settings)
 	if err != nil {
 		return nil, err
 	}
 
-	c := client{
+	c := &client{
 		provider: p,
 		settings: settings,
 	}
 
-	return &c, nil
+	b.client = c
+
+	return c, nil
 }
 
 // createApp creates a new Azure application.
@@ -198,7 +225,7 @@ type clientSettings struct {
 
 // getClientSettings creates a new clientSettings object.
 // Environment variables have higher precedence than stored configuration.
-func getClientSettings(config azureConfig) (*clientSettings, error) {
+func getClientSettings(config *azureConfig) (*clientSettings, error) {
 	firstAvailable := func(opts ...string) string {
 		for _, s := range opts {
 			if s != "" {

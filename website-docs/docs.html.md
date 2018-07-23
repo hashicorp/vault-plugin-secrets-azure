@@ -9,25 +9,14 @@ description: |-
 
 # Azure Secrets Engine
 
-The Azure secrets engine dynamically generates Azure service
-princpals and role assignments. This enables users to gain
-access to Azure resources without needing to create or manage a dedicated
-service principal.
+The Azure secrets engine dynamically generates Azure service principals and role
+assignments.  Vault roles can be mapped to one or more Azure roles, providing a
+simple, flexible way to manage the permissions granted to generated service
+principals.
 
-The benefits of using this secrets engine to manage Azure service principals are:
-
-- **Automatic cleanup of Azure service principals** - each service principal
-  is associated with a Vault lease. When the lease expires (either during
-  normal revocation or through early revocation), the service principal is
-  automatically revoked.
-
-- **Quick, short-term access** - users do not need to create new Azure service
-  principals for short-term or one-off access (such as batch jobs or quick
-  introspection).
-
-- **Flexible permissions configuration** - Vault roles can be mapped to one or more
-  Azure roles, providing a simple, flexible way to manage the permissions granted
-  to generated service principals.
+Each service principal is associated with a Vault lease. When the lease expires
+(either during normal revocation or through early revocation), the service
+principal is automatically deleted.
 
 ## Setup
 
@@ -165,13 +154,14 @@ These permissions can be configured through the Azure Portal, CLI tool, or Power
 
 ## Additional Notes
 
+-  **If a referenced Azure role doesn't exist, a credential will not be generated.**
+  Service principals will only be generated if *all* role assignments are successful.
+  This is important to note if you're using custom Azure role definitions that might be deleted
+  at some point.
+
 - Azure roles are assigned only once, when the service principal is created. If the
   Vault role changes the list of Azure roles, these changes will not be reflected in
-  any existing service princpal, even after token renewal.
-
-- Service principals will only be generated if *all* role assignments are successful.
-  This is important to note if you're using custom Azure role defintions that might be deleted
-  at some point. If the referenced Azure role doesn't exist, a credential will not be generated.
+  any existing service principal, even after token renewal.
 
 - The time required to issue a credential is roughly proportional to the number of
   Azure roles that must be assigned. This operation make take some time (10s of seconds

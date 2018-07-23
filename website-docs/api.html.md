@@ -26,11 +26,16 @@ service principals. Environment variables will override any parameters set in th
 | :------- | :------------------------| :------------------------ |
 | `POST`   | `/azure/config`            | `204 (empty body)`        |
 
-- `subscription_id` (`string: <required>`) - The subscription id for the Azure Active Directory. This value can also be provided with the AZURE_SUBSCRIPTION_ID environment variable.
-- `tenant_id` (`string: <required>`) - The tenant id for the Azure Active Directory.  This value can also be provided with the AZURE_TENANT_ID environment variable.
-- `client_id` (`string:""`) - The OAuth2 client id to connect to Azure. This value can also be provided with the AZURE_CLIENT_ID environment variable. See [authentication](#Authentication) for more details.
-- `client_secret` (`string:""`) - The OAuth2 client secret to connect to Azure. This value can also be provided with the AZURE_CLIENT_ID environment variable. See [authentication](#Authentication) for more details.
-- `environment` (`string:""`) - The Azure environment. This value can also be provided with the AZURE_ENVIRONMENT environment variable. If not specified, Vault will use Azure Public Cloud.
+- `subscription_id` (`string: <required>`) - The subscription id for the Azure Active Directory.
+  This value can also be provided with the AZURE_SUBSCRIPTION_ID environment variable.
+- `tenant_id` (`string: <required>`) - The tenant id for the Azure Active Directory.
+  This value can also be provided with the AZURE_TENANT_ID environment variable.
+- `client_id` (`string:""`) - The OAuth2 client id to connect to Azure. This value can also be provided
+  with the AZURE_CLIENT_ID environment variable. See [authentication](#Authentication) for more details.
+- `client_secret` (`string:""`) - The OAuth2 client secret to connect to Azure. This value can also be
+  provided with the AZURE_CLIENT_ID environment variable. See [authentication](#Authentication) for more details.
+- `environment` (`string:""`) - The Azure environment. This value can also be provided with the AZURE_ENVIRONMENT
+  environment variable. If not specified, Vault will use Azure Public Cloud.
 
 ### Sample Payload
 
@@ -118,9 +123,12 @@ for more information about roles.
 ### Parameters
 
 - `name` (`string: <required>`) - Required. Name of the role. Cannot be updated.
-- `azure_roles` (`array: <required>`) - List of Azure roles to be assigned to the generated service principal. See [roles docs][roles] for details on role definition.
-- `ttl` (`string: ""`) – Specifies the default TTL for service principals generated using this role. Accepts time suffixed strings ("1h") or an integer number of seconds. Defaults to system/engine default TTL time.
-- `max_ttl` (`string: ""`) – Specifies the maximum TTL for service principals generated using this role. Accepts time suffixed strings ("1h") or an integer number of seconds. Defaults to system/engine default max TTL time.
+- `azure_roles` (`array: <required>`) - List of Azure roles to be assigned to the generated service
+   principal. See [roles docs][roles] for details on role definition.
+- `ttl` (`string: ""`) – Specifies the default TTL for service principals generated using this role.
+   Accepts time suffixed strings ("1h") or an integer number of seconds. Defaults to the system/engine default TTL time.
+- `max_ttl` (`string: ""`) – Specifies the maximum TTL for service principals generated using this role. Accepts time
+   suffixed strings ("1h") or an integer number of seconds. Defaults to the system/engine max TTL time.
 
 ### Sample Payload
 

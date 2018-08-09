@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"strings"
 	"time"
@@ -111,18 +112,28 @@ func (c *client) createSP(
 		return nil, "", err
 	}
 
-	now := time.Now()
-	result, err := c.provider.CreateServicePrincipal(ctx, graphrbac.ServicePrincipalCreateParameters{
-		AppID:          app.AppID,
-		AccountEnabled: to.BoolPtr(true),
-		PasswordCredentials: &[]graphrbac.PasswordCredential{
-			graphrbac.PasswordCredential{
-				StartDate: &date.Time{Time: now},
-				EndDate:   &date.Time{Time: now.Add(duration)},
-				KeyID:     to.StringPtr(keyID),
-				Value:     to.StringPtr(password),
+	var result graphrbac.ServicePrincipal
+	err = retry(ctx, func() (bool, error) {
+		now := time.Now()
+		result, err = c.provider.CreateServicePrincipal(ctx, graphrbac.ServicePrincipalCreateParameters{
+			AppID:          app.AppID,
+			AccountEnabled: to.BoolPtr(true),
+			PasswordCredentials: &[]graphrbac.PasswordCredential{
+				graphrbac.PasswordCredential{
+					StartDate: &date.Time{Time: now},
+					EndDate:   &date.Time{Time: now.Add(duration)},
+					KeyID:     to.StringPtr(keyID),
+					Value:     to.StringPtr(password),
+				},
 			},
-		},
+		})
+
+		// Propagation delays within Azure can cause this error occasionally, so don't quit on it.
+		if err != nil && strings.Contains(err.Error(), "does not reference a valid application object") {
+			return false, nil
+		}
+
+		return true, err
 	})
 
 	return &result, password, err
@@ -150,13 +161,7 @@ func (c *client) assignRoles(ctx context.Context, sp *graphrbac.ServicePrincipal
 			return nil, err
 		}
 
-		// retries are essential for this operation as there can be a significant delay between
-		// when a service principal is created and when it is visible for other operations. If
-		// it isn't visible yet, "PrincipalNotFound" is the error received and is not treated
-		// as an error here. The retry logic (5 seconds sleeps, max 36 tries) is straight from
-		// the az cli behavior and was confirmed as acceptable by Microsoft.
-		assigned := false
-		for i := 0; i < 36; i++ {
+		err = retry(ctx, func() (bool, error) {
 			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentID,
 				authorization.RoleAssignmentCreateParameters{
 					RoleAssignmentProperties: &authorization.RoleAssignmentProperties{
@@ -165,26 +170,20 @@ func (c *client) assignRoles(ctx context.Context, sp *graphrbac.ServicePrincipal
 					},
 				})
 
+			// Propagation delays within Azure can cause this error occasionally, so don't quit on it.
+			if err != nil && strings.Contains(err.Error(), "PrincipalNotFound") {
+				return false, nil
+			}
+
 			if err == nil {
 				ids = append(ids, to.String(ra.ID))
-				assigned = true
-				break
 			}
 
-			if !strings.Contains(err.Error(), "PrincipalNotFound") {
-				return nil, errwrap.Wrapf("error while assigning role: {{err}}", err)
-			}
+			return true, err
+		})
 
-			t := time.NewTimer(5 * time.Second)
-			select {
-			case <-t.C:
-			case <-ctx.Done():
-				return nil, errors.New("role assignment operation cancelled")
-			}
-		}
-
-		if !assigned {
-			return nil, fmt.Errorf("Unable to assign roles. Principal ID not found: %s", to.String(sp.ObjectID))
+		if err != nil {
+			return nil, errwrap.Wrapf("error while assigning roles: {{err}}", err)
 		}
 	}
 
@@ -265,4 +264,32 @@ func (b *azureSecretBackend) getClientSettings(ctx context.Context, config *azur
 	settings.PluginEnv = pluginEnv
 
 	return settings, nil
+}
+
+// retry will repeatedly call f until one of:
+//   * f returns true
+//   * the context is cancelled
+//   * 3 minutes elapse
+//
+// Delays are random but will average 5 seconds. The hardcoded durations are the same
+// ones used in the Azure CLI tool.
+func retry(ctx context.Context, f func() (bool, error)) error {
+	endCh := time.NewTimer(3 * time.Minute).C
+
+	for {
+		if done, err := f(); done {
+			return err
+		}
+
+		delay := time.Duration(2000+rand.Intn(6000)) * time.Millisecond
+		delayCh := time.NewTimer(delay).C
+
+		select {
+		case <-delayCh:
+		case <-endCh:
+			return errors.New("retry: timeout")
+		case <-ctx.Done():
+			return errors.New("retry: cancelled")
+		}
+	}
 }

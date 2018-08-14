@@ -11,8 +11,8 @@ import (
 func TestRetry(t *testing.T) {
 	t.Parallel()
 	t.Run("First try success", func(t *testing.T) {
-		err := retry(context.Background(), func() (bool, error) {
-			return true, nil
+		_, err := retry(context.Background(), func() (interface{}, bool, error) {
+			return nil, true, nil
 		})
 		nilErr(t, err)
 	})
@@ -22,12 +22,12 @@ func TestRetry(t *testing.T) {
 		start := time.Now()
 		count := 0
 
-		err := retry(context.Background(), func() (bool, error) {
+		_, err := retry(context.Background(), func() (interface{}, bool, error) {
 			count++
 			if count >= 3 {
-				return true, nil
+				return nil, true, nil
 			}
-			return false, nil
+			return nil, false, nil
 		})
 		equal(t, count, 3)
 
@@ -41,8 +41,8 @@ func TestRetry(t *testing.T) {
 
 	t.Run("Error on attempt", func(t *testing.T) {
 		t.Parallel()
-		err := retry(context.Background(), func() (bool, error) {
-			return true, errors.New("Fail")
+		_, err := retry(context.Background(), func() (interface{}, bool, error) {
+			return nil, true, errors.New("Fail")
 		})
 		if err == nil || !strings.Contains(err.Error(), "Fail") {
 			t.Fatalf("expected failure error, got: %v", err)
@@ -56,8 +56,8 @@ func TestRetry(t *testing.T) {
 		}
 		t.Parallel()
 		start := time.Now()
-		err := retry(context.Background(), func() (bool, error) {
-			return false, nil
+		_, err := retry(context.Background(), func() (interface{}, bool, error) {
+			return nil, false, nil
 		})
 		elapsed := time.Now().Sub(start).Seconds()
 		if elapsed < 178 || elapsed > 182 {
@@ -78,8 +78,8 @@ func TestRetry(t *testing.T) {
 		}()
 
 		start := time.Now()
-		err := retry(ctx, func() (bool, error) {
-			return false, nil
+		_, err := retry(ctx, func() (interface{}, bool, error) {
+			return nil, false, nil
 		})
 		elapsed := time.Now().Sub(start).Seconds()
 		if elapsed < 6 || elapsed > 8 {

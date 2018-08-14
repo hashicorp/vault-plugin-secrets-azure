@@ -112,10 +112,9 @@ func (c *client) createSP(
 		return nil, "", err
 	}
 
-	var result graphrbac.ServicePrincipal
-	err = retry(ctx, func() (bool, error) {
+	resultRaw, err := retry(ctx, func() (interface{}, bool, error) {
 		now := time.Now()
-		result, err = c.provider.CreateServicePrincipal(ctx, graphrbac.ServicePrincipalCreateParameters{
+		result, err := c.provider.CreateServicePrincipal(ctx, graphrbac.ServicePrincipalCreateParameters{
 			AppID:          app.AppID,
 			AccountEnabled: to.BoolPtr(true),
 			PasswordCredentials: &[]graphrbac.PasswordCredential{
@@ -130,11 +129,13 @@ func (c *client) createSP(
 
 		// Propagation delays within Azure can cause this error occasionally, so don't quit on it.
 		if err != nil && strings.Contains(err.Error(), "does not reference a valid application object") {
-			return false, nil
+			return nil, false, nil
 		}
 
-		return true, err
+		return result, true, err
 	})
+
+	result := resultRaw.(graphrbac.ServicePrincipal)
 
 	return &result, password, err
 }
@@ -161,7 +162,7 @@ func (c *client) assignRoles(ctx context.Context, sp *graphrbac.ServicePrincipal
 			return nil, err
 		}
 
-		err = retry(ctx, func() (bool, error) {
+		resultRaw, err := retry(ctx, func() (interface{}, bool, error) {
 			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentID,
 				authorization.RoleAssignmentCreateParameters{
 					RoleAssignmentProperties: &authorization.RoleAssignmentProperties{
@@ -172,19 +173,17 @@ func (c *client) assignRoles(ctx context.Context, sp *graphrbac.ServicePrincipal
 
 			// Propagation delays within Azure can cause this error occasionally, so don't quit on it.
 			if err != nil && strings.Contains(err.Error(), "PrincipalNotFound") {
-				return false, nil
+				return nil, false, nil
 			}
 
-			if err == nil {
-				ids = append(ids, to.String(ra.ID))
-			}
-
-			return true, err
+			return to.String(ra.ID), true, err
 		})
 
 		if err != nil {
 			return nil, errwrap.Wrapf("error while assigning roles: {{err}}", err)
 		}
+
+		ids = append(ids, resultRaw.(string))
 	}
 
 	return ids, nil
@@ -273,23 +272,24 @@ func (b *azureSecretBackend) getClientSettings(ctx context.Context, config *azur
 //
 // Delays are random but will average 5 seconds. The hardcoded durations are the same
 // ones used in the Azure CLI tool.
-func retry(ctx context.Context, f func() (bool, error)) error {
+func retry(ctx context.Context, f func() (interface{}, bool, error)) (interface{}, error) {
+	delayTimer := time.NewTimer(0)
 	endCh := time.NewTimer(3 * time.Minute).C
 
 	for {
-		if done, err := f(); done {
-			return err
+		if result, done, err := f(); done {
+			return result, err
 		}
 
 		delay := time.Duration(2000+rand.Intn(6000)) * time.Millisecond
-		delayCh := time.NewTimer(delay).C
+		delayTimer.Reset(delay)
 
 		select {
-		case <-delayCh:
+		case <-delayTimer.C:
 		case <-endCh:
-			return errors.New("retry: timeout")
+			return nil, errors.New("retry: timeout")
 		case <-ctx.Done():
-			return errors.New("retry: cancelled")
+			return nil, errors.New("retry: cancelled")
 		}
 	}
 }

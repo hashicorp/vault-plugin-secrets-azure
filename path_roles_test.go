@@ -66,6 +66,40 @@ func TestRoleCreate(t *testing.T) {
 		equal(t, spRole2, resp.Data)
 	})
 
+	// Test azure_roles in the case where JSON has already been parsed.
+	t.Run("Parsed JSON role", func(t *testing.T) {
+		spRole3 := map[string]interface{}{
+			"azure_roles": []interface{}{
+				map[string]interface{}{
+					"role_name": "Contributor",
+					"role_id":   "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Contributor",
+					"scope":     "test_scope_3",
+				},
+				map[string]interface{}{
+					"role_name": "Contributor2",
+					"role_id":   "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Contributor2",
+					"scope":     "test_scope_3",
+				},
+			},
+			"ttl":     int64(300),
+			"max_ttl": int64(3000),
+		}
+
+		name := generateUUID()
+		testRoleCreate(t, b, s, name, spRole3)
+
+		resp, err := testRoleRead(t, b, s, name)
+		nilErr(t, err)
+
+		exp := []*azureRole{
+			&azureRole{RoleName: "Contributor", RoleID: "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Contributor", Scope: "test_scope_3"},
+			&azureRole{RoleName: "Contributor2", RoleID: "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Contributor2", Scope: "test_scope_3"},
+		}
+		act := resp.Data["azure_roles"]
+
+		equal(t, exp, act)
+	})
+
 	t.Run("Optional role TTLs", func(t *testing.T) {
 		testRole := map[string]interface{}{
 			"azure_roles": compactJSON(`[

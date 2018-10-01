@@ -18,15 +18,18 @@ import (
 const (
 	rolesStoragePath = "roles"
 
-	credentialTypeSP = 0
+	credentialTypeSP       = "service_principal"
+	credentialTypeStaticSP = "static_service_principal"
 )
 
-// Role is a Vault role construct that maps to Azure roles
+// Role is a Vault role construct that maps to Azure roles or Applications
 type Role struct {
-	CredentialType int           `json:"credential_type"` // Reserved. Always SP at this time.
-	AzureRoles     []*azureRole  `json:"azure_roles"`
-	TTL            time.Duration `json:"ttl"`
-	MaxTTL         time.Duration `json:"max_ttl"`
+	CredentialType      string        `json:"credential_type_2"`
+	AzureRoles          []*azureRole  `json:"azure_roles"`
+	ApplicationID       string        `json:"application_id"`
+	ApplicationObjectID string        `json:"application_object_id"`
+	TTL                 time.Duration `json:"ttl"`
+	MaxTTL              time.Duration `json:"max_ttl"`
 }
 
 // azureRole is an Azure Role (https://docs.microsoft.com/en-us/azure/role-based-access-control/overview) applied
@@ -45,11 +48,19 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 			Fields: map[string]*framework.FieldSchema{
 				"name": {
 					Type:        framework.TypeLowerCaseString,
-					Description: "Name of the role",
+					Description: "Name of the role.",
+				},
+				"credential_type": {
+					Type:        framework.TypeString,
+					Description: fmt.Sprintf("Type of credential to be generated. Must be one of: '%s', '%s'", credentialTypeSP, credentialTypeStaticSP),
+				},
+				"application_object_id": {
+					Type:        framework.TypeString,
+					Description: "Application Object ID to use for static service principal credentials.",
 				},
 				"azure_roles": {
 					Type:        framework.TypeString,
-					Description: "JSON list of Azure roles to assign",
+					Description: "JSON list of Azure roles to assign.",
 				},
 				"ttl": {
 					Type:        framework.TypeDurationSecond,
@@ -85,9 +96,16 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 // pathRoleUpdate creates or updates Vault roles.
 //
 // Basic validity check are made to verify that the provided fields meet requirements
-// and the Azure roles exist. The Azure role lookup step will all the operator to provide
-// a role name or ID.  ID is unambigious and will be used if provided. Given just role name,
-// a search will be performed and if exactly one match is found, that role will be used.
+// for the given credential type.
+//
+// Dynamic Service Principal:
+//   Azure roles are checked for existence. The Azure role lookup step will allow the
+//   operator to provide a role name or ID.  ID is unambigious and will be used if provided.
+//   Given just role name, a search will be performed and if exactly one match is found,
+//   that role will be used.
+//
+// Static Service Principal:
+//   The provided Application Object ID is checked for existence.
 func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
 	var resp *logical.Response
 
@@ -108,6 +126,22 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	}
 
 	// update role with any provided parameters
+	if credentialType := d.Get("credential_type").(string); credentialType != "" {
+		if credentialType != credentialTypeSP && credentialType != credentialTypeStaticSP {
+			return logical.ErrorResponse("unknown credential type: " + credentialType), nil
+		}
+
+		if req.Operation == logical.UpdateOperation && role.CredentialType != credentialType {
+			return logical.ErrorResponse("credential type may not be updated"), nil
+		}
+		role.CredentialType = credentialType
+	}
+
+	if appObjectID, ok := d.GetOk("application_object_id"); ok {
+		role.ApplicationObjectID = appObjectID.(string)
+	}
+
+	// load and validate TTLs
 	if ttlRaw, ok := d.GetOk("ttl"); ok {
 		role.TTL = time.Duration(ttlRaw.(int)) * time.Second
 	} else if req.Operation == logical.CreateOperation {
@@ -120,64 +154,78 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		role.MaxTTL = time.Duration(d.Get("max_ttl").(int)) * time.Second
 	}
 
-	if roles, ok := d.GetOk("azure_roles"); ok {
-		parsedRoles := make([]*azureRole, 0) // non-nil to avoid a "missing roles" error later
-
-		err := jsonutil.DecodeJSON([]byte(roles.(string)), &parsedRoles)
-		if err != nil {
-			return logical.ErrorResponse("invalid Azure role definitions"), nil
-		}
-		role.AzureRoles = parsedRoles
+	if role.MaxTTL != 0 && role.TTL > role.MaxTTL {
+		return logical.ErrorResponse("ttl cannot be greater than max_ttl"), nil
 	}
 
-	// verify Azure roles, including looking up each role
-	// by ID or name.
 	c, err := b.getClient(ctx, req.Storage)
 	if err != nil {
 		return nil, err
 	}
 
-	roleIDs := make(map[string]bool)
-	for _, r := range role.AzureRoles {
-		var roleDef authorization.RoleDefinition
-		if r.RoleID != "" {
-			roleDef, err = c.provider.GetRoleByID(ctx, r.RoleID)
+	// credential-type specific checks
+	switch role.CredentialType {
+	case credentialTypeSP:
+		if roles, ok := d.GetOk("azure_roles"); ok {
+			parsedRoles := make([]*azureRole, 0) // non-nil to avoid a "missing roles" error later
+
+			err := jsonutil.DecodeJSON([]byte(roles.(string)), &parsedRoles)
 			if err != nil {
-				if strings.Contains(err.Error(), "RoleDefinitionDoesNotExist") {
-					return logical.ErrorResponse(fmt.Sprintf("no role found for role_id: '%s'", r.RoleID)), nil
+				return logical.ErrorResponse("invalid Azure role definitions"), nil
+			}
+			role.AzureRoles = parsedRoles
+		}
+
+		// verify Azure roles, including looking up each role by ID or name.
+		roleIDs := make(map[string]bool)
+		for _, r := range role.AzureRoles {
+			var roleDef authorization.RoleDefinition
+			if r.RoleID != "" {
+				roleDef, err = c.provider.GetRoleByID(ctx, r.RoleID)
+				if err != nil {
+					if strings.Contains(err.Error(), "RoleDefinitionDoesNotExist") {
+						return logical.ErrorResponse(fmt.Sprintf("no role found for role_id: '%s'", r.RoleID)), nil
+					}
+					return nil, errwrap.Wrapf("unable to lookup Azure role: {{err}}", err)
 				}
-				return nil, errwrap.Wrapf("unable to lookup Azure role: {{err}}", err)
+			} else {
+				defs, err := c.findRoles(ctx, r.RoleName)
+				if err != nil {
+					return nil, errwrap.Wrapf("unable to lookup Azure role: {{err}}", err)
+				}
+				if l := len(defs); l == 0 {
+					return logical.ErrorResponse(fmt.Sprintf("no role found for role_name: '%s'", r.RoleName)), nil
+				} else if l > 1 {
+					return logical.ErrorResponse(fmt.Sprintf("multiple matches found for role_name: '%s'. Specify role by ID instead.", r.RoleName)), nil
+				}
+				roleDef = defs[0]
 			}
-		} else {
-			defs, err := c.findRoles(ctx, r.RoleName)
-			if err != nil {
-				return nil, errwrap.Wrapf("unable to lookup Azure role: {{err}}", err)
+
+			roleDefID := to.String(roleDef.ID)
+			roleDefName := to.String(roleDef.RoleName)
+			if roleIDs[roleDefID] {
+				return logical.ErrorResponse(fmt.Sprintf("duplicate role_id: '%s'", *roleDef.ID)), nil
 			}
-			if l := len(defs); l == 0 {
-				return logical.ErrorResponse(fmt.Sprintf("no role found for role_name: '%s'", r.RoleName)), nil
-			} else if l > 1 {
-				return logical.ErrorResponse(fmt.Sprintf("multiple matches found for role_name: '%s'. Specify role by ID instead.", r.RoleName)), nil
-			}
-			roleDef = defs[0]
+			roleIDs[roleDefID] = true
+
+			r.RoleName, r.RoleID = roleDefName, roleDefID
 		}
 
-		roleDefID := to.String(roleDef.ID)
-		roleDefName := to.String(roleDef.RoleName)
-		if roleIDs[roleDefID] {
-			return logical.ErrorResponse(fmt.Sprintf("duplicate role_id: '%s'", *roleDef.ID)), nil
+		if len(role.AzureRoles) == 0 {
+			return logical.ErrorResponse("missing Azure role definitions"), nil
 		}
-		roleIDs[roleDefID] = true
+	case credentialTypeStaticSP:
+		if role.ApplicationObjectID == "" {
+			return logical.ErrorResponse("Application Object ID missing"), nil
+		}
+		app, err := c.provider.GetApplication(ctx, role.ApplicationObjectID)
+		if err != nil {
+			return nil, errwrap.Wrapf("error loading Application: {{err}}", err)
+		}
+		role.ApplicationID = to.String(app.AppID)
 
-		r.RoleName, r.RoleID = roleDefName, roleDefID
-	}
-
-	// validate role definition constraints
-	if role.MaxTTL != 0 && role.TTL > role.MaxTTL {
-		return logical.ErrorResponse("ttl cannot be greater than max_ttl"), nil
-	}
-
-	if len(role.AzureRoles) == 0 {
-		return logical.ErrorResponse("missing Azure role definitions"), nil
+	default:
+		return nil, errors.New(fmt.Sprintf("unexpected credential type: %s", role.CredentialType))
 	}
 
 	// save role
@@ -203,9 +251,18 @@ func (b *azureSecretBackend) pathRoleRead(ctx context.Context, req *logical.Requ
 		return nil, nil
 	}
 
+	data["credential_type"] = r.CredentialType
 	data["ttl"] = r.TTL / time.Second
 	data["max_ttl"] = r.MaxTTL / time.Second
-	data["azure_roles"] = r.AzureRoles
+
+	switch r.CredentialType {
+	case credentialTypeSP:
+		data["azure_roles"] = r.AzureRoles
+	case credentialTypeStaticSP:
+		data["application_object_id"] = r.ApplicationObjectID
+	default:
+		return nil, errors.New(fmt.Sprintf("unknown credential type: %s", r.CredentialType))
+	}
 
 	return &logical.Response{
 		Data: data,
@@ -266,23 +323,25 @@ func getRole(ctx context.Context, name string, s logical.Storage) (*Role, error)
 	if err := entry.DecodeJSON(role); err != nil {
 		return nil, err
 	}
+	if role.CredentialType == "" {
+		role.CredentialType = credentialTypeSP
+	}
+
 	return role, nil
 }
 
 const roleHelpSyn = "Manage the Vault roles used to generate Azure credentials."
 const roleHelpDesc = `
 This path allows you to read and write roles that are used to generate Azure login
-credentials. These roles are associated with Azure roles, which are in turn used to
-control permissions to Azure resources.
+credentials. These roles are associated with either an existing Application, or a set
+of Azure roles, which are used to control permissions to Azure resources.
 
 If the backend is mounted at "azure", you would create a Vault role at "azure/roles/my_role",
 and request credentials from "azure/creds/my_role".
 
-Each Vault role is configured with the standard ttl parameters and a list of Azure
-roles and scopes. These Azure roles will be fetched during the Vault role creation
-and must exist for the request to succeed. Multiple Azure roles may be specified. When
-a used requests credentials against the Vault role, and new service principal is created
-and the configured set of Azure roles are assigned to it.
+Each Vault role is configured with the standard ttl parameters, a credential type, and either
+an Application Object ID, or a list of Azure roles and scopes. The provided Azure entities must
+exist for the request to succeed.
 `
 const roleListHelpSyn = `List existing roles.`
 const roleListHelpDesc = `List existing roles by name.`

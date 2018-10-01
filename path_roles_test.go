@@ -16,6 +16,7 @@ func TestRoleCreate(t *testing.T) {
 
 	t.Run("SP role", func(t *testing.T) {
 		spRole1 := map[string]interface{}{
+			"credential_type": "service_principal",
 			"azure_roles": compactJSON(`[
 		{
 			"role_name": "Owner",
@@ -32,6 +33,7 @@ func TestRoleCreate(t *testing.T) {
 		}
 
 		spRole2 := map[string]interface{}{
+			"credential_type": "service_principal",
 			"azure_roles": compactJSON(`[
 		{
 			"role_name": "Contributor",
@@ -66,8 +68,27 @@ func TestRoleCreate(t *testing.T) {
 		equal(t, spRole2, resp.Data)
 	})
 
+	t.Run("Static SP role", func(t *testing.T) {
+		spRole1 := map[string]interface{}{
+			"credential_type":       "static_service_principal",
+			"application_object_id": "00000000-0000-0000-0000-000000000000",
+			"ttl":                   int64(300),
+			"max_ttl":               int64(3000),
+		}
+
+		name := generateUUID()
+		testRoleCreate(t, b, s, name, spRole1)
+
+		resp, err := testRoleRead(t, b, s, name)
+		nilErr(t, err)
+
+		convertRespTypes(resp.Data)
+		equal(t, spRole1, resp.Data)
+	})
+
 	t.Run("Optional role TTLs", func(t *testing.T) {
 		testRole := map[string]interface{}{
+			"credential_type": "service_principal",
 			"azure_roles": compactJSON(`[
 				{
 					"role_name": "Contributor",
@@ -222,6 +243,53 @@ func TestRoleCreateBad(t *testing.T) {
 	msg = "invalid Azure role definitions"
 	if !strings.Contains(resp.Error().Error(), msg) {
 		t.Fatalf("expected to find: %s, got: %s", msg, resp.Error().Error())
+	}
+
+	// invalid credential type
+	role = map[string]interface{}{"credential_type": "a"}
+	resp = testRoleCreateBasic(t, b, s, "test_role_1", role)
+	msg = "unknown credential type: a"
+	if !strings.Contains(resp.Error().Error(), msg) {
+		t.Fatalf("expected to find: %s, got: %s", msg, resp.Error().Error())
+	}
+
+	// missing application object id
+	role = map[string]interface{}{"credential_type": "static_service_principal"}
+	resp = testRoleCreateBasic(t, b, s, "test_role_1", role)
+	msg = "Application Object ID missing"
+	if !strings.Contains(resp.Error().Error(), msg) {
+		t.Fatalf("expected to find: %s, got: %s", msg, resp.Error().Error())
+	}
+
+	// changing credential type
+	role = map[string]interface{}{
+		"credential_type":       "static_service_principal",
+		"application_object_id": "00000000-0000-0000-0000-000000000000",
+		"ttl":                   int64(300),
+		"max_ttl":               int64(3000),
+	}
+
+	testRoleCreate(t, b, s, "test_role", role)
+
+	role = map[string]interface{}{
+		"credential_type": "service_principal",
+		"azure_roles": compactJSON(`[
+				{
+					"role_name": "Contributor",
+					"role_id": "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Contributor",
+					"scope":  "test_scope_3"
+				}]`,
+		)}
+
+	resp, _ = b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.UpdateOperation,
+		Path:      "roles/test_role",
+		Data:      role,
+		Storage:   s,
+	})
+
+	if !resp.IsError() {
+		t.Fatal("expected error trying to change role credential type")
 	}
 }
 
@@ -393,7 +461,9 @@ func testRoleRead(t *testing.T, b *azureSecretBackend, s logical.Storage, name s
 // Utility function to convert response types back to the format that is used as
 // input in order to streamline the comparison steps.
 func convertRespTypes(data map[string]interface{}) {
-	data["azure_roles"] = encodeJSON(data["azure_roles"])
+	if data["azure_roles"] != nil {
+		data["azure_roles"] = encodeJSON(data["azure_roles"])
+	}
 	data["ttl"] = int64(data["ttl"].(time.Duration))
 	data["max_ttl"] = int64(data["max_ttl"].(time.Duration))
 }

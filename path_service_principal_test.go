@@ -24,7 +24,6 @@ const (
 )
 
 var testRole = map[string]interface{}{
-	"credential_type": "service_principal",
 	"azure_roles": encodeJSON([]azureRole{
 		azureRole{
 			RoleName: "Owner",
@@ -40,7 +39,6 @@ var testRole = map[string]interface{}{
 }
 
 var testStaticSPRole = map[string]interface{}{
-	"credential_type":       "static_service_principal",
 	"application_object_id": "00000000-0000-0000-0000-000000000000",
 }
 
@@ -522,7 +520,6 @@ func TestCredentialInteg(t *testing.T) {
 
 		rolename = "test_role2"
 		role = map[string]interface{}{
-			"credential_type":       "static_service_principal",
 			"application_object_id": appObjID,
 		}
 		resp, err = b.HandleRequest(context.Background(), &logical.Request{

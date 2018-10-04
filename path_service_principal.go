@@ -75,13 +75,10 @@ func (b *azureSecretBackend) pathSPRead(ctx context.Context, req *logical.Reques
 
 	var resp *logical.Response
 
-	switch role.CredentialType {
-	case credentialTypeSP:
-		resp, err = b.createSPSecret(ctx, client, roleName, role)
-	case credentialTypeStaticSP:
+	if role.ApplicationObjectID != "" {
 		resp, err = b.createStaticSPSecret(ctx, client, roleName, role)
-	default:
-		return nil, fmt.Errorf("unknown credential type: %s", role.CredentialType)
+	} else {
+		resp, err = b.createSPSecret(ctx, client, roleName, role)
 	}
 
 	if err != nil {

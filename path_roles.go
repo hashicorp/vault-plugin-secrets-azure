@@ -201,7 +201,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	}
 
 	if role.ApplicationObjectID == "" && len(role.AzureRoles) == 0 {
-		return logical.ErrorResponse("either and Application Object ID or Azure role definitions must be provided"), nil
+		return logical.ErrorResponse("either Azure role definitions or an Application Object ID must be provided"), nil
 	}
 
 	// save role

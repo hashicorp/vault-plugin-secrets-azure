@@ -233,7 +233,7 @@ func TestRoleCreateBad(t *testing.T) {
 	// missing roles and Application ID
 	role := map[string]interface{}{}
 	resp := testRoleCreateBasic(t, b, s, "test_role_1", role)
-	msg := "either and Application Object ID or Azure role definitions must be provided"
+	msg := "either Azure role definitions or an Application Object ID must be provided"
 	if !strings.Contains(resp.Error().Error(), msg) {
 		t.Fatalf("expected to find: %s, got: %s", msg, resp.Error().Error())
 	}

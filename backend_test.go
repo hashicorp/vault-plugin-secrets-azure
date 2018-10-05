@@ -172,7 +172,7 @@ func (m *mockProvider) UpdateApplicationPasswordCredentials(ctx context.Context,
 
 func (m *mockProvider) ListApplicationPasswordCredentials(ctx context.Context, applicationObjectID string) (result graphrbac.PasswordCredentialListResult, err error) {
 	var creds []graphrbac.PasswordCredential
-	for keyID, _ := range m.passwords {
+	for keyID := range m.passwords {
 		creds = append(creds, graphrbac.PasswordCredential{KeyID: &keyID})
 	}
 

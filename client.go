@@ -116,7 +116,7 @@ func (c *client) createSP(
 	}
 
 	resultRaw, err := retry(ctx, func() (interface{}, bool, error) {
-		now := time.Now()
+		now := time.Now().UTC()
 		result, err := c.provider.CreateServicePrincipal(ctx, graphrbac.ServicePrincipalCreateParameters{
 			AppID:          app.AppID,
 			AccountEnabled: to.BoolPtr(true),
@@ -159,7 +159,7 @@ func (c *client) addAppPassword(ctx context.Context, appObjID string, duration t
 		return "", "", err
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 	cred := graphrbac.PasswordCredential{
 		StartDate: &date.Time{Time: now},
 		EndDate:   &date.Time{Time: now.Add(duration)},

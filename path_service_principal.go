@@ -16,7 +16,6 @@ import (
 const (
 	SecretTypeSP       = "service_principal"
 	SecretTypeStaticSP = "static_service_principal"
-	maxAppPasswords    = 500 // TODO: still TBD. Experiments showed success up to about 630 passwords.
 )
 
 // SPs will be created with a far-future expiration in Azure
@@ -229,9 +228,8 @@ func (b *azureSecretBackend) staticSPRevoke(ctx context.Context, req *logical.Re
 	lock := locksutil.LockForKey(b.appLocks, appObjectID)
 	lock.Lock()
 	defer lock.Unlock()
-	err = c.deleteAppPassword(ctx, appObjectID, keyIDRaw.(string))
 
-	return nil, err
+	return nil, c.deleteAppPassword(ctx, appObjectID, keyIDRaw.(string))
 }
 
 const pathServicePrincipalHelpSyn = `

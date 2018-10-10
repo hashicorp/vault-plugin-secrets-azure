@@ -174,10 +174,6 @@ func (c *client) addAppPassword(ctx context.Context, appObjID string, duration t
 	}
 	curCreds := *resp.Value
 
-	if len(curCreds) >= maxAppPasswords {
-		return "", "", errors.New("maximum number of Application passwords reached")
-	}
-
 	// Add and save credentials
 	curCreds = append(curCreds, cred)
 
@@ -186,6 +182,9 @@ func (c *client) addAppPassword(ctx context.Context, appObjID string, duration t
 			Value: &curCreds,
 		},
 	); err != nil {
+		if strings.Contains(err.Error(), "size of the object has exceeded its limit") {
+			err = errors.New("maximum number of Application passwords reached")
+		}
 		return "", "", errwrap.Wrapf("error updating credentials: {{err}}", err)
 	}
 

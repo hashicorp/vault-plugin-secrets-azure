@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/vault/helper/jsonutil"
 	"github.com/hashicorp/vault/logical"
 	"github.com/hashicorp/vault/logical/framework"
+	"github.com/mitchellh/mapstructure"
 )
 
 const (
@@ -33,9 +34,9 @@ type Role struct {
 // to a scope. RoleName and RoleID are both traits of the role. RoleID is the unique identifier, but RoleName is
 // more useful to a human (thought it is not unique).
 type azureRole struct {
-	RoleName string `json:"role_name"` // e.g. Owner
-	RoleID   string `json:"role_id"`   // e.g. /subscriptions/e0a207b2-.../providers/Microsoft.Authorization/roleDefinitions/de139f84-...
-	Scope    string `json:"scope"`     // e.g. /subscriptions/e0a207b2-...
+	RoleName string `json:"role_name" mapstructure:"role_name"` // e.g. Owner
+	RoleID   string `json:"role_id" mapstructure:"role_id"`     // e.g. /subscriptions/e0a207b2-.../providers/Microsoft.Authorization/roleDefinitions/de139f84-...
+	Scope    string `json:"scope" mapstructure:"scope"`         // e.g. /subscriptions/e0a207b2-...
 }
 
 func pathsRole(b *azureSecretBackend) []*framework.Path {
@@ -48,7 +49,7 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 					Description: "Name of the role",
 				},
 				"azure_roles": {
-					Type:        framework.TypeString,
+					Type:        framework.TypeSlice,
 					Description: "JSON list of Azure roles to assign",
 				},
 				"ttl": {
@@ -120,12 +121,29 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		role.MaxTTL = time.Duration(d.Get("max_ttl").(int)) * time.Second
 	}
 
-	if roles, ok := d.GetOk("azure_roles"); ok {
-		parsedRoles := make([]*azureRole, 0) // non-nil to avoid a "missing roles" error later
+	// azure_roles will either be a JSON string or []interface depending on
+	// how the request was made.
+	rolesRaw, ok := d.Raw["azure_roles"]
+	if ok {
+		// non-nil to avoid a "missing roles" error later
+		parsedRoles := make([]*azureRole, 0)
 
-		err := jsonutil.DecodeJSON([]byte(roles.(string)), &parsedRoles)
-		if err != nil {
-			return logical.ErrorResponse("invalid Azure role definitions"), nil
+		switch rolesRaw.(type) {
+		case string:
+			err := jsonutil.DecodeJSON([]byte(rolesRaw.(string)), &parsedRoles)
+			if err != nil {
+				return logical.ErrorResponse("invalid Azure role definitions"), nil
+			}
+		case []interface{}:
+			for _, role := range rolesRaw.([]interface{}) {
+				azRole := new(azureRole)
+				if err := mapstructure.Decode(role, azRole); err != nil {
+					return logical.ErrorResponse("invalid Azure role definitions"), nil
+				}
+				parsedRoles = append(parsedRoles, azRole)
+			}
+		default:
+			return nil, fmt.Errorf("unknown azure_roles type: %T", rolesRaw)
 		}
 		role.AzureRoles = parsedRoles
 	}

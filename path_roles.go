@@ -166,7 +166,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		role.AzureRoles = parsedRoles
 	}
 
-	roleSet := make(map[azureRole]bool)
+	roleSet := make(map[string]bool)
 	for _, r := range role.AzureRoles {
 		var roleDef authorization.RoleDefinition
 		if r.RoleID != "" {
@@ -195,10 +195,11 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 
 		r.RoleName, r.RoleID = roleDefName, roleDefID
 
-		if roleSet[*r] {
+		rsKey := r.RoleID + "||" + r.Scope
+		if roleSet[rsKey] {
 			return logical.ErrorResponse(fmt.Sprintf("duplicate role_id and scope: '%s', '%s'", r.RoleID, r.Scope)), nil
 		}
-		roleSet[*r] = true
+		roleSet[rsKey] = true
 	}
 
 	if role.ApplicationObjectID == "" && len(role.AzureRoles) == 0 {

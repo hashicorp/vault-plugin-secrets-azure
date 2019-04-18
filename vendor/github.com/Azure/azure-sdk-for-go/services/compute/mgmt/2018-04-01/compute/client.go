@@ -1,10 +1,7 @@
-// Package authorization implements the Azure ARM Authorization service API version .
+// Package compute implements the Azure ARM Compute service API version 2018-04-01.
 //
-// Role based access control provides you a way to apply granular level policy administration down to individual
-// resources or resource groups. These operations enable you to manage role definitions and role assignments. A role
-// definition describes the set of actions that can be performed on resources. A role assignment grants access to Azure
-// Active Directory users.
-package authorization
+// Compute Client
+package compute
 
 // Copyright (c) Microsoft and contributors.  All rights reserved.
 //
@@ -28,11 +25,11 @@ import (
 )
 
 const (
-	// DefaultBaseURI is the default URI used for the service Authorization
+	// DefaultBaseURI is the default URI used for the service Compute
 	DefaultBaseURI = "https://management.azure.com"
 )
 
-// BaseClient is the base client for Authorization.
+// BaseClient is the base client for Compute.
 type BaseClient struct {
 	autorest.Client
 	BaseURI        string

@@ -306,9 +306,64 @@ func (c *client) unassignRoles(ctx context.Context, roleIDs []string) error {
 	return merr.ErrorOrNil()
 }
 
+// addGroupMemberships adds the service principal to the Azure groups.
+func (c *client) addGroupMemberships(ctx context.Context, sp *graphrbac.ServicePrincipal, groups []*AzureGroup) ([]string, error) {
+	groupsIDs := make([]string, 0, len(groups))
+	for _, group := range groups {
+		_, err := retry(ctx, func() (interface{}, bool, error) {
+			_, err := c.provider.AddGroupMember(ctx, group.ObjectID,
+				graphrbac.GroupAddMemberParameters{
+					URL: to.StringPtr(
+						fmt.Sprintf("https://graph.windows.net/%s/directoryObjects/%s",
+							c.settings.TenantID,
+							*sp.ObjectID,
+						),
+					),
+				})
+
+			// TODO is this right?
+			// Propagation delays within Azure can cause this error occasionally, so don't quit on it.
+			if err != nil && strings.Contains(err.Error(), "PrincipalNotFound") {
+				return nil, false, nil
+			}
+
+			groupsIDs = append(groupsIDs, group.ObjectID)
+			return nil, true, err
+		})
+
+		if err != nil {
+			return nil, errwrap.Wrapf("error while adding group membership: {{err}}", err)
+		}
+	}
+
+	return groupsIDs, nil
+}
+
+// removeGroupMemberships removes the passed service principal from the passed
+// groups. This is a clean-up operation that isn't essential to revocation. As
+// such, an attempt is made to remove all memberships, and not return
+// immediately if there is an error.
+func (c *client) removeGroupMemberships(ctx context.Context, servicePrincipalID string, groupIDs []string) error {
+	var merr *multierror.Error
+
+	for _, id := range groupIDs {
+		if _, err := c.provider.RemoveGroupMember(ctx, servicePrincipalID, id); err != nil {
+			merr = multierror.Append(merr, errwrap.Wrapf("error removing group membership: {{err}}", err))
+		}
+	}
+
+	return merr.ErrorOrNil()
+}
+
 // search for roles by name
 func (c *client) findRoles(ctx context.Context, roleName string) ([]authorization.RoleDefinition, error) {
 	return c.provider.ListRoles(ctx, fmt.Sprintf("subscriptions/%s", c.settings.SubscriptionID), fmt.Sprintf("roleName eq '%s'", roleName))
+}
+
+// findGroups is used to find a group by name. It returns all groups matching
+// the passsed name.
+func (c *client) findGroups(ctx context.Context, groupName string) ([]graphrbac.ADGroup, error) {
+	return c.provider.ListGroups(ctx, fmt.Sprintf("displayName eq '%s'", groupName))
 }
 
 // clientSettings is used by a client to configure the connections to Azure.

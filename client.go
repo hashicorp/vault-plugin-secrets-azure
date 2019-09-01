@@ -321,9 +321,8 @@ func (c *client) addGroupMemberships(ctx context.Context, sp *graphrbac.ServiceP
 					),
 				})
 
-			// TODO is this right?
 			// Propagation delays within Azure can cause this error occasionally, so don't quit on it.
-			if err != nil && strings.Contains(err.Error(), "PrincipalNotFound") {
+			if err != nil && strings.Contains(err.Error(), "Request_ResourceNotFound") {
 				return nil, false, nil
 			}
 

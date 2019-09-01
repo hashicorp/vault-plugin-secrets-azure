@@ -242,8 +242,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		if r.ObjectID != "" {
 			groupDef, err = client.provider.GetGroup(ctx, r.ObjectID)
 			if err != nil {
-				// TODO Figure out this error
-				if strings.Contains(err.Error(), "RoleDefinitionDoesNotExist") {
+				if strings.Contains(err.Error(), "Request_ResourceNotFound") {
 					return logical.ErrorResponse(fmt.Sprintf("no group found for object_id: '%s'", r.ObjectID)), nil
 				}
 				return nil, errwrap.Wrapf("unable to lookup Azure group: {{err}}", err)

@@ -374,14 +374,16 @@ of Azure roles, which are used to control permissions to Azure resources.
 If the backend is mounted at "azure", you would create a Vault role at "azure/roles/my_role",
 and request credentials from "azure/creds/my_role".
 
-Each Vault role is configured with the standard ttl parameters and either a list
-of Azure roles and scopes, and a list of Azure groups, or an Application Object
-ID.  During the Vault role creation, any set Azure role, group, or Object ID
-will be fetched and verified, and therefore must exist for the request to
-succeed. When a user requests credentials against the Vault role, a new password
-will be created for the Application if an Application Object ID was configured.
-Otherwise, a new service principal will be created and the configured set of
-Azure roles are assigned to it and it will be added to the configured groups.
+Each Vault role is configured with the standard ttl parameters and either an
+Application Object ID or a combination of Azure groups to make the service
+principal a member of, and Azure roles and scopes to assign the service
+principal to. During the Vault role creation, any set Azure role, group, or
+Object ID will be fetched and verified, and therefore must exist for the request
+to succeed. When a user requests credentials against the Vault role, a new
+password will be created for the Application if an Application Object ID was
+configured. Otherwise, a new service principal will be created and the
+configured set of Azure roles are assigned to it and it will be added to the
+configured groups.
 `
 const roleListHelpSyn = `List existing roles.`
 const roleListHelpDesc = `List existing roles by name.`

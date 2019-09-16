@@ -307,14 +307,14 @@ func (c *client) unassignRoles(ctx context.Context, roleIDs []string) error {
 }
 
 // addGroupMemberships adds the service principal to the Azure groups.
-func (c *client) addGroupMemberships(ctx context.Context, sp *graphrbac.ServicePrincipal, groups []*AzureGroup) ([]string, error) {
-	groupsIDs := make([]string, 0, len(groups))
+func (c *client) addGroupMemberships(ctx context.Context, sp *graphrbac.ServicePrincipal, groups []*AzureGroup) error {
 	for _, group := range groups {
 		_, err := retry(ctx, func() (interface{}, bool, error) {
 			_, err := c.provider.AddGroupMember(ctx, group.ObjectID,
 				graphrbac.GroupAddMemberParameters{
 					URL: to.StringPtr(
-						fmt.Sprintf("https://graph.windows.net/%s/directoryObjects/%s",
+						fmt.Sprintf("%s%s/directoryObjects/%s",
+							c.settings.Environment.GraphEndpoint,
 							c.settings.TenantID,
 							*sp.ObjectID,
 						),
@@ -326,32 +326,42 @@ func (c *client) addGroupMemberships(ctx context.Context, sp *graphrbac.ServiceP
 				return nil, false, nil
 			}
 
-			groupsIDs = append(groupsIDs, group.ObjectID)
 			return nil, true, err
 		})
 
 		if err != nil {
-			return nil, errwrap.Wrapf("error while adding group membership: {{err}}", err)
+			return errwrap.Wrapf("error while adding group membership: {{err}}", err)
 		}
 	}
 
-	return groupsIDs, nil
+	return nil
 }
 
 // removeGroupMemberships removes the passed service principal from the passed
 // groups. This is a clean-up operation that isn't essential to revocation. As
 // such, an attempt is made to remove all memberships, and not return
 // immediately if there is an error.
-func (c *client) removeGroupMemberships(ctx context.Context, servicePrincipalID string, groupIDs []string) error {
+func (c *client) removeGroupMemberships(ctx context.Context, servicePrincipalObjectID string, groupIDs []string) error {
 	var merr *multierror.Error
 
 	for _, id := range groupIDs {
-		if _, err := c.provider.RemoveGroupMember(ctx, servicePrincipalID, id); err != nil {
+		if _, err := c.provider.RemoveGroupMember(ctx, servicePrincipalObjectID, id); err != nil {
 			merr = multierror.Append(merr, errwrap.Wrapf("error removing group membership: {{err}}", err))
 		}
 	}
 
 	return merr.ErrorOrNil()
+}
+
+// groupObjectIDs is a helper for creating converting a list of AzureGroup
+// objects to a list of their object IDs.
+func groupObjectIDs(groups []*AzureGroup) []string {
+	groupIDs := make([]string, 0, len(groups))
+	for _, group := range groups {
+		groupIDs = append(groupIDs, group.ObjectID)
+
+	}
+	return groupIDs
 }
 
 // search for roles by name

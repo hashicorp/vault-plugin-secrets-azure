@@ -116,8 +116,7 @@ func (b *azureSecretBackend) createSPSecret(ctx context.Context, c *client, role
 	}
 
 	// Assign Azure group memberships to the new SP
-	gmIDs, err := c.addGroupMemberships(ctx, sp, role.AzureGroups)
-	if err != nil {
+	if err := c.addGroupMemberships(ctx, sp, role.AzureGroups); err != nil {
 		c.deleteApp(ctx, appObjID)
 		return nil, err
 	}
@@ -130,7 +129,7 @@ func (b *azureSecretBackend) createSPSecret(ctx context.Context, c *client, role
 		"app_object_id":        appObjID,
 		"sp_object_id":         sp.ObjectID,
 		"role_assignment_ids":  raIDs,
-		"group_membership_ids": gmIDs,
+		"group_membership_ids": groupObjectIDs(role.AzureGroups),
 		"role":                 roleName,
 	}
 

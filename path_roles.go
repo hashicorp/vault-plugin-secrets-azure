@@ -45,7 +45,7 @@ type AzureRole struct {
 // AzureGroup is an Azure Active Directory Group
 // (https://docs.microsoft.com/en-us/azure/role-based-access-control/overview).
 // GroupName and ObjectID are both traits of the group. ObjectID is the unique
-// identifier, but GroupName is more useful to a human (thought it is not
+// identifier, but GroupName is more useful to a human (though it is not
 // unique).
 type AzureGroup struct {
 	GroupName string `json:"group_name"` // e.g. MyGroup
@@ -182,7 +182,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 
 		err := jsonutil.DecodeJSON([]byte(roles.(string)), &parsedRoles)
 		if err != nil {
-			return logical.ErrorResponse(fmt.Sprintf("error parsing Azure roles '%s': %s", roles.(string), err.Error())), nil
+			return logical.ErrorResponse("error parsing Azure roles '%s': %s", roles.(string), err.Error()), nil
 		}
 		role.AzureRoles = parsedRoles
 	}
@@ -193,7 +193,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 
 		err := jsonutil.DecodeJSON([]byte(groups.(string)), &parsedGroups)
 		if err != nil {
-			return logical.ErrorResponse(fmt.Sprintf("error parsing Azure groups '%s': %s", groups.(string), err.Error())), nil
+			return logical.ErrorResponse("error parsing Azure groups '%s': %s", groups.(string), err.Error()), nil
 		}
 		role.AzureGroups = parsedGroups
 	}
@@ -206,7 +206,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 			roleDef, err = client.provider.GetRoleByID(ctx, r.RoleID)
 			if err != nil {
 				if strings.Contains(err.Error(), "RoleDefinitionDoesNotExist") {
-					return logical.ErrorResponse(fmt.Sprintf("no role found for role_id: '%s'", r.RoleID)), nil
+					return logical.ErrorResponse("no role found for role_id: '%s'", r.RoleID), nil
 				}
 				return nil, errwrap.Wrapf("unable to lookup Azure role: {{err}}", err)
 			}
@@ -216,9 +216,9 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 				return nil, errwrap.Wrapf("unable to lookup Azure role: {{err}}", err)
 			}
 			if l := len(defs); l == 0 {
-				return logical.ErrorResponse(fmt.Sprintf("no role found for role_name: '%s'", r.RoleName)), nil
+				return logical.ErrorResponse("no role found for role_name: '%s'", r.RoleName), nil
 			} else if l > 1 {
-				return logical.ErrorResponse(fmt.Sprintf("multiple matches found for role_name: '%s'. Specify role by ID instead.", r.RoleName)), nil
+				return logical.ErrorResponse("multiple matches found for role_name: '%s'. Specify role by ID instead.", r.RoleName), nil
 			}
 			roleDef = defs[0]
 		}
@@ -230,7 +230,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 
 		rsKey := r.RoleID + "||" + r.Scope
 		if roleSet[rsKey] {
-			return logical.ErrorResponse(fmt.Sprintf("duplicate role_id and scope: '%s', '%s'", r.RoleID, r.Scope)), nil
+			return logical.ErrorResponse("duplicate role_id and scope: '%s', '%s'", r.RoleID, r.Scope), nil
 		}
 		roleSet[rsKey] = true
 	}
@@ -243,7 +243,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 			groupDef, err = client.provider.GetGroup(ctx, r.ObjectID)
 			if err != nil {
 				if strings.Contains(err.Error(), "Request_ResourceNotFound") {
-					return logical.ErrorResponse(fmt.Sprintf("no group found for object_id: '%s'", r.ObjectID)), nil
+					return logical.ErrorResponse("no group found for object_id: '%s'", r.ObjectID), nil
 				}
 				return nil, errwrap.Wrapf("unable to lookup Azure group: {{err}}", err)
 			}
@@ -253,9 +253,9 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 				return nil, errwrap.Wrapf("unable to lookup Azure group: {{err}}", err)
 			}
 			if l := len(defs); l == 0 {
-				return logical.ErrorResponse(fmt.Sprintf("no group found for group_name: '%s'", r.GroupName)), nil
+				return logical.ErrorResponse("no group found for group_name: '%s'", r.GroupName), nil
 			} else if l > 1 {
-				return logical.ErrorResponse(fmt.Sprintf("multiple matches found for group_name: '%s'. Specify group by ObjectID instead.", r.GroupName)), nil
+				return logical.ErrorResponse("multiple matches found for group_name: '%s'. Specify group by ObjectID instead.", r.GroupName), nil
 			}
 			groupDef = defs[0]
 		}
@@ -265,7 +265,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		r.GroupName, r.ObjectID = groupDefName, groupDefID
 
 		if groupSet[r.ObjectID] {
-			return logical.ErrorResponse(fmt.Sprintf("duplicate object_id '%s'", r.ObjectID)), nil
+			return logical.ErrorResponse("duplicate object_id '%s'", r.ObjectID), nil
 		}
 		groupSet[r.ObjectID] = true
 	}

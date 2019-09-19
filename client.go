@@ -353,7 +353,7 @@ func (c *client) removeGroupMemberships(ctx context.Context, servicePrincipalObj
 	return merr.ErrorOrNil()
 }
 
-// groupObjectIDs is a helper for creating converting a list of AzureGroup
+// groupObjectIDs is a helper for converting a list of AzureGroup
 // objects to a list of their object IDs.
 func groupObjectIDs(groups []*AzureGroup) []string {
 	groupIDs := make([]string, 0, len(groups))

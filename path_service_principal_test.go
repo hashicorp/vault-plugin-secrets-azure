@@ -2,7 +2,6 @@ package azuresecrets
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -11,27 +10,21 @@ import (
 
 	"github.com/Azure/go-autorest/autorest/to"
 	log "github.com/hashicorp/go-hclog"
-	uuid "github.com/hashicorp/go-uuid"
+	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault/sdk/helper/jsonutil"
 	"github.com/hashicorp/vault/sdk/helper/logging"
 	"github.com/hashicorp/vault/sdk/logical"
 )
 
-const (
-	fakeSubscription = "ce7d1612-67c1-4dc6-8d81-4e0a432e696b"
-	fakeRoleDef1     = "a527471d-5db9-4cbe-844d-97573d3e68a3"
-	fakeRoleDef2     = "458f24bf-eaa3-42aa-a2ab-14e172d0bc5e"
-)
-
 var (
 	testRole = map[string]interface{}{
 		"azure_roles": encodeJSON([]AzureRole{
-			AzureRole{
+			{
 				RoleName: "Owner",
 				RoleID:   "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Owner",
 				Scope:    "/subscriptions/ce7d1612-67c1-4dc6-8d81-4e0a432e696b",
 			},
-			AzureRole{
+			{
 				RoleName: "Contributor",
 				RoleID:   "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Contributor",
 				Scope:    "/subscriptions/ce7d1612-67c1-4dc6-8d81-4e0a432e696b",
@@ -41,11 +34,11 @@ var (
 
 	testGroupRole = map[string]interface{}{
 		"azure_groups": encodeJSON([]AzureGroup{
-			AzureGroup{
+			{
 				GroupName: "foo",
 				ObjectID:  "00000000-1111-2222-3333-444444444444FAKE_GROUP-foo",
 			},
-			AzureGroup{
+			{
 				GroupName: "baz",
 				ObjectID:  "00000000-1111-2222-3333-444444444444FAKE_GROUP-baz",
 			},
@@ -260,16 +253,11 @@ func TestSPRevoke(t *testing.T) {
 		}
 
 		// Serialize and deserialize the secret to remove typing, as will really happen.
-		secret := new(logical.Secret)
-		enc, err := jsonutil.EncodeJSON(resp.Secret)
-		if err != nil {
-			t.Fatalf("expected nil error, actual:%#v", err.Error())
-		}
-		jsonutil.DecodeJSON(enc, &secret)
+		fakeSaveLoad(resp.Secret)
 
 		resp, err = b.HandleRequest(context.Background(), &logical.Request{
 			Operation: logical.RevokeOperation,
-			Secret:    secret,
+			Secret:    resp.Secret,
 			Storage:   s,
 		})
 
@@ -302,16 +290,11 @@ func TestSPRevoke(t *testing.T) {
 		}
 
 		// Serialize and deserialize the secret to remove typing, as will really happen.
-		secret := new(logical.Secret)
-		enc, err := jsonutil.EncodeJSON(resp.Secret)
-		if err != nil {
-			t.Fatalf("expected nil error, actual:%#v", err.Error())
-		}
-		jsonutil.DecodeJSON(enc, &secret)
+		fakeSaveLoad(resp.Secret)
 
 		resp, err = b.HandleRequest(context.Background(), &logical.Request{
 			Operation: logical.RevokeOperation,
-			Secret:    secret,
+			Secret:    resp.Secret,
 			Storage:   s,
 		})
 
@@ -351,16 +334,11 @@ func TestStaticSPRevoke(t *testing.T) {
 	}
 
 	// Serialize and deserialize the secret to remove typing, as will really happen.
-	secret := new(logical.Secret)
-	enc, err := jsonutil.EncodeJSON(resp.Secret)
-	if err != nil {
-		t.Fatalf("expected nil error, actual:%#v", err.Error())
-	}
-	json.Unmarshal(enc, &secret)
+	fakeSaveLoad(resp.Secret)
 
 	resp, err = b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.RevokeOperation,
-		Secret:    secret,
+		Secret:    resp.Secret,
 		Storage:   s,
 	})
 
@@ -536,12 +514,10 @@ func TestCredentialInteg(t *testing.T) {
 			t.Fatal("'Reader' role assignment not found")
 		}
 
-		// Revoke the Service Principal by sending back the secret we just
-		// received, with a little type tweaking to make it work.
-		resp.Secret.InternalData["role_assignment_ids"] = []interface{}{
-			resp.Secret.InternalData["role_assignment_ids"].([]string)[0],
-		}
+		// Serialize and deserialize the secret to remove typing, as will really happen.
+		fakeSaveLoad(resp.Secret)
 
+		// Revoke the Service Principal by sending back the secret we just received
 		req := &logical.Request{
 			Secret:  resp.Secret,
 			Storage: s,
@@ -663,7 +639,7 @@ func TestCredentialInteg(t *testing.T) {
 		success := false
 
 		// The new app may not be propagated immediately, so retry for ~30s.
-		for i := 0; i < 6; i++ {
+		for i := 0; i < 8; i++ {
 			// New credentials are only tested during an actual operation, not provider creation.
 			// This step should never fail.
 			p, err := newAzureProvider(settings)
@@ -680,15 +656,13 @@ func TestCredentialInteg(t *testing.T) {
 		}
 
 		if !success {
-			t.Fatal("unable to validate with credentials. Last error: " + err.Error())
+			t.Fatalf("unable to validate with credentials. Last error: %v", err)
 		}
 
-		// Revoke the Service Principal by sending back the secret we just
-		// received, with a little type tweaking to make it work.
-		origResp.Secret.InternalData["role_assignment_ids"] = []interface{}{
-			origResp.Secret.InternalData["role_assignment_ids"].([]string)[0],
-		}
+		// Serialize and deserialize the secret to remove typing, as will really happen.
+		fakeSaveLoad(origResp.Secret)
 
+		// Revoke the Service Principal by sending back the secret we just received
 		req := &logical.Request{
 			Secret:  origResp.Secret,
 			Storage: s,
@@ -699,4 +673,18 @@ func TestCredentialInteg(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+// fakeSaveLoad will simulate the JSON encoding/decoding process that secrets will normally go
+// through. If not done, some of the secret data will retain richer data types (e.g. pointers)
+// than would normally be seen.
+func fakeSaveLoad(s *logical.Secret) {
+	enc, err := jsonutil.EncodeJSON(s)
+	if err != nil {
+		panic(err)
+	}
+
+	if err := jsonutil.DecodeJSON(enc, s); err != nil {
+		panic(err)
+	}
 }

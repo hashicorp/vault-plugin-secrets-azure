@@ -5,3 +5,4 @@ env:
   - GO111MODULE=on
 script:
   - make test
+go_import_path: github.com/hashicorp/vault-plugin-secrets-azure

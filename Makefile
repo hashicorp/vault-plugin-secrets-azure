@@ -1,9 +1,8 @@
 TOOL?=vault-plugin-secrets-azure
-TEST?=$$(go list ./... | grep -v /vendor/)
+TEST?=$$(go list ./...)
 VETARGS?=-asmdecl -atomic -bool -buildtags -copylocks -methods -nilfunc -printf -rangeloops -shift -structtags -unsafeptr
 EXTERNAL_TOOLS=\
-	github.com/mitchellh/gox \
-	github.com/kardianos/govendor
+	github.com/mitchellh/gox
 BUILD_TAGS?=${TOOL}
 GOFMT_FILES?=$$(find . -name '*.go' | grep -v vendor)
 
@@ -34,12 +33,12 @@ test: fmtcheck generate
 		echo "ERROR: Set TEST to a specific package"; \
 		exit 1; \
 	fi
-	VAULT_ACC=1 go test -tags='$(BUILD_TAGS)' $(TEST) -v $(TESTARGS) -timeout 45m
+	VAULT_ACC=1 go test -mod=vendor -tags='$(BUILD_TAGS)' $(TEST) -v $(TESTARGS) -timeout 45m
 
 # generate runs `go generate` to build the dynamically generated
 # source files.
 generate:
-	go generate $(go list ./... | grep -v /vendor/)
+	go generate -mod vendor $(go list ./...)
 
 # bootstrap the build by downloading additional tools
 bootstrap:

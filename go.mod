@@ -1,11 +1,11 @@
 module github.com/hashicorp/vault-plugin-secrets-azure
 
-go 1.12
+go 1.15
 
 require (
-	github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
-	github.com/Azure/go-autorest/autorest v0.9.2
-	github.com/Azure/go-autorest/autorest/azure/auth v0.4.0
+	github.com/Azure/azure-sdk-for-go v41.1.0+incompatible
+	github.com/Azure/go-autorest/autorest v0.10.0
+	github.com/Azure/go-autorest/autorest/azure/auth v0.4.2
 	github.com/Azure/go-autorest/autorest/date v0.2.0
 	github.com/Azure/go-autorest/autorest/to v0.3.0
 	github.com/Azure/go-autorest/autorest/validation v0.2.0 // indirect
@@ -18,6 +18,8 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.6.6 // indirect
 	github.com/hashicorp/go-rootcerts v1.0.2 // indirect
 	github.com/hashicorp/go-uuid v1.0.2
+	github.com/hashicorp/go-version v1.2.0 // indirect
+	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/hashicorp/vault/api v1.0.5-0.20200215224050-f6547fa8e820
 	github.com/hashicorp/vault/sdk v0.1.14-0.20200527182800-ad90e0b39d2f
 	github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d // indirect

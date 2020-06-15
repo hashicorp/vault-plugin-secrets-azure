@@ -414,7 +414,7 @@ func retry(ctx context.Context, f func() (interface{}, bool, error)) (interface{
 		case <-delayTimer.C:
 			// Retry loop
 		case <-ctx.Done():
-			return nil, errors.New("retry: timed out or cancelled")
+			return nil, fmt.Errorf("retry failed: %w", ctx.Err())
 		}
 	}
 }

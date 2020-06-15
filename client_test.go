@@ -96,8 +96,12 @@ func TestRetry(t *testing.T) {
 			t.Fatalf("expected time of ~7 seconds, got: %f", elapsed)
 		}
 
-		if err == nil || !strings.Contains(err.Error(), "cancelled") {
-			t.Fatalf("expected cancelled error, got: %v", err)
+		if err == nil {
+			t.Fatalf("expected err: got nil")
+		}
+		underlyingErr := errors.Unwrap(err)
+		if underlyingErr != context.Canceled {
+			t.Fatalf("expected %s, got: %v", context.Canceled, err)
 		}
 	})
 }

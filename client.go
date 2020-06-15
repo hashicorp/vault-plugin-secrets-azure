@@ -402,12 +402,13 @@ func retry(ctx context.Context, f func() (interface{}, bool, error)) (interface{
 		defer cancel()
 	}
 
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	for {
 		if result, done, err := f(); done {
 			return result, err
 		}
 
-		delay := time.Duration(2000+rand.Intn(6000)) * time.Millisecond
+		delay := time.Duration(2000+rng.Intn(6000)) * time.Millisecond
 		delayTimer.Reset(delay)
 
 		select {

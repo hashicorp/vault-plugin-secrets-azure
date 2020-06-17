@@ -28,8 +28,7 @@ func assertErrorIsNil(tb testing.TB, err error) {
 // assertKeyExists asserts that the provided key exists within the map
 func assertKeyExists(tb testing.TB, m map[string]interface{}, key string) {
 	tb.Helper()
-	_, exists := m[key]
-	if !exists {
+	if _, exists := m[key]; !exists {
 		tb.Fatalf("key %s does not exist", key)
 	}
 }

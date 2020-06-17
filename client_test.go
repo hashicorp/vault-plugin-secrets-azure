@@ -106,6 +106,7 @@ func TestRetry(t *testing.T) {
 	})
 }
 
+// assertDuration with a certain amount of flex in the exact value
 func assertDuration(t *testing.T, actual, expected, delta time.Duration) {
 	t.Helper()
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/go-autorest/autorest"
+	azureadal "github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 	"github.com/hashicorp/vault/sdk/helper/useragent"
@@ -24,6 +25,7 @@ type provider struct {
 	groupsClient api.GroupsClient
 	raClient     *authorization.RoleAssignmentsClient
 	rdClient     *authorization.RoleDefinitionsClient
+	tokenClient  api.TokenClient
 }
 
 // newAzureProvider creates an azureProvider, backed by Azure client objects for underlying services.
@@ -76,6 +78,7 @@ func newAzureProvider(settings *clientSettings, passwords api.Passwords) (api.Az
 		groupsClient: groupsClient,
 		raClient:     &raClient,
 		rdClient:     &rdClient,
+		tokenClient:  &api.AccessTokenClient{},
 	}
 
 	return p, nil
@@ -205,4 +208,9 @@ func (p *provider) GetGroup(ctx context.Context, objectID string) (result api.Gr
 // ListGroups gets list of groups for the current tenant.
 func (p *provider) ListGroups(ctx context.Context, filter string) (result []api.Group, err error) {
 	return p.groupsClient.ListGroups(ctx, filter)
+}
+
+// GetToken gets an oauth access token for the current credential configuration.
+func (p *provider) GetToken(c auth.ClientCredentialsConfig) (azureadal.Token, error) {
+	return p.tokenClient.GetToken(c)
 }

@@ -85,6 +85,7 @@ func TestRoleCreate(t *testing.T) {
 		assertErrorIsNil(t, err)
 
 		convertRespTypes(resp.Data)
+		spRole2["application_object_id"] = ""
 		equal(t, spRole2, resp.Data)
 	})
 

@@ -2,6 +2,8 @@ package azuresecrets
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -10,10 +12,17 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
+	azureadal "github.com/Azure/go-autorest/autorest/adal"
+	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 )
+
+var _ api.ApplicationsClient = (*mockProvider)(nil)
+var _ api.GroupsClient = (*mockProvider)(nil)
+var _ api.ServicePrincipalClient = (*mockProvider)(nil)
+var _ api.TokenClient = (*mockProvider)(nil)
 
 // mockProvider is a Provider that provides stubs and simple, deterministic responses.
 type mockProvider struct {
@@ -258,6 +267,24 @@ func (m *mockProvider) ListGroups(_ context.Context, filter string) ([]api.Group
 	}
 
 	return []api.Group{}, nil
+}
+
+func (m *mockProvider) GetToken(c auth.ClientCredentialsConfig) (azureadal.Token, error) {
+	expires := time.Now().Add(1 * time.Minute)
+
+	jwt := []byte(fmt.Sprintf("{\"exp\":%v,\"aud\":\"audience\"}", expires.Unix()))
+	header := base64.StdEncoding.WithPadding(base64.NoPadding).EncodeToString([]byte("header"))
+	payload := base64.StdEncoding.WithPadding(base64.NoPadding).EncodeToString(jwt)
+	signature := base64.StdEncoding.WithPadding(base64.NoPadding).EncodeToString([]byte("signature"))
+	return azureadal.Token{
+		AccessToken:  fmt.Sprintf("%v.%v.%v", header, payload, signature),
+		RefreshToken: "theRefreshToken",
+		ExpiresIn:    json.Number(fmt.Sprintf("%v", expires.Sub(time.Now()).Truncate(time.Second))),
+		ExpiresOn:    json.Number(fmt.Sprintf("%v", expires.Unix())),
+		NotBefore:    "theNotBefore",
+		Resource:     c.Resource,
+		Type:         "theType",
+	}, nil
 }
 
 // errMockProvider simulates a normal provider which fails to associate a role,

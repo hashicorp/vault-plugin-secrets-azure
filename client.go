@@ -144,7 +144,7 @@ func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRol
 			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentID,
 				authorization.RoleAssignmentCreateParameters{
 					RoleAssignmentProperties: &authorization.RoleAssignmentProperties{
-						RoleDefinitionID: &role.RoleID,
+						RoleDefinitionID: to.StringPtr(role.RoleID),
 						PrincipalID:      &spID,
 					},
 				})
@@ -154,6 +154,7 @@ func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRol
 				return nil, false, nil
 			}
 
+			role.RoleAssignmentID = to.String(ra.ID)
 			return to.String(ra.ID), true, err
 		})
 
@@ -171,11 +172,11 @@ func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRol
 // This is a clean-up operation that isn't essential to revocation. As such, an
 // attempt is made to remove all assignments, and not return immediately if there
 // is an error.
-func (c *client) unassignRoles(ctx context.Context, roleIDs []string) error {
+func (c *client) unassignRoles(ctx context.Context, roles []*AzureRole) error {
 	var merr *multierror.Error
 
-	for _, id := range roleIDs {
-		if _, err := c.provider.DeleteRoleAssignmentByID(ctx, id); err != nil {
+	for _, role := range roles {
+		if _, err := c.provider.DeleteRoleAssignmentByID(ctx, role.RoleAssignmentID); err != nil {
 			merr = multierror.Append(merr, fmt.Errorf("error unassigning role: %w", err))
 		}
 	}
@@ -209,11 +210,11 @@ func (c *client) addGroupMemberships(ctx context.Context, spID string, groups []
 // groups. This is a clean-up operation that isn't essential to revocation. As
 // such, an attempt is made to remove all memberships, and not return
 // immediately if there is an error.
-func (c *client) removeGroupMemberships(ctx context.Context, servicePrincipalObjectID string, groupIDs []string) error {
+func (c *client) removeGroupMemberships(ctx context.Context, servicePrincipalObjectID string, groups []*AzureGroup) error {
 	var merr *multierror.Error
 
-	for _, id := range groupIDs {
-		if err := c.provider.RemoveGroupMember(ctx, servicePrincipalObjectID, id); err != nil {
+	for _, group := range groups {
+		if err := c.provider.RemoveGroupMember(ctx, servicePrincipalObjectID, group.ObjectID); err != nil {
 			merr = multierror.Append(merr, fmt.Errorf("error removing group membership: %w", err))
 		}
 	}

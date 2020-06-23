@@ -85,7 +85,6 @@ func TestSP_WAL_Cleanup(t *testing.T) {
 	// verify basic cred issuance
 	t.Run("Role assign fail", func(t *testing.T) {
 		name := generateUUID()
-		testRoleCreate(t, b, s, name, testRole)
 
 		// create a short timeout to short-circuit the retry process and trigger the
 		// deadline error
@@ -93,8 +92,9 @@ func TestSP_WAL_Cleanup(t *testing.T) {
 		defer cancel()
 
 		resp, err := b.HandleRequest(ctx, &logical.Request{
-			Operation: logical.ReadOperation,
-			Path:      "creds/" + name,
+			Operation: logical.CreateOperation,
+			Path:      fmt.Sprintf("roles/%s", name),
+			Data:      testRole,
 			Storage:   s,
 		})
 

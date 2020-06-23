@@ -16,6 +16,7 @@ type AzureProvider interface {
 	ApplicationsClient
 	GroupsClient
 	ServicePrincipalClient
+	TokenClient
 
 	CreateRoleAssignment(
 		ctx context.Context,

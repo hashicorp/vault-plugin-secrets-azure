@@ -59,7 +59,7 @@ func backend() *azureSecretBackend {
 		WALRollback: b.walRollback,
 
 		// Role assignment can take up to a few minutes, so ensure we don't try
-		// to role back during creation.
+		// to roll back during creation.
 		WALRollbackMinAge: 10 * time.Minute,
 	}
 

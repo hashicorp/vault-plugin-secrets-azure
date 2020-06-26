@@ -12,7 +12,7 @@ import (
 const walAppKey = "appCreate"
 
 // Eventually expire the WAL if for some reason the rollback operation consistently fails
-var maxWALAge = (14 * 24) * time.Hour
+var maxWALAge = 24 * time.Hour
 
 type walApp struct {
 	AppID      string

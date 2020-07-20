@@ -24,10 +24,17 @@ func (b *azureSecretBackend) walRollback(ctx context.Context, req *logical.Reque
 	if kind != walAppKey {
 		return fmt.Errorf("unknown rollback type %q", kind)
 	}
-
 	// Decode the WAL data
 	var entry walApp
-	if err := mapstructure.Decode(data, &entry); err != nil {
+	d, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		DecodeHook: mapstructure.StringToTimeHookFunc(time.RFC3339),
+		Result:     &entry,
+	})
+	if err != nil {
+		return err
+	}
+	err = d.Decode(data)
+	if err != nil {
 		return err
 	}
 

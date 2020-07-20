@@ -100,15 +100,13 @@ func (e *errMockProvider) GetApplication(ctx context.Context, applicationObjectI
 }
 
 func newErrMockProvider() AzureProvider {
-	m := &mockProvider{
-		subscriptionID: generateUUID(),
-		applications:   make(map[string]bool),
-		passwords:      make(map[string]bool),
+	return &errMockProvider{
+		mockProvider: &mockProvider{
+			subscriptionID: generateUUID(),
+			applications:   make(map[string]bool),
+			passwords:      make(map[string]bool),
+		},
 	}
-	e := errMockProvider{
-		mockProvider: m,
-	}
-	return &e
 }
 
 func newMockProvider() AzureProvider {

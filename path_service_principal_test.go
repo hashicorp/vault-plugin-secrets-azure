@@ -51,7 +51,7 @@ var (
 	}
 )
 
-// TestSP_WAL_Cleanup tests that any Service Princal that gets created, but
+// TestSP_WAL_Cleanup tests that any Service Principal that gets created, but
 // fails to have roles associated with it, gets cleaned up by the periodic WAL
 // function.
 func TestSP_WAL_Cleanup(t *testing.T) {

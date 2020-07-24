@@ -54,6 +54,12 @@ func backend() *azureSecretBackend {
 		},
 		BackendType: logical.TypeLogical,
 		Invalidate:  b.invalidate,
+
+		WALRollback: b.walRollback,
+
+		// Role assignment can take up to a few minutes, so ensure we don't try
+		// to roll back during creation.
+		WALRollbackMinAge: 10 * time.Minute,
 	}
 
 	b.getProvider = newAzureProvider

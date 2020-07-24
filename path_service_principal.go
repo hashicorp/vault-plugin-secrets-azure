@@ -103,7 +103,7 @@ func (b *azureSecretBackend) createSPSecret(ctx context.Context, s logical.Stora
 	appObjID := to.String(app.ObjectID)
 
 	// Write a WAL entry in case the SP create process doesn't complete
-	walID, err := framework.PutWAL(ctx, s, walAppKey, walApp{
+	walID, err := framework.PutWAL(ctx, s, walAppKey, &walApp{
 		AppID:      appID,
 		AppObjID:   appObjID,
 		Expiration: time.Now().Add(maxWALAge),

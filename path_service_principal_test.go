@@ -79,7 +79,7 @@ func TestSP_WAL_Cleanup(t *testing.T) {
 			Storage:   s,
 		})
 
-		if err == nil || !strings.Contains(err.Error(), "context deadline exceeded") {
+		if err == nil || !strings.Contains(err.Error(), "cancelled") {
 			t.Fatalf("expected deadline error, but got '%s'", err.Error())
 		}
 		if resp.IsError() {

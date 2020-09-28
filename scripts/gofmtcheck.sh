@@ -2,7 +2,7 @@
 
 echo "==> Checking that code complies with gofmt requirements..."
 
-gofmt_files=$(go fmt $(go list ./...))
+gofmt_files=$(go fmt -mod vendor $(go list ./...))
 if [[ -n ${gofmt_files} ]]; then 
     echo 'gofmt needs running on the following files:'
     echo "${gofmt_files}"

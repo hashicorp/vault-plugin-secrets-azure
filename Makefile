@@ -16,7 +16,7 @@ default: dev
 # into ./bin/ as well as $GOPATH/bin, except for quickdev which
 # is only put into /bin/
 quickdev: generate
-	@CGO_ENABLED=0 go build -i -mod vendor -tags='$(BUILD_TAGS)' -o bin/vault-plugin-secrets-azure
+	@CGO_ENABLED=0 go build -i -mod=vendor -tags='$(BUILD_TAGS)' -o bin/vault-plugin-secrets-azure
 dev: fmtcheck generate
 	@CGO_ENABLED=0 BUILD_TAGS='$(BUILD_TAGS)' VAULT_DEV_BUILD=1 sh -c "'$(CURDIR)/scripts/build.sh'"
 dev-dynamic: generate
@@ -24,7 +24,7 @@ dev-dynamic: generate
 
 testcompile: fmtcheck generate
 	@for pkg in $(TEST) ; do \
-		go test -mod vendor -v -c -tags='$(BUILD_TAGS)' $$pkg -parallel=4 ; \
+		go test -mod=vendor -v -c -tags='$(BUILD_TAGS)' $$pkg -parallel=4 ; \
 	done
 
 # test runs all tests
@@ -33,12 +33,12 @@ test: fmtcheck generate
 		echo "ERROR: Set TEST to a specific package"; \
 		exit 1; \
 	fi
-	VAULT_ACC=1 go test -mod vendor -tags='$(BUILD_TAGS)' $(TEST) -v $(TESTARGS) -timeout 45m
+	VAULT_ACC=1 go test -mod=vendor -tags='$(BUILD_TAGS)' $(TEST) -v $(TESTARGS) -timeout 45m
 
 # generate runs `go generate` to build the dynamically generated
 # source files.
 generate:
-	go generate $(go list ./...)
+	go generate -mod=vendor $(go list ./...)
 
 # bootstrap the build by downloading additional tools
 bootstrap:

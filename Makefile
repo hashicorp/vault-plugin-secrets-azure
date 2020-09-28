@@ -38,7 +38,7 @@ test: fmtcheck generate
 # generate runs `go generate` to build the dynamically generated
 # source files.
 generate:
-	go generate -mod vendor $(go list ./...)
+	go generate $(go list ./... | grep -v /vendor/)
 
 # bootstrap the build by downloading additional tools
 bootstrap:

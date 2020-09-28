@@ -36,9 +36,7 @@ func NewProviderOperationsMetadataClient(subscriptionID string) ProviderOperatio
 	return NewProviderOperationsMetadataClientWithBaseURI(DefaultBaseURI, subscriptionID)
 }
 
-// NewProviderOperationsMetadataClientWithBaseURI creates an instance of the ProviderOperationsMetadataClient client
-// using a custom endpoint.  Use this when interacting with an Azure cloud that uses a non-standard base URI (sovereign
-// clouds, Azure stack).
+// NewProviderOperationsMetadataClientWithBaseURI creates an instance of the ProviderOperationsMetadataClient client.
 func NewProviderOperationsMetadataClientWithBaseURI(baseURI string, subscriptionID string) ProviderOperationsMetadataClient {
 	return ProviderOperationsMetadataClient{NewWithBaseURI(baseURI, subscriptionID)}
 }
@@ -106,7 +104,8 @@ func (client ProviderOperationsMetadataClient) GetPreparer(ctx context.Context, 
 // GetSender sends the Get request. The method will close the
 // http.Response Body if it receives an error.
 func (client ProviderOperationsMetadataClient) GetSender(req *http.Request) (*http.Response, error) {
-	return client.Send(req, autorest.DoRetryForStatusCodes(client.RetryAttempts, client.RetryDuration, autorest.StatusCodesForRetry...))
+	sd := autorest.GetSendDecorators(req.Context(), autorest.DoRetryForStatusCodes(client.RetryAttempts, client.RetryDuration, autorest.StatusCodesForRetry...))
+	return autorest.SendWithSender(client, req, sd...)
 }
 
 // GetResponder handles the response to the Get request. The method always
@@ -181,7 +180,8 @@ func (client ProviderOperationsMetadataClient) ListPreparer(ctx context.Context,
 // ListSender sends the List request. The method will close the
 // http.Response Body if it receives an error.
 func (client ProviderOperationsMetadataClient) ListSender(req *http.Request) (*http.Response, error) {
-	return client.Send(req, autorest.DoRetryForStatusCodes(client.RetryAttempts, client.RetryDuration, autorest.StatusCodesForRetry...))
+	sd := autorest.GetSendDecorators(req.Context(), autorest.DoRetryForStatusCodes(client.RetryAttempts, client.RetryDuration, autorest.StatusCodesForRetry...))
+	return autorest.SendWithSender(client, req, sd...)
 }
 
 // ListResponder handles the response to the List request. The method always

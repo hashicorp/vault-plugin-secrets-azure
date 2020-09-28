@@ -1,6 +1,6 @@
 // +build go1.9
 
-// Copyright 2020 Microsoft Corporation
+// Copyright 2019 Microsoft Corporation
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ package compute
 import (
 	"context"
 
-	original "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-12-01/compute"
+	original "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-07-01/compute"
 )
 
 const (
@@ -269,27 +269,6 @@ const (
 	Windows OperatingSystemTypes = original.Windows
 )
 
-type OrchestrationServiceNames = original.OrchestrationServiceNames
-
-const (
-	AutomaticRepairs OrchestrationServiceNames = original.AutomaticRepairs
-)
-
-type OrchestrationServiceState = original.OrchestrationServiceState
-
-const (
-	NotRunning OrchestrationServiceState = original.NotRunning
-	Running    OrchestrationServiceState = original.Running
-	Suspended  OrchestrationServiceState = original.Suspended
-)
-
-type OrchestrationServiceStateAction = original.OrchestrationServiceStateAction
-
-const (
-	Resume  OrchestrationServiceStateAction = original.Resume
-	Suspend OrchestrationServiceStateAction = original.Suspend
-)
-
 type PassNames = original.PassNames
 
 const (
@@ -492,7 +471,6 @@ type VirtualMachinePriorityTypes = original.VirtualMachinePriorityTypes
 const (
 	Low     VirtualMachinePriorityTypes = original.Low
 	Regular VirtualMachinePriorityTypes = original.Regular
-	Spot    VirtualMachinePriorityTypes = original.Spot
 )
 
 type VirtualMachineScaleSetScaleInRules = original.VirtualMachineScaleSetScaleInRules
@@ -724,7 +702,6 @@ type ContainerServicesDeleteFuture = original.ContainerServicesDeleteFuture
 type CreationData = original.CreationData
 type DataDisk = original.DataDisk
 type DataDiskImage = original.DataDiskImage
-type DataDiskImageEncryption = original.DataDiskImageEncryption
 type DedicatedHost = original.DedicatedHost
 type DedicatedHostAllocatableVM = original.DedicatedHostAllocatableVM
 type DedicatedHostAvailableCapacity = original.DedicatedHostAvailableCapacity
@@ -761,7 +738,6 @@ type DiskEncryptionSetsCreateOrUpdateFuture = original.DiskEncryptionSetsCreateO
 type DiskEncryptionSetsDeleteFuture = original.DiskEncryptionSetsDeleteFuture
 type DiskEncryptionSetsUpdateFuture = original.DiskEncryptionSetsUpdateFuture
 type DiskEncryptionSettings = original.DiskEncryptionSettings
-type DiskImageEncryption = original.DiskImageEncryption
 type DiskInstanceView = original.DiskInstanceView
 type DiskList = original.DiskList
 type DiskListIterator = original.DiskListIterator
@@ -777,7 +753,6 @@ type DisksGrantAccessFuture = original.DisksGrantAccessFuture
 type DisksRevokeAccessFuture = original.DisksRevokeAccessFuture
 type DisksUpdateFuture = original.DisksUpdateFuture
 type Encryption = original.Encryption
-type EncryptionImages = original.EncryptionImages
 type EncryptionSetIdentity = original.EncryptionSetIdentity
 type EncryptionSetProperties = original.EncryptionSetProperties
 type EncryptionSettingsCollection = original.EncryptionSettingsCollection
@@ -785,29 +760,24 @@ type EncryptionSettingsElement = original.EncryptionSettingsElement
 type GalleriesClient = original.GalleriesClient
 type GalleriesCreateOrUpdateFuture = original.GalleriesCreateOrUpdateFuture
 type GalleriesDeleteFuture = original.GalleriesDeleteFuture
-type GalleriesUpdateFuture = original.GalleriesUpdateFuture
 type Gallery = original.Gallery
 type GalleryApplication = original.GalleryApplication
 type GalleryApplicationList = original.GalleryApplicationList
 type GalleryApplicationListIterator = original.GalleryApplicationListIterator
 type GalleryApplicationListPage = original.GalleryApplicationListPage
 type GalleryApplicationProperties = original.GalleryApplicationProperties
-type GalleryApplicationUpdate = original.GalleryApplicationUpdate
 type GalleryApplicationVersion = original.GalleryApplicationVersion
 type GalleryApplicationVersionList = original.GalleryApplicationVersionList
 type GalleryApplicationVersionListIterator = original.GalleryApplicationVersionListIterator
 type GalleryApplicationVersionListPage = original.GalleryApplicationVersionListPage
 type GalleryApplicationVersionProperties = original.GalleryApplicationVersionProperties
 type GalleryApplicationVersionPublishingProfile = original.GalleryApplicationVersionPublishingProfile
-type GalleryApplicationVersionUpdate = original.GalleryApplicationVersionUpdate
 type GalleryApplicationVersionsClient = original.GalleryApplicationVersionsClient
 type GalleryApplicationVersionsCreateOrUpdateFuture = original.GalleryApplicationVersionsCreateOrUpdateFuture
 type GalleryApplicationVersionsDeleteFuture = original.GalleryApplicationVersionsDeleteFuture
-type GalleryApplicationVersionsUpdateFuture = original.GalleryApplicationVersionsUpdateFuture
 type GalleryApplicationsClient = original.GalleryApplicationsClient
 type GalleryApplicationsCreateOrUpdateFuture = original.GalleryApplicationsCreateOrUpdateFuture
 type GalleryApplicationsDeleteFuture = original.GalleryApplicationsDeleteFuture
-type GalleryApplicationsUpdateFuture = original.GalleryApplicationsUpdateFuture
 type GalleryArtifactPublishingProfileBase = original.GalleryArtifactPublishingProfileBase
 type GalleryArtifactSource = original.GalleryArtifactSource
 type GalleryArtifactVersionSource = original.GalleryArtifactVersionSource
@@ -820,7 +790,6 @@ type GalleryImageList = original.GalleryImageList
 type GalleryImageListIterator = original.GalleryImageListIterator
 type GalleryImageListPage = original.GalleryImageListPage
 type GalleryImageProperties = original.GalleryImageProperties
-type GalleryImageUpdate = original.GalleryImageUpdate
 type GalleryImageVersion = original.GalleryImageVersion
 type GalleryImageVersionList = original.GalleryImageVersionList
 type GalleryImageVersionListIterator = original.GalleryImageVersionListIterator
@@ -828,21 +797,17 @@ type GalleryImageVersionListPage = original.GalleryImageVersionListPage
 type GalleryImageVersionProperties = original.GalleryImageVersionProperties
 type GalleryImageVersionPublishingProfile = original.GalleryImageVersionPublishingProfile
 type GalleryImageVersionStorageProfile = original.GalleryImageVersionStorageProfile
-type GalleryImageVersionUpdate = original.GalleryImageVersionUpdate
 type GalleryImageVersionsClient = original.GalleryImageVersionsClient
 type GalleryImageVersionsCreateOrUpdateFuture = original.GalleryImageVersionsCreateOrUpdateFuture
 type GalleryImageVersionsDeleteFuture = original.GalleryImageVersionsDeleteFuture
-type GalleryImageVersionsUpdateFuture = original.GalleryImageVersionsUpdateFuture
 type GalleryImagesClient = original.GalleryImagesClient
 type GalleryImagesCreateOrUpdateFuture = original.GalleryImagesCreateOrUpdateFuture
 type GalleryImagesDeleteFuture = original.GalleryImagesDeleteFuture
-type GalleryImagesUpdateFuture = original.GalleryImagesUpdateFuture
 type GalleryList = original.GalleryList
 type GalleryListIterator = original.GalleryListIterator
 type GalleryListPage = original.GalleryListPage
 type GalleryOSDiskImage = original.GalleryOSDiskImage
 type GalleryProperties = original.GalleryProperties
-type GalleryUpdate = original.GalleryUpdate
 type GrantAccessData = original.GrantAccessData
 type HardwareProfile = original.HardwareProfile
 type Image = original.Image
@@ -888,14 +853,11 @@ type NetworkInterfaceReferenceProperties = original.NetworkInterfaceReferencePro
 type NetworkProfile = original.NetworkProfile
 type OSDisk = original.OSDisk
 type OSDiskImage = original.OSDiskImage
-type OSDiskImageEncryption = original.OSDiskImageEncryption
 type OSProfile = original.OSProfile
 type OperationListResult = original.OperationListResult
 type OperationValue = original.OperationValue
 type OperationValueDisplay = original.OperationValueDisplay
 type OperationsClient = original.OperationsClient
-type OrchestrationServiceStateInput = original.OrchestrationServiceStateInput
-type OrchestrationServiceSummary = original.OrchestrationServiceSummary
 type Plan = original.Plan
 type ProximityPlacementGroup = original.ProximityPlacementGroup
 type ProximityPlacementGroupListResult = original.ProximityPlacementGroupListResult
@@ -941,17 +903,8 @@ type RunCommandParameterDefinition = original.RunCommandParameterDefinition
 type RunCommandResult = original.RunCommandResult
 type SSHConfiguration = original.SSHConfiguration
 type SSHPublicKey = original.SSHPublicKey
-type SSHPublicKeyGenerateKeyPairResult = original.SSHPublicKeyGenerateKeyPairResult
-type SSHPublicKeyResource = original.SSHPublicKeyResource
-type SSHPublicKeyResourceProperties = original.SSHPublicKeyResourceProperties
-type SSHPublicKeyUpdateResource = original.SSHPublicKeyUpdateResource
-type SSHPublicKeysClient = original.SSHPublicKeysClient
-type SSHPublicKeysGroupListResult = original.SSHPublicKeysGroupListResult
-type SSHPublicKeysGroupListResultIterator = original.SSHPublicKeysGroupListResultIterator
-type SSHPublicKeysGroupListResultPage = original.SSHPublicKeysGroupListResultPage
 type ScaleInPolicy = original.ScaleInPolicy
 type ScheduledEventsProfile = original.ScheduledEventsProfile
-type ShareInfoElement = original.ShareInfoElement
 type Sku = original.Sku
 type Snapshot = original.Snapshot
 type SnapshotList = original.SnapshotList
@@ -971,12 +924,10 @@ type SourceVault = original.SourceVault
 type StorageProfile = original.StorageProfile
 type SubResource = original.SubResource
 type SubResourceReadOnly = original.SubResourceReadOnly
-type SubResourceWithColocationStatus = original.SubResourceWithColocationStatus
 type TargetRegion = original.TargetRegion
 type TerminateNotificationProfile = original.TerminateNotificationProfile
 type ThrottledRequestsInput = original.ThrottledRequestsInput
 type UpdateResource = original.UpdateResource
-type UpdateResourceDefinition = original.UpdateResourceDefinition
 type UpgradeOperationHistoricalStatusInfo = original.UpgradeOperationHistoricalStatusInfo
 type UpgradeOperationHistoricalStatusInfoProperties = original.UpgradeOperationHistoricalStatusInfoProperties
 type UpgradeOperationHistoryStatus = original.UpgradeOperationHistoryStatus
@@ -1029,11 +980,9 @@ type VirtualMachineScaleSetExtensionListResultIterator = original.VirtualMachine
 type VirtualMachineScaleSetExtensionListResultPage = original.VirtualMachineScaleSetExtensionListResultPage
 type VirtualMachineScaleSetExtensionProfile = original.VirtualMachineScaleSetExtensionProfile
 type VirtualMachineScaleSetExtensionProperties = original.VirtualMachineScaleSetExtensionProperties
-type VirtualMachineScaleSetExtensionUpdate = original.VirtualMachineScaleSetExtensionUpdate
 type VirtualMachineScaleSetExtensionsClient = original.VirtualMachineScaleSetExtensionsClient
 type VirtualMachineScaleSetExtensionsCreateOrUpdateFuture = original.VirtualMachineScaleSetExtensionsCreateOrUpdateFuture
 type VirtualMachineScaleSetExtensionsDeleteFuture = original.VirtualMachineScaleSetExtensionsDeleteFuture
-type VirtualMachineScaleSetExtensionsUpdateFuture = original.VirtualMachineScaleSetExtensionsUpdateFuture
 type VirtualMachineScaleSetIPConfiguration = original.VirtualMachineScaleSetIPConfiguration
 type VirtualMachineScaleSetIPConfigurationProperties = original.VirtualMachineScaleSetIPConfigurationProperties
 type VirtualMachineScaleSetIPTag = original.VirtualMachineScaleSetIPTag
@@ -1125,7 +1074,6 @@ type VirtualMachineScaleSetsRedeployFuture = original.VirtualMachineScaleSetsRed
 type VirtualMachineScaleSetsReimageAllFuture = original.VirtualMachineScaleSetsReimageAllFuture
 type VirtualMachineScaleSetsReimageFuture = original.VirtualMachineScaleSetsReimageFuture
 type VirtualMachineScaleSetsRestartFuture = original.VirtualMachineScaleSetsRestartFuture
-type VirtualMachineScaleSetsSetOrchestrationServiceStateFuture = original.VirtualMachineScaleSetsSetOrchestrationServiceStateFuture
 type VirtualMachineScaleSetsStartFuture = original.VirtualMachineScaleSetsStartFuture
 type VirtualMachineScaleSetsUpdateFuture = original.VirtualMachineScaleSetsUpdateFuture
 type VirtualMachineScaleSetsUpdateInstancesFuture = original.VirtualMachineScaleSetsUpdateInstancesFuture
@@ -1348,18 +1296,6 @@ func NewRunCommandListResultIterator(page RunCommandListResultPage) RunCommandLi
 func NewRunCommandListResultPage(getNextPage func(context.Context, RunCommandListResult) (RunCommandListResult, error)) RunCommandListResultPage {
 	return original.NewRunCommandListResultPage(getNextPage)
 }
-func NewSSHPublicKeysClient(subscriptionID string) SSHPublicKeysClient {
-	return original.NewSSHPublicKeysClient(subscriptionID)
-}
-func NewSSHPublicKeysClientWithBaseURI(baseURI string, subscriptionID string) SSHPublicKeysClient {
-	return original.NewSSHPublicKeysClientWithBaseURI(baseURI, subscriptionID)
-}
-func NewSSHPublicKeysGroupListResultIterator(page SSHPublicKeysGroupListResultPage) SSHPublicKeysGroupListResultIterator {
-	return original.NewSSHPublicKeysGroupListResultIterator(page)
-}
-func NewSSHPublicKeysGroupListResultPage(getNextPage func(context.Context, SSHPublicKeysGroupListResult) (SSHPublicKeysGroupListResult, error)) SSHPublicKeysGroupListResultPage {
-	return original.NewSSHPublicKeysGroupListResultPage(getNextPage)
-}
 func NewSnapshotListIterator(page SnapshotListPage) SnapshotListIterator {
 	return original.NewSnapshotListIterator(page)
 }
@@ -1563,15 +1499,6 @@ func PossibleOperatingSystemStateTypesValues() []OperatingSystemStateTypes {
 }
 func PossibleOperatingSystemTypesValues() []OperatingSystemTypes {
 	return original.PossibleOperatingSystemTypesValues()
-}
-func PossibleOrchestrationServiceNamesValues() []OrchestrationServiceNames {
-	return original.PossibleOrchestrationServiceNamesValues()
-}
-func PossibleOrchestrationServiceStateActionValues() []OrchestrationServiceStateAction {
-	return original.PossibleOrchestrationServiceStateActionValues()
-}
-func PossibleOrchestrationServiceStateValues() []OrchestrationServiceState {
-	return original.PossibleOrchestrationServiceStateValues()
 }
 func PossiblePassNamesValues() []PassNames {
 	return original.PossiblePassNamesValues()

@@ -71,6 +71,8 @@ type mockProvider struct {
 	applications              map[string]bool
 	passwords                 map[string]bool
 	failNextCreateApplication bool
+
+	groupMembers map[string][]string
 }
 
 // errMockProvider simulates a normal provider which fails to associate a role,
@@ -247,12 +249,30 @@ func (m *mockProvider) DeleteRoleAssignmentByID(ctx context.Context, roleID stri
 
 // AddGroupMember adds a member to a AAD Group.
 func (m *mockProvider) AddGroupMember(ctx context.Context, groupObjectID string, parameters graphrbac.GroupAddMemberParameters) (result autorest.Response, err error) {
+	if m.groupMembers == nil {
+		m.groupMembers = map[string][]string{}
+	}
+
+	split := strings.Split(to.String(parameters.URL), "/")
+	memberID := split[len(split)-1]
+	m.groupMembers[groupObjectID] = append(m.groupMembers[groupObjectID], memberID)
 	return autorest.Response{}, nil
 }
 
 // RemoveGroupMember removes a member from a AAD Group.
 func (m *mockProvider) RemoveGroupMember(ctx context.Context, groupObjectID, memberObjectID string) (result autorest.Response, err error) {
-	return autorest.Response{}, nil
+	members, ok := m.groupMembers[groupObjectID]
+	if !ok {
+		return autorest.Response{}, errors.New("group does not exist")
+	}
+
+	for _, member := range members {
+		if member == memberObjectID {
+			return autorest.Response{}, nil
+		}
+	}
+
+	return autorest.Response{}, errors.New("memberObjectID not found for group")
 }
 
 // GetGroup gets group information from the directory.

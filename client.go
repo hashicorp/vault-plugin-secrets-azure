@@ -302,7 +302,7 @@ func (c *client) removeGroupMemberships(ctx context.Context, servicePrincipalObj
 	var merr *multierror.Error
 
 	for _, id := range groupIDs {
-		if _, err := c.provider.RemoveGroupMember(ctx, servicePrincipalObjectID, id); err != nil {
+		if _, err := c.provider.RemoveGroupMember(ctx, id, servicePrincipalObjectID); err != nil {
 			merr = multierror.Append(merr, errwrap.Wrapf("error removing group membership: {{err}}", err))
 		}
 	}

@@ -10,7 +10,6 @@ import (
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/hashicorp/vault/sdk/helper/useragent"
 	"github.com/hashicorp/vault/sdk/version"
-	"github.com/ryboe/q"
 )
 
 // AzureProvider is an interface to access underlying Azure client objects and supporting services.
@@ -105,7 +104,6 @@ func newAzureProvider(settings *clientSettings) (AzureProvider, error) {
 		vaultIDString = "; b2c13ec1-60e8-4733-9a76-88dbb2ce2471)"
 	}
 	userAgent = strings.Replace(userAgent, ")", vaultIDString, 1)
-	q.Q(userAgent)
 
 	appClient := graphrbac.NewApplicationsClient(settings.TenantID)
 	appClient.Authorizer = authorizer

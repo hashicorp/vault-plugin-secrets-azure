@@ -59,7 +59,7 @@ func TestSP_WAL_Cleanup(t *testing.T) {
 
 	// overwrite the normal test backend provider with the errMockProvider
 	errMockProvider := newErrMockProvider()
-	b.getProvider = func(s *clientSettings) (AzureProvider, error) {
+	b.getProvider = func(s *clientSettings, useMsGraphApi bool, p passwords) (AzureProvider, error) {
 		return errMockProvider, nil
 	}
 
@@ -271,8 +271,8 @@ func TestStaticSPRead(t *testing.T) {
 		assertErrorIsNil(t, err)
 
 		keyID := resp.Secret.InternalData["key_id"].(string)
-		if !strings.HasPrefix(keyID, "ffffff") {
-			t.Fatalf("expected prefix 'ffffff': %s", keyID)
+		if len(keyID) == 0 {
+			t.Fatalf("expected keyId to not be empty")
 		}
 
 		client, err := b.getClient(context.Background(), s)
@@ -413,8 +413,8 @@ func TestStaticSPRevoke(t *testing.T) {
 	assertErrorIsNil(t, err)
 
 	keyID := resp.Secret.InternalData["key_id"].(string)
-	if !strings.HasPrefix(keyID, "ffffff") {
-		t.Fatalf("expected prefix 'ffffff': %s", keyID)
+	if len(keyID) == 0 {
+		t.Fatalf("expected keyId to not be empty")
 	}
 
 	client, err := b.getClient(context.Background(), s)
@@ -733,7 +733,7 @@ func TestCredentialInteg(t *testing.T) {
 		for i := 0; i < 8; i++ {
 			// New credentials are only tested during an actual operation, not provider creation.
 			// This step should never fail.
-			p, err := newAzureProvider(settings)
+			p, err := newAzureProvider(settings, true, passwords{})
 			if err != nil {
 				t.Fatal(err)
 			}

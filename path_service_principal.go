@@ -105,7 +105,7 @@ func (b *azureSecretBackend) createSPSecret(ctx context.Context, s logical.Stora
 		return nil, err
 	}
 	appID := to.String(app.AppID)
-	appObjID := to.String(app.ObjectID)
+	appObjID := to.String(app.ID)
 
 	// Write a WAL entry in case the SP create process doesn't complete
 	walID, err := framework.PutWAL(ctx, s, walAppKey, &walApp{

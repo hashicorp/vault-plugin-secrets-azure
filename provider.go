@@ -4,12 +4,14 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/hashicorp/vault/sdk/helper/useragent"
 	"github.com/hashicorp/vault/sdk/version"
+	msGraphAuth "github.com/manicminer/hamilton/auth"
+	"github.com/manicminer/hamilton/msgraph"
+	"github.com/manicminer/hamilton/odata"
 )
 
 // AzureProvider is an interface to access underlying Azure client objects and supporting services.
@@ -24,25 +26,24 @@ type AzureProvider interface {
 }
 
 type ApplicationsClient interface {
-	CreateApplication(ctx context.Context, parameters graphrbac.ApplicationCreateParameters) (graphrbac.Application, error)
-	DeleteApplication(ctx context.Context, applicationObjectID string) (autorest.Response, error)
-	GetApplication(ctx context.Context, applicationObjectID string) (graphrbac.Application, error)
-	UpdateApplicationPasswordCredentials(
-		ctx context.Context,
-		applicationObjectID string,
-		parameters graphrbac.PasswordCredentialsUpdateParameters) (result autorest.Response, err error)
-	ListApplicationPasswordCredentials(ctx context.Context, applicationObjectID string) (result graphrbac.PasswordCredentialListResult, err error)
+	CreateApplication(ctx context.Context, parameters msgraph.Application) (*msgraph.Application, error)
+	DeleteApplication(ctx context.Context, applicationObjectID string) error
+	GetApplication(ctx context.Context, applicationObjectID string) (*msgraph.Application, error)
+	AddApplicationPassword(ctx context.Context, applicationObjectID string, credential msgraph.PasswordCredential) (newCredential *msgraph.PasswordCredential, err error)
+	RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyId string) (err error)
 }
 
 type ServicePrincipalsClient interface {
-	CreateServicePrincipal(ctx context.Context, parameters graphrbac.ServicePrincipalCreateParameters) (graphrbac.ServicePrincipal, error)
+	CreateServicePrincipal(ctx context.Context, parameters msgraph.ServicePrincipal) (*msgraph.ServicePrincipal, error)
+	DeleteServicePrincipal(ctx context.Context, objectID string) error
+	GetServicePrincipal(ctx context.Context, objectID string) (*msgraph.ServicePrincipal, error)
 }
 
 type ADGroupsClient interface {
-	AddGroupMember(ctx context.Context, groupObjectID string, parameters graphrbac.GroupAddMemberParameters) (result autorest.Response, err error)
-	RemoveGroupMember(ctx context.Context, groupObjectID, memberObjectID string) (result autorest.Response, err error)
-	GetGroup(ctx context.Context, objectID string) (result graphrbac.ADGroup, err error)
-	ListGroups(ctx context.Context, filter string) (result []graphrbac.ADGroup, err error)
+	AddGroupMember(ctx context.Context, group *msgraph.Group) (err error)
+	RemoveGroupMember(ctx context.Context, groupObjectID, memberObjectID string) (err error)
+	GetGroup(ctx context.Context, objectID string) (result *msgraph.Group, err error)
+	ListGroups(ctx context.Context, filter string) (result *[]msgraph.Group, err error)
 }
 
 type RoleAssignmentsClient interface {
@@ -65,21 +66,15 @@ type RoleDefinitionsClient interface {
 type provider struct {
 	settings *clientSettings
 
-	appClient    *graphrbac.ApplicationsClient
-	spClient     *graphrbac.ServicePrincipalsClient
-	groupsClient *graphrbac.GroupsClient
+	appClient    *msgraph.ApplicationsClient
+	spClient     *msgraph.ServicePrincipalsClient
+	groupsClient *msgraph.GroupsClient
 	raClient     *authorization.RoleAssignmentsClient
 	rdClient     *authorization.RoleDefinitionsClient
 }
 
 // newAzureProvider creates an azureProvider, backed by Azure client objects for underlying services.
 func newAzureProvider(settings *clientSettings) (AzureProvider, error) {
-	// build clients that use the GraphRBAC endpoint
-	authorizer, err := getAuthorizer(settings, settings.Environment.GraphEndpoint)
-	if err != nil {
-		return nil, err
-	}
-
 	var userAgent string
 	if settings.PluginEnv != nil {
 		userAgent = useragent.PluginString(settings.PluginEnv, "azure-secrets")
@@ -105,22 +100,52 @@ func newAzureProvider(settings *clientSettings) (AzureProvider, error) {
 	}
 	userAgent = strings.Replace(userAgent, ")", vaultIDString, 1)
 
-	appClient := graphrbac.NewApplicationsClient(settings.TenantID)
-	appClient.Authorizer = authorizer
-	appClient.AddToUserAgent(userAgent)
+	msGraphAuthConfig := msGraphAuth.Config{
+		Environment:            settings.MsGraphEnvironment,
+		TenantID:               settings.TenantID,
+		ClientID:               settings.ClientID,
+		ClientSecret:           settings.ClientSecret,
+		EnableClientSecretAuth: true,
+		EnableMsiAuth:          true,
+	}
 
-	spClient := graphrbac.NewServicePrincipalsClient(settings.TenantID)
-	spClient.Authorizer = authorizer
-	spClient.AddToUserAgent(userAgent)
-
-	groupsClient := graphrbac.NewGroupsClient(settings.TenantID)
-	groupsClient.Authorizer = authorizer
-	groupsClient.AddToUserAgent(userAgent)
-
-	// build clients that use the Resource Manager endpoint
-	authorizer, err = getAuthorizer(settings, settings.Environment.ResourceManagerEndpoint)
+	msGraphAuthorizer, err := msGraphAuthConfig.NewAuthorizer(context.TODO(), msGraphAuth.MsGraph)
 	if err != nil {
 		return nil, err
+	}
+
+	appClient := msgraph.NewApplicationsClient(settings.TenantID)
+	appClient.BaseClient.Authorizer = msGraphAuthorizer
+	appClient.BaseClient.DisableRetries = false
+	appClient.BaseClient.UserAgent = userAgent
+
+	spClient := msgraph.NewServicePrincipalsClient(settings.TenantID)
+	spClient.BaseClient.Authorizer = msGraphAuthorizer
+	spClient.BaseClient.DisableRetries = false
+	spClient.BaseClient.UserAgent = userAgent
+
+	groupsClient := msgraph.NewGroupsClient(settings.TenantID)
+	groupsClient.BaseClient.Authorizer = msGraphAuthorizer
+	groupsClient.BaseClient.DisableRetries = false
+	groupsClient.BaseClient.UserAgent = userAgent
+
+	// build clients that use the Resource Manager endpoint
+	var authorizer autorest.Authorizer
+	if settings.ClientID != "" && settings.ClientSecret != "" && settings.TenantID != "" {
+		config := auth.NewClientCredentialsConfig(settings.ClientID, settings.ClientSecret, settings.TenantID)
+		config.AADEndpoint = settings.Environment.ActiveDirectoryEndpoint
+		config.Resource = settings.Environment.ResourceManagerEndpoint
+		authorizer, err = config.Authorizer()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		config := auth.NewMSIConfig()
+		config.Resource = settings.Environment.ResourceManagerEndpoint
+		authorizer, err = config.Authorizer()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	raClient := authorization.NewRoleAssignmentsClientWithBaseURI(settings.Environment.ResourceManagerEndpoint, settings.SubscriptionID)
@@ -134,9 +159,9 @@ func newAzureProvider(settings *clientSettings) (AzureProvider, error) {
 	p := &provider{
 		settings: settings,
 
-		appClient:    &appClient,
-		spClient:     &spClient,
-		groupsClient: &groupsClient,
+		appClient:    appClient,
+		spClient:     spClient,
+		groupsClient: groupsClient,
 		raClient:     &raClient,
 		rdClient:     &rdClient,
 	}
@@ -144,57 +169,53 @@ func newAzureProvider(settings *clientSettings) (AzureProvider, error) {
 	return p, nil
 }
 
-// getAuthorizer attempts to create an authorizer, preferring ClientID/Secret if present,
-// and falling back to MSI if not.
-func getAuthorizer(settings *clientSettings, resource string) (authorizer autorest.Authorizer, err error) {
-
-	if settings.ClientID != "" && settings.ClientSecret != "" && settings.TenantID != "" {
-		config := auth.NewClientCredentialsConfig(settings.ClientID, settings.ClientSecret, settings.TenantID)
-		config.AADEndpoint = settings.Environment.ActiveDirectoryEndpoint
-		config.Resource = resource
-		authorizer, err = config.Authorizer()
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		config := auth.NewMSIConfig()
-		config.Resource = resource
-		authorizer, err = config.Authorizer()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return authorizer, nil
-}
-
 // CreateApplication create a new Azure application object.
-func (p *provider) CreateApplication(ctx context.Context, parameters graphrbac.ApplicationCreateParameters) (graphrbac.Application, error) {
-	return p.appClient.Create(ctx, parameters)
+func (p *provider) CreateApplication(ctx context.Context, parameters msgraph.Application) (application *msgraph.Application, err error) {
+	application, _, err = p.appClient.Create(ctx, parameters)
+	return
 }
 
-func (p *provider) GetApplication(ctx context.Context, applicationObjectID string) (graphrbac.Application, error) {
-	return p.appClient.Get(ctx, applicationObjectID)
+// GetApplication retrieves an Application object
+func (p *provider) GetApplication(ctx context.Context, applicationObjectID string) (application *msgraph.Application, err error) {
+	application, _, err = p.appClient.Get(ctx, applicationObjectID, odata.Query{})
+	return
 }
 
 // DeleteApplication deletes an Azure application object.
-// This will in turn remove the service principal (but not the role assignments).
-func (p *provider) DeleteApplication(ctx context.Context, applicationObjectID string) (autorest.Response, error) {
-	return p.appClient.Delete(ctx, applicationObjectID)
+func (p *provider) DeleteApplication(ctx context.Context, applicationObjectID string) (err error) {
+	_, err = p.appClient.Delete(ctx, applicationObjectID)
+	return
 }
 
-func (p *provider) UpdateApplicationPasswordCredentials(ctx context.Context, applicationObjectID string, parameters graphrbac.PasswordCredentialsUpdateParameters) (result autorest.Response, err error) {
-	return p.appClient.UpdatePasswordCredentials(ctx, applicationObjectID, parameters)
+// AddApplicationPassword adds a new client secret to an application
+func (p *provider) AddApplicationPassword(ctx context.Context, applicationObjectID string, credential msgraph.PasswordCredential) (newCredential *msgraph.PasswordCredential, err error) {
+	newCredential, _, err = p.appClient.AddPassword(ctx, applicationObjectID, credential)
+	return
 }
 
-func (p *provider) ListApplicationPasswordCredentials(ctx context.Context, applicationObjectID string) (result graphrbac.PasswordCredentialListResult, err error) {
-	return p.appClient.ListPasswordCredentials(ctx, applicationObjectID)
+// RemoveApplicationPassword removes a client secret from an application
+func (p *provider) RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyId string) (err error) {
+	_, err = p.appClient.RemovePassword(ctx, applicationObjectID, keyId)
+	return
 }
 
 // CreateServicePrincipal creates a new Azure service principal.
 // An Application must be created prior to calling this and pass in parameters.
-func (p *provider) CreateServicePrincipal(ctx context.Context, parameters graphrbac.ServicePrincipalCreateParameters) (graphrbac.ServicePrincipal, error) {
-	return p.spClient.Create(ctx, parameters)
+func (p *provider) CreateServicePrincipal(ctx context.Context, parameters msgraph.ServicePrincipal) (servicePrincipal *msgraph.ServicePrincipal, err error) {
+	servicePrincipal, _, err = p.spClient.Create(ctx, parameters)
+	return
+}
+
+// GetServicePrincipal retrieves a ServicePrincipal object
+func (p *provider) GetServicePrincipal(ctx context.Context, objectID string) (sp *msgraph.ServicePrincipal, err error) {
+	sp, _, err = p.spClient.Get(ctx, objectID, odata.Query{})
+	return
+}
+
+// DeleteServicePrincipal deletes an Azure service principal
+func (p *provider) DeleteServicePrincipal(ctx context.Context, objectID string) (err error) {
+	_, err = p.spClient.Delete(ctx, objectID)
+	return
 }
 
 // ListRoles like all Azure roles with a scope (often subscription).
@@ -242,26 +263,26 @@ func (p *provider) ListRoleAssignments(ctx context.Context, filter string) ([]au
 }
 
 // AddGroupMember adds a member to a AAD Group.
-func (p *provider) AddGroupMember(ctx context.Context, groupObjectID string, parameters graphrbac.GroupAddMemberParameters) (result autorest.Response, err error) {
-	return p.groupsClient.AddMember(ctx, groupObjectID, parameters)
+func (p *provider) AddGroupMember(ctx context.Context, group *msgraph.Group) (err error) {
+	_, err = p.groupsClient.AddMembers(ctx, group)
+	return
 }
 
 // RemoveGroupMember removes a member from a AAD Group.
-func (p *provider) RemoveGroupMember(ctx context.Context, groupObjectID, memberObjectID string) (result autorest.Response, err error) {
-	return p.groupsClient.RemoveMember(ctx, groupObjectID, memberObjectID)
+func (p *provider) RemoveGroupMember(ctx context.Context, groupObjectID, memberObjectID string) (err error) {
+	membersToRemove := []string{memberObjectID}
+	_, err = p.groupsClient.RemoveMembers(ctx, groupObjectID, &membersToRemove)
+	return
 }
 
 // GetGroup gets group information from the directory.
-func (p *provider) GetGroup(ctx context.Context, objectID string) (result graphrbac.ADGroup, err error) {
-	return p.groupsClient.Get(ctx, objectID)
+func (p *provider) GetGroup(ctx context.Context, objectID string) (result *msgraph.Group, err error) {
+	result, _, err = p.groupsClient.Get(ctx, objectID, odata.Query{})
+	return
 }
 
 // ListGroups gets list of groups for the current tenant.
-func (p *provider) ListGroups(ctx context.Context, filter string) (result []graphrbac.ADGroup, err error) {
-	page, err := p.groupsClient.List(ctx, filter)
-	if err != nil {
-		return nil, err
-	}
-
-	return page.Values(), nil
+func (p *provider) ListGroups(ctx context.Context, filter string) (result *[]msgraph.Group, err error) {
+	result, _, err = p.groupsClient.List(ctx, odata.Query{Filter: filter})
+	return
 }

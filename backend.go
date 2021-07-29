@@ -126,16 +126,10 @@ func (b *azureSecretBackend) getClient(ctx context.Context, s logical.Storage) (
 		return nil, err
 	}
 
-	passwords := passwords{
-		policyGenerator: b.System(),
-		policyName:      config.PasswordPolicy,
-	}
-
 	c := &client{
 		provider:   p,
 		settings:   b.settings,
 		expiration: time.Now().Add(clientLifetime),
-		passwords:  passwords,
 	}
 	b.client = c
 

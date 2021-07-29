@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/hashicorp/errwrap"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/jsonutil"
 	"github.com/hashicorp/vault/sdk/logical"
+	"github.com/manicminer/hamilton/msgraph"
 )
 
 const (
@@ -173,7 +173,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		if err != nil {
 			return nil, errwrap.Wrapf("error loading Application: {{err}}", err)
 		}
-		role.ApplicationID = to.String(app.AppID)
+		role.ApplicationID = to.String(app.ID)
 	}
 
 	// Parse the Azure roles
@@ -238,29 +238,35 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	// update and verify Azure groups, including looking up each group by ID or name.
 	groupSet := make(map[string]bool)
 	for _, r := range role.AzureGroups {
-		var groupDef graphrbac.ADGroup
+		var groupDef msgraph.Group
 		if r.ObjectID != "" {
-			groupDef, err = client.provider.GetGroup(ctx, r.ObjectID)
+			group, err := client.provider.GetGroup(ctx, r.ObjectID)
 			if err != nil {
 				if strings.Contains(err.Error(), "Request_ResourceNotFound") {
 					return logical.ErrorResponse("no group found for object_id: '%s'", r.ObjectID), nil
 				}
 				return nil, errwrap.Wrapf("unable to lookup Azure group: {{err}}", err)
 			}
+			if group == nil {
+				return logical.ErrorResponse("nil group returned for object_id: '%s'", r.ObjectID), nil
+			}
+			groupDef = *group
 		} else {
 			defs, err := client.findGroups(ctx, r.GroupName)
 			if err != nil {
 				return nil, errwrap.Wrapf("unable to lookup Azure group: {{err}}", err)
 			}
-			if l := len(defs); l == 0 {
+			if defs == nil {
+				return logical.ErrorResponse("no group returned for group_name: '%s'", r.GroupName), nil
+			} else if l := len(*defs); l == 0 {
 				return logical.ErrorResponse("no group found for group_name: '%s'", r.GroupName), nil
 			} else if l > 1 {
 				return logical.ErrorResponse("multiple matches found for group_name: '%s'. Specify group by ObjectID instead.", r.GroupName), nil
 			}
-			groupDef = defs[0]
+			groupDef = (*defs)[0]
 		}
 
-		groupDefID := to.String(groupDef.ObjectID)
+		groupDefID := to.String(groupDef.ID)
 		groupDefName := to.String(groupDef.DisplayName)
 		r.GroupName, r.ObjectID = groupDefName, groupDefID
 

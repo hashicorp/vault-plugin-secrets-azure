@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/logging"
 	"github.com/hashicorp/vault/sdk/logical"
+	"github.com/manicminer/hamilton/odata"
 	"github.com/mitchellh/mapstructure"
 )
 
@@ -111,35 +112,69 @@ func assertEmptyWAL(t *testing.T, b *azureSecretBackend, emp AzureProvider, s lo
 		}
 
 		// Decode the WAL data
-		var app walApp
-		d, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-			DecodeHook: mapstructure.StringToTimeHookFunc(time.RFC3339),
-			Result:     &app,
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = d.Decode(entry.Data)
-		if err != nil {
-			t.Fatal(err)
-		}
+		switch entry.Kind {
+		case walAppKey:
+			var app walApp
+			d, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+				DecodeHook: mapstructure.StringToTimeHookFunc(time.RFC3339),
+				Result:     &app,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = d.Decode(entry.Data)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		_, err = emp.GetApplication(context.Background(), app.AppObjID)
-		if err != nil {
-			t.Fatalf("expected to find application (%s), but wasn't found", app.AppObjID)
-		}
+			_, err = emp.GetApplication(context.Background(), app.AppObjID)
+			if err != nil {
+				t.Fatalf("expected to find application (%s), but wasn't found", app.AppObjID)
+			}
 
-		err = b.walRollback(ctx, req, entry.Kind, entry.Data)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := framework.DeleteWAL(ctx, s, v); err != nil {
-			t.Fatal(err)
-		}
+			err = b.walRollback(ctx, req, entry.Kind, entry.Data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := framework.DeleteWAL(ctx, s, v); err != nil {
+				t.Fatal(err)
+			}
 
-		_, err = emp.GetApplication(context.Background(), app.AppObjID)
-		if err == nil {
-			t.Fatalf("expected error getting application")
+			_, err = emp.GetApplication(context.Background(), app.AppObjID)
+			if err == nil {
+				t.Fatalf("expected error getting application")
+			}
+		case walSpKey:
+			var sp walSp
+			d, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+				DecodeHook: mapstructure.StringToTimeHookFunc(time.RFC3339),
+				Result:     &sp,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = d.Decode(entry.Data)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			_, err = emp.GetServicePrincipal(context.Background(), sp.ObjID)
+			if err != nil {
+				t.Fatalf("expected to find service principal (%s), but wasn't found", sp.ObjID)
+			}
+
+			err = b.walRollback(ctx, req, entry.Kind, entry.Data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := framework.DeleteWAL(ctx, s, v); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err = emp.GetServicePrincipal(context.Background(), sp.ObjID)
+			if err == nil {
+				t.Fatalf("expected error getting service principal")
+			}
 		}
 	}
 }
@@ -271,9 +306,6 @@ func TestStaticSPRead(t *testing.T) {
 		assertErrorIsNil(t, err)
 
 		keyID := resp.Secret.InternalData["key_id"].(string)
-		if !strings.HasPrefix(keyID, "ffffff") {
-			t.Fatalf("expected prefix 'ffffff': %s", keyID)
-		}
 
 		client, err := b.getClient(context.Background(), s)
 		assertErrorIsNil(t, err)
@@ -413,9 +445,6 @@ func TestStaticSPRevoke(t *testing.T) {
 	assertErrorIsNil(t, err)
 
 	keyID := resp.Secret.InternalData["key_id"].(string)
-	if !strings.HasPrefix(keyID, "ffffff") {
-		t.Fatalf("expected prefix 'ffffff': %s", keyID)
-	}
 
 	client, err := b.getClient(context.Background(), s)
 	assertErrorIsNil(t, err)
@@ -559,26 +588,29 @@ func TestCredentialInteg(t *testing.T) {
 
 		// recover the SP Object ID, which is not used by the application but
 		// is helpful for verification testing
-		spList, err := provider.spClient.List(context.Background(), "")
+		result, _, err := provider.spClient.List(context.Background(), odata.Query{})
 		assertErrorIsNil(t, err)
 
+		if result == nil {
+			t.Fatal("Couldn't find service principal, nil result returned")
+		}
 		var spObjID string
-		for spList.NotDone() {
-			for _, v := range spList.Values() {
-				if to.String(v.AppID) == appID {
-					spObjID = to.String(v.ObjectID)
-					goto FOUND
-				}
+		for _, v := range *result {
+			if strings.EqualFold(to.String(v.AppId), appID) {
+				spObjID = to.String(v.ID)
+				goto FOUND
 			}
-			spList.Next()
 		}
 		t.Fatal("Couldn't find SP Object ID")
 
 	FOUND:
 		// verify the new SP can be accessed
-		_, err = provider.spClient.Get(context.Background(), spObjID)
+		sp, _, err := provider.spClient.Get(context.Background(), spObjID, odata.Query{})
 		if err != nil {
 			t.Fatalf("Expected nil error on GET of new SP, got: %#v", err)
+		}
+		if sp == nil {
+			t.Fatal("Expected `sp` to not be nil on GET of new SP")
 		}
 
 		// Verify that the role assignments were created. Get the assignment
@@ -619,10 +651,13 @@ func TestCredentialInteg(t *testing.T) {
 		// Verify that SP get is an error after delete. Expected there
 		// to be a delay and that this step would take some time/retries,
 		// but that seems not to be the case.
-		_, err = provider.spClient.Get(context.Background(), spObjID)
+		sp, _, err = provider.spClient.Get(context.Background(), spObjID, odata.Query{})
 
 		if err == nil {
 			t.Fatal("Expected error reading deleted SP")
+		}
+		if sp != nil {
+			t.Fatal("Expected `sp` to be nil reading deleted SP")
 		}
 	})
 

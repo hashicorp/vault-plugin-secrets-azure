@@ -99,6 +99,10 @@ func (e *errMockProvider) GetApplication(ctx context.Context, applicationObjectI
 	return graphrbac.Application{}, errors.New("not found")
 }
 
+func (e *errMockProvider) ListApplication(ctx context.Context, filter string) (graphrbac.ApplicationListResultPage, error) {
+	return graphrbac.ApplicationListResultPage{}, nil
+}
+
 func newErrMockProvider() AzureProvider {
 	return &errMockProvider{
 		mockProvider: &mockProvider{
@@ -217,6 +221,10 @@ func (m *mockProvider) ListApplicationPasswordCredentials(ctx context.Context, a
 	return graphrbac.PasswordCredentialListResult{
 		Value: &creds,
 	}, nil
+}
+
+func (m *mockProvider) ListApplication(ctx context.Context, filter string) (result graphrbac.ApplicationListResultPage, err error) {
+	return graphrbac.ApplicationListResultPage{}, nil
 }
 
 func (m *mockProvider) appExists(s string) bool {

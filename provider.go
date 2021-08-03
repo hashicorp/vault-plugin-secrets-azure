@@ -32,6 +32,7 @@ type ApplicationsClient interface {
 		applicationObjectID string,
 		parameters graphrbac.PasswordCredentialsUpdateParameters) (result autorest.Response, err error)
 	ListApplicationPasswordCredentials(ctx context.Context, applicationObjectID string) (result graphrbac.PasswordCredentialListResult, err error)
+	ListApplication(ctx context.Context, filter string) (result graphrbac.ApplicationListResultPage, err error)
 }
 
 type ServicePrincipalsClient interface {
@@ -189,6 +190,10 @@ func (p *provider) UpdateApplicationPasswordCredentials(ctx context.Context, app
 
 func (p *provider) ListApplicationPasswordCredentials(ctx context.Context, applicationObjectID string) (result graphrbac.PasswordCredentialListResult, err error) {
 	return p.appClient.ListPasswordCredentials(ctx, applicationObjectID)
+}
+
+func (p *provider) ListApplication(ctx context.Context, filter string) (result graphrbac.ApplicationListResultPage, err error) {
+	return p.appClient.List(ctx, filter)
 }
 
 // CreateServicePrincipal creates a new Azure service principal.

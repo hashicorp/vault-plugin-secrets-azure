@@ -58,7 +58,7 @@ func (b *azureSecretBackend) pathRotateRootCredentialsUpdate(ctx context.Context
 	}
 	objID := *result.Values()[0].ObjectID
 
-	_, password, err := client.addAppPassword(ctx, objID, rootSecretExpiration)
+	_, password, err := client.updateRootPassword(ctx, objID, rootSecretExpiration)
 	if err != nil {
 		return nil, err
 	}

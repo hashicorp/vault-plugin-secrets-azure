@@ -178,7 +178,7 @@ func (c *client) updateRootPassword(ctx context.Context, appObjID string, durati
 
 	now := time.Now().UTC()
 	cred := graphrbac.PasswordCredential{
-		StartDate: &date.Time{Time: now},
+		StartDate: &date.Time{Time: now.Add(time.Duration(-5) * time.Second)},
 		EndDate:   &date.Time{Time: now.Add(duration)},
 		KeyID:     to.StringPtr(keyID),
 		Value:     to.StringPtr(password),

@@ -178,7 +178,7 @@ func (c *client) updateRootPassword(ctx context.Context, appObjID string, durati
 
 	now := time.Now().UTC()
 	cred := graphrbac.PasswordCredential{
-		StartDate: &date.Time{Time: now.Add(time.Duration(-5) * time.Second)},
+		StartDate: &date.Time{Time: now},
 		EndDate:   &date.Time{Time: now.Add(duration)},
 		KeyID:     to.StringPtr(keyID),
 		Value:     to.StringPtr(password),
@@ -192,9 +192,6 @@ func (c *client) updateRootPassword(ctx context.Context, appObjID string, durati
 			Value: &creds,
 		},
 	); err != nil {
-		if strings.Contains(err.Error(), "size of the object has exceeded its limit") {
-			err = errors.New("maximum number of Application passwords reached")
-		}
 		return "", "", errwrap.Wrapf("error updating credentials: {{err}}", err)
 	}
 

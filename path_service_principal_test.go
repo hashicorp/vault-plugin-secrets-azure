@@ -11,6 +11,7 @@ import (
 	"github.com/Azure/go-autorest/autorest/to"
 	log "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-uuid"
+	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/logging"
 	"github.com/hashicorp/vault/sdk/logical"
@@ -59,7 +60,7 @@ func TestSP_WAL_Cleanup(t *testing.T) {
 
 	// overwrite the normal test backend provider with the errMockProvider
 	errMockProvider := newErrMockProvider()
-	b.getProvider = func(s *clientSettings, useMsGraphApi bool, p passwords) (AzureProvider, error) {
+	b.getProvider = func(s *clientSettings, useMsGraphApi bool, p api.Passwords) (api.AzureProvider, error) {
 		return errMockProvider, nil
 	}
 
@@ -90,7 +91,7 @@ func TestSP_WAL_Cleanup(t *testing.T) {
 	})
 }
 
-func assertEmptyWAL(t *testing.T, b *azureSecretBackend, emp AzureProvider, s logical.Storage) {
+func assertEmptyWAL(t *testing.T, b *azureSecretBackend, emp api.AzureProvider, s logical.Storage) {
 	t.Helper()
 
 	wal, err := framework.ListWAL(context.Background(), s)
@@ -592,7 +593,7 @@ func TestCredentialInteg(t *testing.T) {
 		roleDefs, err := client.provider.ListRoles(context.Background(), fmt.Sprintf("subscriptions/%s", subscriptionID), "")
 		assertErrorIsNil(t, err)
 
-		defID := *ra.RoleAssignmentPropertiesWithScope.RoleDefinitionID
+		defID := *ra.Properties.RoleDefinitionID
 		found := false
 		for _, def := range roleDefs {
 			if *def.ID == defID && *def.RoleName == "Reader" {
@@ -733,7 +734,7 @@ func TestCredentialInteg(t *testing.T) {
 		for i := 0; i < 8; i++ {
 			// New credentials are only tested during an actual operation, not provider creation.
 			// This step should never fail.
-			p, err := newAzureProvider(settings, true, passwords{})
+			p, err := newAzureProvider(settings, true, api.Passwords{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -772,7 +773,7 @@ func assertClientSecret(tb testing.TB, data map[string]interface{}) {
 	if !ok {
 		tb.Fatalf("client_secret is not a string")
 	}
-	if len(actualPassword) != passwordLength {
-		tb.Fatalf("client_secret is not the correct length: expected %d but was %d", passwordLength, len(actualPassword))
+	if len(actualPassword) != api.PasswordLength {
+		tb.Fatalf("client_secret is not the correct length: expected %d but was %d", api.PasswordLength, len(actualPassword))
 	}
 }

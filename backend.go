@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/locksutil"
 	"github.com/hashicorp/vault/sdk/logical"
@@ -14,7 +15,7 @@ import (
 type azureSecretBackend struct {
 	*framework.Backend
 
-	getProvider func(*clientSettings, bool, passwords) (AzureProvider, error)
+	getProvider func(*clientSettings, bool, api.Passwords) (api.AzureProvider, error)
 	client      *client
 	settings    *clientSettings
 	lock        sync.RWMutex
@@ -121,9 +122,9 @@ func (b *azureSecretBackend) getClient(ctx context.Context, s logical.Storage) (
 		b.settings = settings
 	}
 
-	passwords := passwords{
-		policyGenerator: b.System(),
-		policyName:      config.PasswordPolicy,
+	passwords := api.Passwords{
+		PolicyGenerator: b.System(),
+		PolicyName:      config.PasswordPolicy,
 	}
 
 	p, err := b.getProvider(b.settings, config.UseMsGraphAPI, passwords)

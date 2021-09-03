@@ -10,13 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/profiles/latest/authorization/mgmt/authorization"
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/compute/mgmt/compute"
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
-	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/Azure/go-autorest/autorest/to"
 	log "github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 	"github.com/hashicorp/vault/sdk/helper/logging"
 	"github.com/hashicorp/vault/sdk/logical"
 )
@@ -46,7 +47,7 @@ func getTestBackend(t *testing.T, initConfig bool) (*azureSecretBackend, logical
 
 	b.settings = new(clientSettings)
 	mockProvider := newMockProvider()
-	b.getProvider = func(s *clientSettings, usMsGraphApi bool, p passwords) (AzureProvider, error) {
+	b.getProvider = func(s *clientSettings, usMsGraphApi bool, p api.Passwords) (api.AzureProvider, error) {
 		return mockProvider, nil
 	}
 
@@ -71,7 +72,7 @@ func getTestBackend(t *testing.T, initConfig bool) (*azureSecretBackend, logical
 type mockProvider struct {
 	subscriptionID            string
 	applications              map[string]bool
-	passwords                 map[string]passwordCredential
+	passwords                 map[string]api.PasswordCredential
 	failNextCreateApplication bool
 	lock                      sync.Mutex
 }
@@ -91,32 +92,32 @@ func (e *errMockProvider) CreateRoleAssignment(ctx context.Context, scope string
 // key is found, unlike mockProvider which returns the same application object
 // id each time. Existing tests depend on the mockProvider behavior, which is
 // why errMockProvider has it's own version.
-func (e *errMockProvider) GetApplication(ctx context.Context, applicationObjectID string) (ApplicationResult, error) {
+func (e *errMockProvider) GetApplication(ctx context.Context, applicationObjectID string) (api.ApplicationResult, error) {
 	for s := range e.applications {
 		if s == applicationObjectID {
-			return ApplicationResult{
+			return api.ApplicationResult{
 				AppID: to.StringPtr(s),
 			}, nil
 		}
 	}
-	return ApplicationResult{}, errors.New("not found")
+	return api.ApplicationResult{}, errors.New("not found")
 }
 
-func newErrMockProvider() AzureProvider {
+func newErrMockProvider() api.AzureProvider {
 	return &errMockProvider{
 		mockProvider: &mockProvider{
 			subscriptionID: generateUUID(),
 			applications:   make(map[string]bool),
-			passwords:      make(map[string]passwordCredential),
+			passwords:      make(map[string]api.PasswordCredential),
 		},
 	}
 }
 
-func newMockProvider() AzureProvider {
+func newMockProvider() api.AzureProvider {
 	return &mockProvider{
 		subscriptionID: generateUUID(),
 		applications:   make(map[string]bool),
-		passwords:      make(map[string]passwordCredential),
+		passwords:      make(map[string]api.PasswordCredential),
 	}
 }
 
@@ -177,10 +178,10 @@ func (m *mockProvider) CreateServicePrincipal(ctx context.Context, parameters gr
 	}, nil
 }
 
-func (m *mockProvider) CreateApplication(ctx context.Context, displayName string) (ApplicationResult, error) {
+func (m *mockProvider) CreateApplication(ctx context.Context, displayName string) (api.ApplicationResult, error) {
 	if m.failNextCreateApplication {
 		m.failNextCreateApplication = false
-		return ApplicationResult{}, errors.New("Mock: fail to create application")
+		return api.ApplicationResult{}, errors.New("Mock: fail to create application")
 	}
 	appObjID := generateUUID()
 
@@ -189,14 +190,14 @@ func (m *mockProvider) CreateApplication(ctx context.Context, displayName string
 
 	m.applications[appObjID] = true
 
-	return ApplicationResult{
+	return api.ApplicationResult{
 		AppID: to.StringPtr(generateUUID()),
 		ID:    &appObjID,
 	}, nil
 }
 
-func (m *mockProvider) GetApplication(ctx context.Context, applicationObjectID string) (ApplicationResult, error) {
-	return ApplicationResult{
+func (m *mockProvider) GetApplication(ctx context.Context, applicationObjectID string) (api.ApplicationResult, error) {
+	return api.ApplicationResult{
 		AppID: to.StringPtr("00000000-0000-0000-0000-000000000000"),
 	}, nil
 }
@@ -206,9 +207,9 @@ func (m *mockProvider) DeleteApplication(ctx context.Context, applicationObjectI
 	return autorest.Response{}, nil
 }
 
-func (m *mockProvider) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime date.Time) (result PasswordCredentialResult, err error) {
+func (m *mockProvider) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime date.Time) (result api.PasswordCredentialResult, err error) {
 	keyID := generateUUID()
-	cred := passwordCredential{
+	cred := api.PasswordCredential{
 		DisplayName: to.StringPtr(displayName),
 		StartDate:   &date.Time{Time: time.Now()},
 		EndDate:     &endDateTime,
@@ -220,8 +221,8 @@ func (m *mockProvider) AddApplicationPassword(ctx context.Context, applicationOb
 	defer m.lock.Unlock()
 	m.passwords[keyID] = cred
 
-	return PasswordCredentialResult{
-		passwordCredential: cred,
+	return api.PasswordCredentialResult{
+		PasswordCredential: cred,
 	}, nil
 }
 

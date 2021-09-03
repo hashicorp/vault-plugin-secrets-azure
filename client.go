@@ -9,14 +9,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/profiles/latest/authorization/mgmt/authorization"
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
-	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/hashicorp/errwrap"
 	multierror "github.com/hashicorp/go-multierror"
 	uuid "github.com/hashicorp/go-uuid"
+	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 	"github.com/hashicorp/vault/sdk/logical"
 )
 
@@ -30,10 +31,10 @@ const (
 // for handlers. It in turn relies on a Provider interface to access the lower level
 // Azure Client SDK methods.
 type client struct {
-	provider   AzureProvider
+	provider   api.AzureProvider
 	settings   *clientSettings
 	expiration time.Time
-	passwords  passwords
+	passwords  api.Passwords
 }
 
 // Valid returns whether the client defined and not expired.
@@ -44,7 +45,7 @@ func (c *client) Valid() bool {
 // createApp creates a new Azure application.
 // An Application is a needed to create service principals used by
 // the caller for authentication.
-func (c *client) createApp(ctx context.Context) (app *ApplicationResult, err error) {
+func (c *client) createApp(ctx context.Context) (app *api.ApplicationResult, err error) {
 	name, err := uuid.GenerateUUID()
 	if err != nil {
 		return nil, err
@@ -60,7 +61,7 @@ func (c *client) createApp(ctx context.Context) (app *ApplicationResult, err err
 // createSP creates a new service principal.
 func (c *client) createSP(
 	ctx context.Context,
-	app *ApplicationResult,
+	app *api.ApplicationResult,
 	duration time.Duration) (svcPrinc *graphrbac.ServicePrincipal, password string, err error) {
 
 	// Generate a random key (which must be a UUID) and password
@@ -69,7 +70,7 @@ func (c *client) createSP(
 		return nil, "", err
 	}
 
-	password, err = c.passwords.generate(ctx)
+	password, err = c.passwords.Generate(ctx)
 	if err != nil {
 		return nil, "", err
 	}
@@ -157,7 +158,7 @@ func (c *client) assignRoles(ctx context.Context, sp *graphrbac.ServicePrincipal
 		resultRaw, err := retry(ctx, func() (interface{}, bool, error) {
 			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentID,
 				authorization.RoleAssignmentCreateParameters{
-					RoleAssignmentProperties: &authorization.RoleAssignmentProperties{
+					Properties: &authorization.RoleAssignmentProperties{
 						RoleDefinitionID: to.StringPtr(role.RoleID),
 						PrincipalID:      sp.ObjectID,
 					},

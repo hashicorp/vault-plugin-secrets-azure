@@ -1,4 +1,4 @@
-package azuresecrets
+package api
 
 import (
 	"context"
@@ -13,18 +13,18 @@ import (
 
 const (
 	// defaultGraphMicrosoftComURI is the default URI used for the service MS Graph API
-	defaultGraphMicrosoftComURI = "https://graph.microsoft.com"
+	DefaultGraphMicrosoftComURI = "https://graph.microsoft.com"
 )
 
-type msGraphApplicationsClient struct {
+type AppClient struct {
 	authorization.BaseClient
 }
 
-func newMSGraphApplicationClient(subscriptionId string) msGraphApplicationsClient {
-	return msGraphApplicationsClient{authorization.NewWithBaseURI(defaultGraphMicrosoftComURI, subscriptionId)}
+func NewGraphApplicationClient(subscriptionId string) AppClient {
+	return AppClient{authorization.NewWithBaseURI(DefaultGraphMicrosoftComURI, subscriptionId)}
 }
 
-func (p *msGraphApplicationsClient) GetApplication(ctx context.Context, applicationObjectID string) (result ApplicationResult, err error) {
+func (p *AppClient) GetApplication(ctx context.Context, applicationObjectID string) (result ApplicationResult, err error) {
 	req, err := p.getApplicationPreparer(ctx, applicationObjectID)
 	if err != nil {
 		err = autorest.NewErrorWithError(err, "provider", "GetApplication", nil, "Failure preparing request")
@@ -47,7 +47,7 @@ func (p *msGraphApplicationsClient) GetApplication(ctx context.Context, applicat
 }
 
 // CreateApplication create a new Azure application object.
-func (p *msGraphApplicationsClient) CreateApplication(ctx context.Context, displayName string) (result ApplicationResult, err error) {
+func (p *AppClient) CreateApplication(ctx context.Context, displayName string) (result ApplicationResult, err error) {
 	req, err := p.createApplicationPreparer(ctx, displayName)
 	if err != nil {
 		err = autorest.NewErrorWithError(err, "provider", "CreateApplication", nil, "Failure preparing request")
@@ -71,7 +71,7 @@ func (p *msGraphApplicationsClient) CreateApplication(ctx context.Context, displ
 
 // DeleteApplication deletes an Azure application object.
 // This will in turn remove the service principal (but not the role assignments).
-func (p *msGraphApplicationsClient) DeleteApplication(ctx context.Context, applicationObjectID string) (result autorest.Response, err error) {
+func (p *AppClient) DeleteApplication(ctx context.Context, applicationObjectID string) (result autorest.Response, err error) {
 	req, err := p.deleteApplicationPreparer(ctx, applicationObjectID)
 	if err != nil {
 		err = autorest.NewErrorWithError(err, "provider", "DeleteApplication", nil, "Failure preparing request")
@@ -93,7 +93,7 @@ func (p *msGraphApplicationsClient) DeleteApplication(ctx context.Context, appli
 	return
 }
 
-func (p *msGraphApplicationsClient) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime date.Time) (result PasswordCredentialResult, err error) {
+func (p *AppClient) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime date.Time) (result PasswordCredentialResult, err error) {
 	req, err := p.addPasswordPreparer(ctx, applicationObjectID, displayName, endDateTime)
 	if err != nil {
 		err = autorest.NewErrorWithError(err, "provider", "AddApplicationPassword", nil, "Failure preparing request")
@@ -115,7 +115,7 @@ func (p *msGraphApplicationsClient) AddApplicationPassword(ctx context.Context, 
 	return
 }
 
-func (p *msGraphApplicationsClient) RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) (result autorest.Response, err error) {
+func (p *AppClient) RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) (result autorest.Response, err error) {
 	req, err := p.removePasswordPreparer(ctx, applicationObjectID, keyID)
 	if err != nil {
 		err = autorest.NewErrorWithError(err, "provider", "RemoveApplicationPassword", nil, "Failure preparing request")
@@ -137,7 +137,7 @@ func (p *msGraphApplicationsClient) RemoveApplicationPassword(ctx context.Contex
 	return
 }
 
-func (client msGraphApplicationsClient) getApplicationPreparer(ctx context.Context, applicationObjectID string) (*http.Request, error) {
+func (client AppClient) getApplicationPreparer(ctx context.Context, applicationObjectID string) (*http.Request, error) {
 	pathParameters := map[string]interface{}{
 		"applicationObjectId": autorest.Encode("path", applicationObjectID),
 	}
@@ -151,12 +151,12 @@ func (client msGraphApplicationsClient) getApplicationPreparer(ctx context.Conte
 	return preparer.Prepare((&http.Request{}).WithContext(ctx))
 }
 
-func (client msGraphApplicationsClient) getApplicationSender(req *http.Request) (*http.Response, error) {
+func (client AppClient) getApplicationSender(req *http.Request) (*http.Response, error) {
 	sd := autorest.GetSendDecorators(req.Context(), autorest.DoRetryForStatusCodes(client.RetryAttempts, client.RetryDuration, autorest.StatusCodesForRetry...))
 	return autorest.SendWithSender(client, req, sd...)
 }
 
-func (client msGraphApplicationsClient) getApplicationResponder(resp *http.Response) (result ApplicationResult, err error) {
+func (client AppClient) getApplicationResponder(resp *http.Response) (result ApplicationResult, err error) {
 	err = autorest.Respond(
 		resp,
 		client.ByInspecting(),
@@ -167,15 +167,15 @@ func (client msGraphApplicationsClient) getApplicationResponder(resp *http.Respo
 	return
 }
 
-func (client msGraphApplicationsClient) addPasswordPreparer(ctx context.Context, applicationObjectID string, displayName string, endDateTime date.Time) (*http.Request, error) {
+func (client AppClient) addPasswordPreparer(ctx context.Context, applicationObjectID string, displayName string, endDateTime date.Time) (*http.Request, error) {
 	pathParameters := map[string]interface{}{
 		"applicationObjectId": autorest.Encode("path", applicationObjectID),
 	}
 
 	parameters := struct {
-		PasswordCredential *passwordCredential `json:"passwordCredential"`
+		PasswordCredential *PasswordCredential `json:"passwordCredential"`
 	}{
-		PasswordCredential: &passwordCredential{
+		PasswordCredential: &PasswordCredential{
 			DisplayName: to.StringPtr(displayName),
 			EndDate:     &endDateTime,
 		},
@@ -191,12 +191,12 @@ func (client msGraphApplicationsClient) addPasswordPreparer(ctx context.Context,
 	return preparer.Prepare((&http.Request{}).WithContext(ctx))
 }
 
-func (client msGraphApplicationsClient) addPasswordSender(req *http.Request) (*http.Response, error) {
+func (client AppClient) addPasswordSender(req *http.Request) (*http.Response, error) {
 	sd := autorest.GetSendDecorators(req.Context(), autorest.DoRetryForStatusCodes(client.RetryAttempts, client.RetryDuration, autorest.StatusCodesForRetry...))
 	return autorest.SendWithSender(client, req, sd...)
 }
 
-func (client msGraphApplicationsClient) addPasswordResponder(resp *http.Response) (result PasswordCredentialResult, err error) {
+func (client AppClient) addPasswordResponder(resp *http.Response) (result PasswordCredentialResult, err error) {
 	err = autorest.Respond(
 		resp,
 		client.ByInspecting(),
@@ -207,7 +207,7 @@ func (client msGraphApplicationsClient) addPasswordResponder(resp *http.Response
 	return
 }
 
-func (client msGraphApplicationsClient) removePasswordPreparer(ctx context.Context, applicationObjectID string, keyID string) (*http.Request, error) {
+func (client AppClient) removePasswordPreparer(ctx context.Context, applicationObjectID string, keyID string) (*http.Request, error) {
 	pathParameters := map[string]interface{}{
 		"applicationObjectId": autorest.Encode("path", applicationObjectID),
 	}
@@ -228,12 +228,12 @@ func (client msGraphApplicationsClient) removePasswordPreparer(ctx context.Conte
 	return preparer.Prepare((&http.Request{}).WithContext(ctx))
 }
 
-func (client msGraphApplicationsClient) removePasswordSender(req *http.Request) (*http.Response, error) {
+func (client AppClient) removePasswordSender(req *http.Request) (*http.Response, error) {
 	sd := autorest.GetSendDecorators(req.Context(), autorest.DoRetryForStatusCodes(client.RetryAttempts, client.RetryDuration, autorest.StatusCodesForRetry...))
 	return autorest.SendWithSender(client, req, sd...)
 }
 
-func (client msGraphApplicationsClient) removePasswordResponder(resp *http.Response) (result autorest.Response, err error) {
+func (client AppClient) removePasswordResponder(resp *http.Response) (result autorest.Response, err error) {
 	err = autorest.Respond(
 		resp,
 		client.ByInspecting(),
@@ -244,7 +244,7 @@ func (client msGraphApplicationsClient) removePasswordResponder(resp *http.Respo
 	return
 }
 
-func (client msGraphApplicationsClient) createApplicationPreparer(ctx context.Context, displayName string) (*http.Request, error) {
+func (client AppClient) createApplicationPreparer(ctx context.Context, displayName string) (*http.Request, error) {
 	parameters := struct {
 		DisplayName *string `json:"displayName"`
 	}{
@@ -261,12 +261,12 @@ func (client msGraphApplicationsClient) createApplicationPreparer(ctx context.Co
 	return preparer.Prepare((&http.Request{}).WithContext(ctx))
 }
 
-func (client msGraphApplicationsClient) createApplicationSender(req *http.Request) (*http.Response, error) {
+func (client AppClient) createApplicationSender(req *http.Request) (*http.Response, error) {
 	sd := autorest.GetSendDecorators(req.Context(), autorest.DoRetryForStatusCodes(client.RetryAttempts, client.RetryDuration, autorest.StatusCodesForRetry...))
 	return autorest.SendWithSender(client, req, sd...)
 }
 
-func (client msGraphApplicationsClient) createApplicationResponder(resp *http.Response) (result ApplicationResult, err error) {
+func (client AppClient) createApplicationResponder(resp *http.Response) (result ApplicationResult, err error) {
 	err = autorest.Respond(
 		resp,
 		client.ByInspecting(),
@@ -277,7 +277,7 @@ func (client msGraphApplicationsClient) createApplicationResponder(resp *http.Re
 	return
 }
 
-func (client msGraphApplicationsClient) deleteApplicationPreparer(ctx context.Context, applicationObjectID string) (*http.Request, error) {
+func (client AppClient) deleteApplicationPreparer(ctx context.Context, applicationObjectID string) (*http.Request, error) {
 	pathParameters := map[string]interface{}{
 		"applicationObjectId": autorest.Encode("path", applicationObjectID),
 	}
@@ -291,12 +291,12 @@ func (client msGraphApplicationsClient) deleteApplicationPreparer(ctx context.Co
 	return preparer.Prepare((&http.Request{}).WithContext(ctx))
 }
 
-func (client msGraphApplicationsClient) deleteApplicationSender(req *http.Request) (*http.Response, error) {
+func (client AppClient) deleteApplicationSender(req *http.Request) (*http.Response, error) {
 	sd := autorest.GetSendDecorators(req.Context(), autorest.DoRetryForStatusCodes(client.RetryAttempts, client.RetryDuration, autorest.StatusCodesForRetry...))
 	return autorest.SendWithSender(client, req, sd...)
 }
 
-func (client msGraphApplicationsClient) deleteApplicationResponder(resp *http.Response) (result autorest.Response, err error) {
+func (client AppClient) deleteApplicationResponder(resp *http.Response) (result autorest.Response, err error) {
 	err = autorest.Respond(
 		resp,
 		client.ByInspecting(),
@@ -305,30 +305,4 @@ func (client msGraphApplicationsClient) deleteApplicationResponder(resp *http.Re
 		autorest.ByClosing())
 	result.Response = resp
 	return
-}
-
-type passwordCredential struct {
-	DisplayName *string `json:"displayName"`
-	// StartDate - Start date.
-	StartDate *date.Time `json:"startDateTime,omitempty"`
-	// EndDate - End date.
-	EndDate *date.Time `json:"endDateTime,omitempty"`
-	// KeyID - Key ID.
-	KeyID *string `json:"keyId,omitempty"`
-	// Value - Key value.
-	SecretText *string `json:"secretText,omitempty"`
-}
-
-type PasswordCredentialResult struct {
-	autorest.Response `json:"-"`
-
-	passwordCredential
-}
-
-type ApplicationResult struct {
-	autorest.Response `json:"-"`
-
-	AppID               *string               `json:"appId,omitempty"`
-	ID                  *string               `json:"id,omitempty"`
-	PasswordCredentials []*passwordCredential `json:"passwordCredentials,omitempty"`
 }

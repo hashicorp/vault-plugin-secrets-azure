@@ -202,16 +202,7 @@ func (c *client) unassignRoles(ctx context.Context, roleIDs []string) error {
 func (c *client) addGroupMemberships(ctx context.Context, sp *graphrbac.ServicePrincipal, groups []*AzureGroup) error {
 	for _, group := range groups {
 		_, err := retry(ctx, func() (interface{}, bool, error) {
-			_, err := c.provider.AddGroupMember(ctx, group.ObjectID,
-				graphrbac.GroupAddMemberParameters{
-					URL: to.StringPtr(
-						fmt.Sprintf("%s%s/directoryObjects/%s",
-							c.settings.Environment.GraphEndpoint,
-							c.settings.TenantID,
-							*sp.ObjectID,
-						),
-					),
-				})
+			err := c.provider.AddGroupMember(ctx, group.ObjectID, *sp.ObjectID)
 
 			// Propagation delays within Azure can cause this error occasionally, so don't quit on it.
 			if err != nil && strings.Contains(err.Error(), "Request_ResourceNotFound") {
@@ -237,7 +228,7 @@ func (c *client) removeGroupMemberships(ctx context.Context, servicePrincipalObj
 	var merr *multierror.Error
 
 	for _, id := range groupIDs {
-		if _, err := c.provider.RemoveGroupMember(ctx, servicePrincipalObjectID, id); err != nil {
+		if err := c.provider.RemoveGroupMember(ctx, servicePrincipalObjectID, id); err != nil {
 			merr = multierror.Append(merr, errwrap.Wrapf("error removing group membership: {{err}}", err))
 		}
 	}
@@ -263,7 +254,7 @@ func (c *client) findRoles(ctx context.Context, roleName string) ([]authorizatio
 
 // findGroups is used to find a group by name. It returns all groups matching
 // the passsed name.
-func (c *client) findGroups(ctx context.Context, groupName string) ([]graphrbac.ADGroup, error) {
+func (c *client) findGroups(ctx context.Context, groupName string) ([]api.ADGroup, error) {
 	return c.provider.ListGroups(ctx, fmt.Sprintf("displayName eq '%s'", groupName))
 }
 
@@ -337,10 +328,13 @@ func retry(ctx context.Context, f func() (interface{}, bool, error)) (interface{
 	}
 
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	var lastErr error
 	for {
-		if result, done, err := f(); done {
+		result, done, err := f()
+		if done {
 			return result, err
 		}
+		lastErr = err
 
 		delay := time.Duration(2000+rng.Intn(6000)) * time.Millisecond
 		delayTimer.Reset(delay)
@@ -349,7 +343,11 @@ func retry(ctx context.Context, f func() (interface{}, bool, error)) (interface{
 		case <-delayTimer.C:
 			// Retry loop
 		case <-ctx.Done():
-			return nil, fmt.Errorf("retry failed: %w", ctx.Err())
+			err := lastErr
+			if err == nil {
+				err = ctx.Err()
+			}
+			return nil, fmt.Errorf("retry failed: %w", err)
 		}
 	}
 }

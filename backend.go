@@ -90,16 +90,15 @@ func (b *azureSecretBackend) invalidate(ctx context.Context, key string) {
 
 func (b *azureSecretBackend) getClient(ctx context.Context, s logical.Storage) (*client, error) {
 	b.lock.RLock()
-	unlockFunc := b.lock.RUnlock
-	defer func() { unlockFunc() }()
 
 	if b.client.Valid() {
+		b.lock.RUnlock()
 		return b.client, nil
 	}
 
 	b.lock.RUnlock()
 	b.lock.Lock()
-	unlockFunc = b.lock.Unlock
+	defer b.lock.Unlock()
 
 	if b.client.Valid() {
 		return b.client, nil

@@ -14,6 +14,8 @@ import (
 	"github.com/hashicorp/vault/sdk/version"
 )
 
+var _ api.AzureProvider = (*provider)(nil)
+
 // provider is a concrete implementation of AzureProvider. In most cases it is a simple passthrough
 // to the appropriate client object. But if the response requires processing that is more practical
 // at this layer, the response signature may different from the Azure signature.
@@ -22,7 +24,7 @@ type provider struct {
 
 	appClient    api.ApplicationsClient
 	spClient     *graphrbac.ServicePrincipalsClient
-	groupsClient *graphrbac.GroupsClient
+	groupsClient api.GroupsClient
 	raClient     *authorization.RoleAssignmentsClient
 	rdClient     *authorization.RoleDefinitionsClient
 }
@@ -35,6 +37,73 @@ func newAzureProvider(settings *clientSettings, useMsGraphApi bool, passwords ap
 		return nil, err
 	}
 
+	userAgent := getUserAgent(settings)
+
+	spClient := graphrbac.NewServicePrincipalsClient(settings.TenantID)
+	spClient.Authorizer = graphAuthorizer
+	spClient.AddToUserAgent(userAgent)
+
+	var appClient api.ApplicationsClient
+	var groupsClient api.GroupsClient
+	if useMsGraphApi {
+		graphApiAuthorizer, err := getAuthorizer(settings, api.DefaultGraphMicrosoftComURI)
+		if err != nil {
+			return nil, err
+		}
+
+		msGraphAppClient, err := api.NewMSGraphApplicationClient(settings.SubscriptionID, userAgent, graphApiAuthorizer)
+		if err != nil {
+			return nil, err
+		}
+
+		appClient = msGraphAppClient
+		groupsClient = msGraphAppClient
+	} else {
+		aadGraphClient := graphrbac.NewApplicationsClient(settings.TenantID)
+		aadGraphClient.Authorizer = graphAuthorizer
+		aadGraphClient.AddToUserAgent(userAgent)
+
+		appClient = &api.ActiveDirectoryApplicationClient{Client: &aadGraphClient, Passwords: passwords}
+
+		aadGroupsClient := graphrbac.NewGroupsClient(settings.TenantID)
+		aadGroupsClient.Authorizer = graphAuthorizer
+		aadGroupsClient.AddToUserAgent(userAgent)
+
+		groupsClient = api.ActiveDirectoryApplicationGroupsClient{
+			BaseURI:  aadGroupsClient.BaseURI,
+			TenantID: aadGroupsClient.TenantID,
+			Client:   aadGroupsClient,
+		}
+	}
+
+	// build clients that use the Resource Manager endpoint
+	resourceManagerAuthorizer, err := getAuthorizer(settings, settings.Environment.ResourceManagerEndpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	raClient := authorization.NewRoleAssignmentsClientWithBaseURI(settings.Environment.ResourceManagerEndpoint, settings.SubscriptionID)
+	raClient.Authorizer = resourceManagerAuthorizer
+	raClient.AddToUserAgent(userAgent)
+
+	rdClient := authorization.NewRoleDefinitionsClientWithBaseURI(settings.Environment.ResourceManagerEndpoint, settings.SubscriptionID)
+	rdClient.Authorizer = resourceManagerAuthorizer
+	rdClient.AddToUserAgent(userAgent)
+
+	p := &provider{
+		settings: settings,
+
+		appClient:    appClient,
+		spClient:     &spClient,
+		groupsClient: groupsClient,
+		raClient:     &raClient,
+		rdClient:     &rdClient,
+	}
+
+	return p, nil
+}
+
+func getUserAgent(settings *clientSettings) string {
 	var userAgent string
 	if settings.PluginEnv != nil {
 		userAgent = useragent.PluginString(settings.PluginEnv, "azure-secrets")
@@ -60,83 +129,22 @@ func newAzureProvider(settings *clientSettings, useMsGraphApi bool, passwords ap
 	}
 	userAgent = strings.Replace(userAgent, ")", vaultIDString, 1)
 
-	spClient := graphrbac.NewServicePrincipalsClient(settings.TenantID)
-	spClient.Authorizer = graphAuthorizer
-	spClient.AddToUserAgent(userAgent)
-
-	groupsClient := graphrbac.NewGroupsClient(settings.TenantID)
-	groupsClient.Authorizer = graphAuthorizer
-	groupsClient.AddToUserAgent(userAgent)
-
-	var appClient api.ApplicationsClient
-	if useMsGraphApi {
-		graphApiAuthorizer, err := getAuthorizer(settings, api.DefaultGraphMicrosoftComURI)
-		if err != nil {
-			return nil, err
-		}
-
-		msGraphAppClient := api.NewGraphApplicationClient(settings.SubscriptionID)
-		msGraphAppClient.Authorizer = graphApiAuthorizer
-		msGraphAppClient.AddToUserAgent(userAgent)
-
-		appClient = &msGraphAppClient
-	} else {
-		aadGraphClient := graphrbac.NewApplicationsClient(settings.TenantID)
-		aadGraphClient.Authorizer = graphAuthorizer
-		aadGraphClient.AddToUserAgent(userAgent)
-
-		appClient = &api.ActiveDirectoryApplicatinClient{Client: &aadGraphClient, Passwords: passwords}
-	}
-
-	// build clients that use the Resource Manager endpoint
-	resourceManagerAuthorizer, err := getAuthorizer(settings, settings.Environment.ResourceManagerEndpoint)
-	if err != nil {
-		return nil, err
-	}
-
-	raClient := authorization.NewRoleAssignmentsClientWithBaseURI(settings.Environment.ResourceManagerEndpoint, settings.SubscriptionID)
-	raClient.Authorizer = resourceManagerAuthorizer
-	raClient.AddToUserAgent(userAgent)
-
-	rdClient := authorization.NewRoleDefinitionsClientWithBaseURI(settings.Environment.ResourceManagerEndpoint, settings.SubscriptionID)
-	rdClient.Authorizer = resourceManagerAuthorizer
-	rdClient.AddToUserAgent(userAgent)
-
-	p := &provider{
-		settings: settings,
-
-		appClient:    appClient,
-		spClient:     &spClient,
-		groupsClient: &groupsClient,
-		raClient:     &raClient,
-		rdClient:     &rdClient,
-	}
-
-	return p, nil
+	return userAgent
 }
 
 // getAuthorizer attempts to create an authorizer, preferring ClientID/Secret if present,
 // and falling back to MSI if not.
-func getAuthorizer(settings *clientSettings, resource string) (authorizer autorest.Authorizer, err error) {
-
+func getAuthorizer(settings *clientSettings, resource string) (autorest.Authorizer, error) {
 	if settings.ClientID != "" && settings.ClientSecret != "" && settings.TenantID != "" {
 		config := auth.NewClientCredentialsConfig(settings.ClientID, settings.ClientSecret, settings.TenantID)
 		config.AADEndpoint = settings.Environment.ActiveDirectoryEndpoint
 		config.Resource = resource
-		authorizer, err = config.Authorizer()
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		config := auth.NewMSIConfig()
-		config.Resource = resource
-		authorizer, err = config.Authorizer()
-		if err != nil {
-			return nil, err
-		}
+		return config.Authorizer()
 	}
 
-	return authorizer, nil
+	config := auth.NewMSIConfig()
+	config.Resource = resource
+	return config.Authorizer()
 }
 
 // CreateApplication create a new Azure application object.
@@ -213,26 +221,21 @@ func (p *provider) ListRoleAssignments(ctx context.Context, filter string) ([]au
 }
 
 // AddGroupMember adds a member to a AAD Group.
-func (p *provider) AddGroupMember(ctx context.Context, groupObjectID string, parameters graphrbac.GroupAddMemberParameters) (result autorest.Response, err error) {
-	return p.groupsClient.AddMember(ctx, groupObjectID, parameters)
+func (p *provider) AddGroupMember(ctx context.Context, groupObjectID string, memberObjectID string) (err error) {
+	return p.groupsClient.AddGroupMember(ctx, groupObjectID, memberObjectID)
 }
 
 // RemoveGroupMember removes a member from a AAD Group.
-func (p *provider) RemoveGroupMember(ctx context.Context, groupObjectID, memberObjectID string) (result autorest.Response, err error) {
-	return p.groupsClient.RemoveMember(ctx, groupObjectID, memberObjectID)
+func (p *provider) RemoveGroupMember(ctx context.Context, groupObjectID, memberObjectID string) (err error) {
+	return p.groupsClient.RemoveGroupMember(ctx, groupObjectID, memberObjectID)
 }
 
 // GetGroup gets group information from the directory.
-func (p *provider) GetGroup(ctx context.Context, objectID string) (result graphrbac.ADGroup, err error) {
-	return p.groupsClient.Get(ctx, objectID)
+func (p *provider) GetGroup(ctx context.Context, objectID string) (result api.ADGroup, err error) {
+	return p.groupsClient.GetGroup(ctx, objectID)
 }
 
 // ListGroups gets list of groups for the current tenant.
-func (p *provider) ListGroups(ctx context.Context, filter string) (result []graphrbac.ADGroup, err error) {
-	page, err := p.groupsClient.List(ctx, filter)
-	if err != nil {
-		return nil, err
-	}
-
-	return page.Values(), nil
+func (p *provider) ListGroups(ctx context.Context, filter string) (result []api.ADGroup, err error) {
+	return p.groupsClient.ListGroups(ctx, filter)
 }

@@ -9,15 +9,24 @@ import (
 	"github.com/Azure/go-autorest/autorest/date"
 )
 
-// AzureProvider is an interface to access underlying Azure client objects and supporting services.
-// Where practical the original function signature is preserved. client provides higher
+// AzureProvider is an interface to access underlying Azure Client objects and supporting services.
+// Where practical the original function signature is preserved. Client provides higher
 // level operations atop AzureProvider.
 type AzureProvider interface {
 	ApplicationsClient
-	ServicePrincipalsClient
-	ADGroupsClient
-	RoleAssignmentsClient
-	RoleDefinitionsClient
+	GroupsClient
+
+	CreateServicePrincipal(ctx context.Context, parameters graphrbac.ServicePrincipalCreateParameters) (graphrbac.ServicePrincipal, error)
+
+	CreateRoleAssignment(
+		ctx context.Context,
+		scope string,
+		roleAssignmentName string,
+		parameters authorization.RoleAssignmentCreateParameters) (authorization.RoleAssignment, error)
+	DeleteRoleAssignmentByID(ctx context.Context, roleID string) (authorization.RoleAssignment, error)
+
+	ListRoles(ctx context.Context, scope string, filter string) ([]authorization.RoleDefinition, error)
+	GetRoleByID(ctx context.Context, roleID string) (result authorization.RoleDefinition, err error)
 }
 
 type ApplicationsClient interface {
@@ -26,31 +35,6 @@ type ApplicationsClient interface {
 	DeleteApplication(ctx context.Context, applicationObjectID string) (autorest.Response, error)
 	AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime date.Time) (result PasswordCredentialResult, err error)
 	RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) (result autorest.Response, err error)
-}
-
-type ServicePrincipalsClient interface {
-	CreateServicePrincipal(ctx context.Context, parameters graphrbac.ServicePrincipalCreateParameters) (graphrbac.ServicePrincipal, error)
-}
-
-type ADGroupsClient interface {
-	AddGroupMember(ctx context.Context, groupObjectID string, parameters graphrbac.GroupAddMemberParameters) (result autorest.Response, err error)
-	RemoveGroupMember(ctx context.Context, groupObjectID, memberObjectID string) (result autorest.Response, err error)
-	GetGroup(ctx context.Context, objectID string) (result graphrbac.ADGroup, err error)
-	ListGroups(ctx context.Context, filter string) (result []graphrbac.ADGroup, err error)
-}
-
-type RoleAssignmentsClient interface {
-	CreateRoleAssignment(
-		ctx context.Context,
-		scope string,
-		roleAssignmentName string,
-		parameters authorization.RoleAssignmentCreateParameters) (authorization.RoleAssignment, error)
-	DeleteRoleAssignmentByID(ctx context.Context, roleID string) (authorization.RoleAssignment, error)
-}
-
-type RoleDefinitionsClient interface {
-	ListRoles(ctx context.Context, scope string, filter string) ([]authorization.RoleDefinition, error)
-	GetRoleByID(ctx context.Context, roleID string) (result authorization.RoleDefinition, err error)
 }
 
 type PasswordCredential struct {

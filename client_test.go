@@ -83,7 +83,7 @@ func TestRetry(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		go func() {
-			time.Sleep(7 * time.Second)
+			time.Sleep(1 * time.Second)
 			cancel()
 		}()
 
@@ -92,8 +92,8 @@ func TestRetry(t *testing.T) {
 			return nil, false, nil
 		})
 		elapsed := time.Now().Sub(start).Seconds()
-		if elapsed < 6 || elapsed > 8 {
-			t.Fatalf("expected time of ~7 seconds, got: %f", elapsed)
+		if elapsed < 0 || elapsed > 2 {
+			t.Fatalf("expected time of ~1 second, got: %f", elapsed)
 		}
 
 		if err == nil {

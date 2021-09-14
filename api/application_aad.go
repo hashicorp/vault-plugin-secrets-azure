@@ -15,12 +15,12 @@ import (
 	"github.com/hashicorp/go-uuid"
 )
 
-type ActiveDirectoryApplicatinClient struct {
+type ActiveDirectoryApplicationClient struct {
 	Client    *graphrbac.ApplicationsClient
 	Passwords Passwords
 }
 
-func (a *ActiveDirectoryApplicatinClient) GetApplication(ctx context.Context, applicationObjectID string) (result ApplicationResult, err error) {
+func (a *ActiveDirectoryApplicationClient) GetApplication(ctx context.Context, applicationObjectID string) (result ApplicationResult, err error) {
 	app, err := a.Client.Get(ctx, applicationObjectID)
 	if err != nil {
 		return ApplicationResult{}, err
@@ -32,7 +32,7 @@ func (a *ActiveDirectoryApplicatinClient) GetApplication(ctx context.Context, ap
 	}, nil
 }
 
-func (a *ActiveDirectoryApplicatinClient) CreateApplication(ctx context.Context, displayName string) (result ApplicationResult, err error) {
+func (a *ActiveDirectoryApplicationClient) CreateApplication(ctx context.Context, displayName string) (result ApplicationResult, err error) {
 	appURL := fmt.Sprintf("https://%s", displayName)
 
 	app, err := a.Client.Create(ctx, graphrbac.ApplicationCreateParameters{
@@ -51,11 +51,11 @@ func (a *ActiveDirectoryApplicatinClient) CreateApplication(ctx context.Context,
 	}, nil
 }
 
-func (a *ActiveDirectoryApplicatinClient) DeleteApplication(ctx context.Context, applicationObjectID string) (autorest.Response, error) {
+func (a *ActiveDirectoryApplicationClient) DeleteApplication(ctx context.Context, applicationObjectID string) (autorest.Response, error) {
 	return a.Client.Delete(ctx, applicationObjectID)
 }
 
-func (a *ActiveDirectoryApplicatinClient) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime date.Time) (result PasswordCredentialResult, err error) {
+func (a *ActiveDirectoryApplicationClient) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime date.Time) (result PasswordCredentialResult, err error) {
 	keyID, err := uuid.GenerateUUID()
 	if err != nil {
 		return PasswordCredentialResult{}, err
@@ -110,7 +110,7 @@ func (a *ActiveDirectoryApplicatinClient) AddApplicationPassword(ctx context.Con
 	}, nil
 }
 
-func (a *ActiveDirectoryApplicatinClient) RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) (result autorest.Response, err error) {
+func (a *ActiveDirectoryApplicationClient) RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) (result autorest.Response, err error) {
 	// Load current credentials
 	resp, err := a.Client.ListPasswordCredentials(ctx, applicationObjectID)
 	if err != nil {

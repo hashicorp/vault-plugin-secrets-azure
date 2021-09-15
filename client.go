@@ -330,18 +330,16 @@ func retry(ctx context.Context, f func() (interface{}, bool, error)) (interface{
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	var lastErr error
 	for {
-		result, done, err := f()
-		if done {
-			return result, err
-		}
-		lastErr = err
-
-		delay := time.Duration(2000+rng.Intn(6000)) * time.Millisecond
-		delayTimer.Reset(delay)
-
 		select {
 		case <-delayTimer.C:
-			// Retry loop
+			result, done, err := f()
+			if done {
+				return result, err
+			}
+			lastErr = err
+
+			delay := time.Duration(2+rng.Intn(6)) * time.Second
+			delayTimer.Reset(delay)
 		case <-ctx.Done():
 			err := lastErr
 			if err == nil {

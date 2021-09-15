@@ -22,7 +22,6 @@ func TestRetry(t *testing.T) {
 
 	t.Run("Three retries", func(t *testing.T) {
 		t.Parallel()
-		start := time.Now()
 		count := 0
 
 		_, err := retry(context.Background(), func() (interface{}, bool, error) {
@@ -34,9 +33,6 @@ func TestRetry(t *testing.T) {
 		})
 		equal(t, count, 3)
 
-		// each sleep can last from 2 to 8 seconds
-		elapsed := time.Now().Sub(start)
-		assertDuration(t, elapsed, 5*time.Second, 3*time.Second)
 		assertErrorIsNil(t, err)
 	})
 

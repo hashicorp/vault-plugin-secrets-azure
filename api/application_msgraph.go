@@ -409,7 +409,7 @@ func (c AppClient) RemoveGroupMember(ctx context.Context, groupObjectID, memberO
 }
 
 // groupResponse is a struct representation of the data we care about coming back from
-// the ms-graph API. This is not the same as ADGroup because this information is
+// the ms-graph API. This is not the same as `Group` because this information is
 // slightly different from the AAD implementation and there should be an abstraction
 // between the ms-graph API itself and the API this package presents.
 type groupResponse struct {
@@ -417,9 +417,9 @@ type groupResponse struct {
 	DisplayName string `json:"displayName"`
 }
 
-func (c AppClient) GetGroup(ctx context.Context, groupID string) (result ADGroup, err error) {
+func (c AppClient) GetGroup(ctx context.Context, groupID string) (result Group, err error) {
 	if groupID == "" {
-		return ADGroup{}, fmt.Errorf("missing groupID")
+		return Group{}, fmt.Errorf("missing groupID")
 	}
 	pathParams := map[string]interface{}{
 		"groupID": groupID,
@@ -432,7 +432,7 @@ func (c AppClient) GetGroup(ctx context.Context, groupID string) (result ADGroup
 		c.client.WithAuthorization())
 	req, err := preparer.Prepare((&http.Request{}).WithContext(ctx))
 	if err != nil {
-		return ADGroup{}, err
+		return Group{}, err
 	}
 
 	sender := autorest.GetSendDecorators(req.Context(),
@@ -440,7 +440,7 @@ func (c AppClient) GetGroup(ctx context.Context, groupID string) (result ADGroup
 	)
 	resp, err := autorest.SendWithSender(c.client, req, sender...)
 	if err != nil {
-		return ADGroup{}, err
+		return Group{}, err
 	}
 
 	groupResp := groupResponse{}
@@ -453,10 +453,10 @@ func (c AppClient) GetGroup(ctx context.Context, groupID string) (result ADGroup
 		autorest.ByClosing(),
 	)
 	if err != nil {
-		return ADGroup{}, err
+		return Group{}, err
 	}
 
-	group := ADGroup{
+	group := Group{
 		ID:          groupResp.ID,
 		DisplayName: groupResp.DisplayName,
 	}
@@ -470,7 +470,7 @@ type listGroupsResponse struct {
 	Groups []groupResponse `json:"value"`
 }
 
-func (c AppClient) ListGroups(ctx context.Context, filter string) (result []ADGroup, err error) {
+func (c AppClient) ListGroups(ctx context.Context, filter string) (result []Group, err error) {
 	filterArgs := url.Values{}
 	if filter != "" {
 		filterArgs.Set("$filter", filter)
@@ -508,13 +508,13 @@ func (c AppClient) ListGroups(ctx context.Context, filter string) (result []ADGr
 		return nil, err
 	}
 
-	groups := []ADGroup{}
+	groups := []Group{}
 	for _, rawGroup := range groupsResp.Groups {
 		if rawGroup.ID == "" {
 			return nil, fmt.Errorf("missing group ID from response")
 		}
 
-		group := ADGroup{
+		group := Group{
 			ID:          rawGroup.ID,
 			DisplayName: rawGroup.DisplayName,
 		}

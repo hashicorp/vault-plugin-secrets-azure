@@ -187,8 +187,8 @@ func (m *mockProvider) RemoveGroupMember(_ context.Context, _ string, _ string) 
 }
 
 // GetGroup gets group information from the directory.
-func (m *mockProvider) GetGroup(_ context.Context, objectID string) (api.ADGroup, error) {
-	g := api.ADGroup{
+func (m *mockProvider) GetGroup(_ context.Context, objectID string) (api.Group, error) {
+	g := api.Group{
 		ID: objectID,
 	}
 	s := strings.Split(objectID, "FAKE_GROUP-")
@@ -200,14 +200,14 @@ func (m *mockProvider) GetGroup(_ context.Context, objectID string) (api.ADGroup
 }
 
 // ListGroups gets list of groups for the current tenant.
-func (m *mockProvider) ListGroups(_ context.Context, filter string) (result []api.ADGroup, err error) {
+func (m *mockProvider) ListGroups(_ context.Context, filter string) (result []api.Group, err error) {
 	reGroupName := regexp.MustCompile("displayName eq '(.*)'")
 
 	match := reGroupName.FindAllStringSubmatch(filter, -1)
 	if len(match) > 0 {
 		name := match[0][1]
 		if name == "multiple" {
-			return []api.ADGroup{
+			return []api.Group{
 				{
 					ID:          fmt.Sprintf("00000000-1111-2222-3333-444444444444FAKE_GROUP-%s-1", name),
 					DisplayName: name,
@@ -219,7 +219,7 @@ func (m *mockProvider) ListGroups(_ context.Context, filter string) (result []ap
 			}, nil
 		}
 
-		return []api.ADGroup{
+		return []api.Group{
 			{
 				ID:          fmt.Sprintf("00000000-1111-2222-3333-444444444444FAKE_GROUP-%s", name),
 				DisplayName: name,
@@ -227,7 +227,7 @@ func (m *mockProvider) ListGroups(_ context.Context, filter string) (result []ap
 		}, nil
 	}
 
-	return []api.ADGroup{}, nil
+	return []api.Group{}, nil
 }
 
 // errMockProvider simulates a normal provider which fails to associate a role,

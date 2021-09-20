@@ -231,11 +231,11 @@ func (p *provider) RemoveGroupMember(ctx context.Context, groupObjectID, memberO
 }
 
 // GetGroup gets group information from the directory.
-func (p *provider) GetGroup(ctx context.Context, objectID string) (result api.ADGroup, err error) {
+func (p *provider) GetGroup(ctx context.Context, objectID string) (result api.Group, err error) {
 	return p.groupsClient.GetGroup(ctx, objectID)
 }
 
 // ListGroups gets list of groups for the current tenant.
-func (p *provider) ListGroups(ctx context.Context, filter string) (result []api.ADGroup, err error) {
+func (p *provider) ListGroups(ctx context.Context, filter string) (result []api.Group, err error) {
 	return p.groupsClient.ListGroups(ctx, filter)
 }

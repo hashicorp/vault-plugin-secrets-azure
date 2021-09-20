@@ -238,7 +238,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	// update and verify Azure groups, including looking up each group by ID or name.
 	groupSet := make(map[string]bool)
 	for _, r := range role.AzureGroups {
-		var groupDef api.ADGroup
+		var groupDef api.Group
 		if r.ObjectID != "" {
 			groupDef, err = client.provider.GetGroup(ctx, r.ObjectID)
 			if err != nil {

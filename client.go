@@ -254,7 +254,7 @@ func (c *client) findRoles(ctx context.Context, roleName string) ([]authorizatio
 
 // findGroups is used to find a group by name. It returns all groups matching
 // the passsed name.
-func (c *client) findGroups(ctx context.Context, groupName string) ([]api.ADGroup, error) {
+func (c *client) findGroups(ctx context.Context, groupName string) ([]api.Group, error) {
 	return c.provider.ListGroups(ctx, fmt.Sprintf("displayName eq '%s'", groupName))
 }
 

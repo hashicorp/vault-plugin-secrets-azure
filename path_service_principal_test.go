@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/go-autorest/autorest/to"
 	log "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
@@ -492,7 +491,7 @@ func TestCredentialInteg(t *testing.T) {
 		t.Skip("Azure Secrets: Azure environment variables not set. Skipping.")
 	}
 
-	t.Run("SP", func(t *testing.T) {
+	t.Run("service principals", func(t *testing.T) {
 		t.Parallel()
 
 		b := backend()
@@ -557,30 +556,9 @@ func TestCredentialInteg(t *testing.T) {
 		client, err := b.getClient(context.Background(), s)
 		assertErrorIsNil(t, err)
 		provider := client.provider.(*provider)
+		spObjID := findServicePrincipalID(t, provider.spClient, appID)
 
-		// recover the SP Object ID, which is not used by the application but
-		// is helpful for verification testing
-		spList, err := provider.spClient.List(context.Background(), "")
-		assertErrorIsNil(t, err)
-
-		var spObjID string
-		for spList.NotDone() {
-			for _, v := range spList.Values() {
-				if to.String(v.AppID) == appID {
-					spObjID = to.String(v.ObjectID)
-					goto FOUND
-				}
-			}
-			spList.Next()
-		}
-		t.Fatal("Couldn't find SP Object ID")
-
-	FOUND:
-		// verify the new SP can be accessed
-		_, err = provider.spClient.Get(context.Background(), spObjID)
-		if err != nil {
-			t.Fatalf("Expected nil error on GET of new SP, got: %#v", err)
-		}
+		assertServicePrincipalExists(t, provider.spClient, spObjID)
 
 		// Verify that the role assignments were created. Get the assignment
 		// info from Azure and verify it matches the Reader role.
@@ -590,7 +568,7 @@ func TestCredentialInteg(t *testing.T) {
 		ra, err := provider.raClient.GetByID(context.Background(), raIDs[0])
 		assertErrorIsNil(t, err)
 
-		roleDefs, err := client.provider.ListRoles(context.Background(), fmt.Sprintf("subscriptions/%s", subscriptionID), "")
+		roleDefs, err := provider.ListRoleDefinitions(context.Background(), fmt.Sprintf("subscriptions/%s", subscriptionID), "")
 		assertErrorIsNil(t, err)
 
 		defID := *ra.Properties.RoleDefinitionID
@@ -620,14 +598,10 @@ func TestCredentialInteg(t *testing.T) {
 		// Verify that SP get is an error after delete. Expected there
 		// to be a delay and that this step would take some time/retries,
 		// but that seems not to be the case.
-		_, err = provider.spClient.Get(context.Background(), spObjID)
-
-		if err == nil {
-			t.Fatal("Expected error reading deleted SP")
-		}
+		assertServicePrincipalDoesNotExist(t, provider.spClient, spObjID)
 	})
 
-	t.Run("Static SP", func(t *testing.T) {
+	t.Run("Static service principals", func(t *testing.T) {
 		t.Parallel()
 
 		b := backend()
@@ -775,5 +749,58 @@ func assertClientSecret(tb testing.TB, data map[string]interface{}) {
 	}
 	if len(actualPassword) != api.PasswordLength {
 		tb.Fatalf("client_secret is not the correct length: expected %d but was %d", api.PasswordLength, len(actualPassword))
+	}
+}
+
+func findServicePrincipalID(t *testing.T, client api.ServicePrincipalClient, appID string) (spID string) {
+	t.Helper()
+
+	switch spClient := client.(type) {
+	case api.AADServicePrincipalsClient:
+		spList, err := spClient.Client.List(context.Background(), "")
+		assertErrorIsNil(t, err)
+		for spList.NotDone() {
+			for _, sp := range spList.Values() {
+				if *sp.AppID == appID {
+					return *sp.ObjectID
+				}
+			}
+			err = spList.NextWithContext(context.Background())
+			assertErrorIsNil(t, err)
+		}
+		// TODO: Add MSGraph
+	default:
+		t.Fatalf("Unrecognized service principal client type: %T", spClient)
+	}
+
+	t.Fatalf("Failed to find service principal with application ID")
+	return "" // Because compilers
+}
+
+func assertServicePrincipalExists(t *testing.T, client api.ServicePrincipalClient, spID string) {
+	t.Helper()
+
+	switch spClient := client.(type) {
+	case api.AADServicePrincipalsClient:
+		_, err := spClient.Client.Get(context.Background(), spID)
+		if err != nil {
+			t.Fatalf("Expected nil error on GET of new SP, got: %#v", err)
+		}
+	default:
+		t.Fatalf("Unrecognized service principal client type: %T", spClient)
+	}
+}
+
+func assertServicePrincipalDoesNotExist(t *testing.T, client api.ServicePrincipalClient, spID string) {
+	t.Helper()
+
+	switch spClient := client.(type) {
+	case api.AADServicePrincipalsClient:
+		_, err := spClient.Client.Get(context.Background(), spID)
+		if err == nil {
+			t.Fatalf("Expected error on GET of new SP")
+		}
+	default:
+		t.Fatalf("Unrecognized service principal client type: %T", spClient)
 	}
 }

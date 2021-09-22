@@ -11,7 +11,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/authorization/mgmt/authorization"
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/compute/mgmt/compute"
-	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/Azure/go-autorest/autorest/to"
@@ -36,7 +35,7 @@ func newMockProvider() api.AzureProvider {
 }
 
 // ListRoles returns a single fake role based on the inbound filter
-func (m *mockProvider) ListRoles(_ context.Context, _ string, filter string) (result []authorization.RoleDefinition, err error) {
+func (m *mockProvider) ListRoleDefinitions(_ context.Context, _ string, filter string) (result []authorization.RoleDefinition, err error) {
 	reRoleName := regexp.MustCompile("roleName eq '(.*)'")
 
 	match := reRoleName.FindAllStringSubmatch(filter, -1)
@@ -73,7 +72,7 @@ func (m *mockProvider) ListRoles(_ context.Context, _ string, filter string) (re
 
 // GetRoleByID will returns a fake role definition from the povided ID
 // Assumes an ID format of: .*FAKE_ROLE-{rolename}
-func (m *mockProvider) GetRoleByID(_ context.Context, roleID string) (result authorization.RoleDefinition, err error) {
+func (m *mockProvider) GetRoleDefinitionByID(_ context.Context, roleID string) (result authorization.RoleDefinition, err error) {
 	d := authorization.RoleDefinition{}
 	s := strings.Split(roleID, "FAKE_ROLE-")
 	if len(s) > 1 {
@@ -86,10 +85,10 @@ func (m *mockProvider) GetRoleByID(_ context.Context, roleID string) (result aut
 	return d, nil
 }
 
-func (m *mockProvider) CreateServicePrincipal(_ context.Context, _ graphrbac.ServicePrincipalCreateParameters) (graphrbac.ServicePrincipal, error) {
-	return graphrbac.ServicePrincipal{
-		ObjectID: to.StringPtr(generateUUID()),
-	}, nil
+func (m *mockProvider) CreateServicePrincipal(_ context.Context, _ string, _ time.Time, _ time.Time) (string, string, error) {
+	id := generateUUID()
+	pass := generateUUID()
+	return id, pass, nil
 }
 
 func (m *mockProvider) CreateApplication(_ context.Context, _ string) (api.ApplicationResult, error) {

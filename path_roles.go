@@ -203,7 +203,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	for _, r := range role.AzureRoles {
 		var roleDef authorization.RoleDefinition
 		if r.RoleID != "" {
-			roleDef, err = client.provider.GetRoleByID(ctx, r.RoleID)
+			roleDef, err = client.provider.GetRoleDefinitionByID(ctx, r.RoleID)
 			if err != nil {
 				if strings.Contains(err.Error(), "RoleDefinitionDoesNotExist") {
 					return logical.ErrorResponse("no role found for role_id: '%s'", r.RoleID), nil

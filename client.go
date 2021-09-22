@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/authorization/mgmt/authorization"
-	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/Azure/go-autorest/autorest/to"
@@ -62,49 +61,37 @@ func (c *client) createApp(ctx context.Context) (app *api.ApplicationResult, err
 func (c *client) createSP(
 	ctx context.Context,
 	app *api.ApplicationResult,
-	duration time.Duration) (svcPrinc *graphrbac.ServicePrincipal, password string, err error) {
+	duration time.Duration) (spID string, password string, err error) {
 
-	// Generate a random key (which must be a UUID) and password
-	keyID, err := uuid.GenerateUUID()
-	if err != nil {
-		return nil, "", err
-	}
-
-	password, err = c.passwords.Generate(ctx)
-	if err != nil {
-		return nil, "", err
+	type idPass struct {
+		ID       string
+		Password string
 	}
 
 	resultRaw, err := retry(ctx, func() (interface{}, bool, error) {
-		now := time.Now().UTC()
-		result, err := c.provider.CreateServicePrincipal(ctx, graphrbac.ServicePrincipalCreateParameters{
-			AppID:          app.AppID,
-			AccountEnabled: to.BoolPtr(true),
-			PasswordCredentials: &[]graphrbac.PasswordCredential{
-				graphrbac.PasswordCredential{
-					StartDate: &date.Time{Time: now},
-					EndDate:   &date.Time{Time: now.Add(duration)},
-					KeyID:     to.StringPtr(keyID),
-					Value:     to.StringPtr(password),
-				},
-			},
-		})
+		now := time.Now()
+		spID, password, err := c.provider.CreateServicePrincipal(ctx, *app.AppID, now, now.Add(duration))
 
 		// Propagation delays within Azure can cause this error occasionally, so don't quit on it.
 		if err != nil && strings.Contains(err.Error(), "does not reference a valid application object") {
 			return nil, false, nil
 		}
 
+		result := idPass{
+			ID:       spID,
+			Password: password,
+		}
+
 		return result, true, err
 	})
 
 	if err != nil {
-		return nil, "", errwrap.Wrapf("error creating service principal: {{err}}", err)
+		return "", "", errwrap.Wrapf("error creating service principal: {{err}}", err)
 	}
 
-	result := resultRaw.(graphrbac.ServicePrincipal)
+	result := resultRaw.(idPass)
 
-	return &result, password, nil
+	return result.ID, result.Password, nil
 }
 
 // addAppPassword adds a new password to an App's credentials list.
@@ -146,7 +133,7 @@ func (c *client) deleteApp(ctx context.Context, appObjectID string) error {
 }
 
 // assignRoles assigns Azure roles to a service principal.
-func (c *client) assignRoles(ctx context.Context, sp *graphrbac.ServicePrincipal, roles []*AzureRole) ([]string, error) {
+func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRole) ([]string, error) {
 	var ids []string
 
 	for _, role := range roles {
@@ -159,8 +146,8 @@ func (c *client) assignRoles(ctx context.Context, sp *graphrbac.ServicePrincipal
 			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentID,
 				authorization.RoleAssignmentCreateParameters{
 					Properties: &authorization.RoleAssignmentProperties{
-						RoleDefinitionID: to.StringPtr(role.RoleID),
-						PrincipalID:      sp.ObjectID,
+						RoleDefinitionID: &role.RoleID,
+						PrincipalID:      &spID,
 					},
 				})
 
@@ -199,10 +186,10 @@ func (c *client) unassignRoles(ctx context.Context, roleIDs []string) error {
 }
 
 // addGroupMemberships adds the service principal to the Azure groups.
-func (c *client) addGroupMemberships(ctx context.Context, sp *graphrbac.ServicePrincipal, groups []*AzureGroup) error {
+func (c *client) addGroupMemberships(ctx context.Context, spID string, groups []*AzureGroup) error {
 	for _, group := range groups {
 		_, err := retry(ctx, func() (interface{}, bool, error) {
-			err := c.provider.AddGroupMember(ctx, group.ObjectID, *sp.ObjectID)
+			err := c.provider.AddGroupMember(ctx, group.ObjectID, spID)
 
 			// Propagation delays within Azure can cause this error occasionally, so don't quit on it.
 			if err != nil && strings.Contains(err.Error(), "Request_ResourceNotFound") {
@@ -249,11 +236,11 @@ func groupObjectIDs(groups []*AzureGroup) []string {
 
 // search for roles by name
 func (c *client) findRoles(ctx context.Context, roleName string) ([]authorization.RoleDefinition, error) {
-	return c.provider.ListRoles(ctx, fmt.Sprintf("subscriptions/%s", c.settings.SubscriptionID), fmt.Sprintf("roleName eq '%s'", roleName))
+	return c.provider.ListRoleDefinitions(ctx, fmt.Sprintf("subscriptions/%s", c.settings.SubscriptionID), fmt.Sprintf("roleName eq '%s'", roleName))
 }
 
 // findGroups is used to find a group by name. It returns all groups matching
-// the passsed name.
+// the provided name.
 func (c *client) findGroups(ctx context.Context, groupName string) ([]api.Group, error) {
 	return c.provider.ListGroups(ctx, fmt.Sprintf("displayName eq '%s'", groupName))
 }

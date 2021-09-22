@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/authorization/mgmt/authorization"
-	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/date"
 )
@@ -15,8 +14,7 @@ import (
 type AzureProvider interface {
 	ApplicationsClient
 	GroupsClient
-
-	CreateServicePrincipal(ctx context.Context, parameters graphrbac.ServicePrincipalCreateParameters) (graphrbac.ServicePrincipal, error)
+	ServicePrincipalClient
 
 	CreateRoleAssignment(
 		ctx context.Context,
@@ -25,8 +23,8 @@ type AzureProvider interface {
 		parameters authorization.RoleAssignmentCreateParameters) (authorization.RoleAssignment, error)
 	DeleteRoleAssignmentByID(ctx context.Context, roleID string) (authorization.RoleAssignment, error)
 
-	ListRoles(ctx context.Context, scope string, filter string) ([]authorization.RoleDefinition, error)
-	GetRoleByID(ctx context.Context, roleID string) (result authorization.RoleDefinition, err error)
+	ListRoleDefinitions(ctx context.Context, scope string, filter string) ([]authorization.RoleDefinition, error)
+	GetRoleDefinitionByID(ctx context.Context, roleID string) (result authorization.RoleDefinition, err error)
 }
 
 type ApplicationsClient interface {

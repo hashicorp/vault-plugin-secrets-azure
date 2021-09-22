@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/Azure/go-autorest/autorest/to"
+	"github.com/hashicorp/go-multierror"
 )
 
 const (
@@ -20,6 +22,7 @@ const (
 
 var _ ApplicationsClient = (*AppClient)(nil)
 var _ GroupsClient = (*AppClient)(nil)
+var _ ServicePrincipalClient = (*AppClient)(nil)
 
 type AppClient struct {
 	client authorization.BaseClient
@@ -339,35 +342,12 @@ func (c AppClient) AddGroupMember(ctx context.Context, groupObjectID string, mem
 	body := map[string]interface{}{
 		"@odata.id": fmt.Sprintf("%s/v1.0/directoryObjects/%s", DefaultGraphMicrosoftComURI, memberObjectID),
 	}
-	preparer := autorest.CreatePreparer(
-		autorest.AsContentType("application/json; charset=utf-8"),
+	preparer := c.getPreparer(
 		autorest.AsPost(),
-		autorest.WithBaseURL(c.client.BaseURI),
 		autorest.WithPathParameters("/v1.0/groups/{groupObjectID}/members/$ref", pathParams),
 		autorest.WithJSON(body),
-		c.client.WithAuthorization())
-	req, err := preparer.Prepare((&http.Request{}).WithContext(ctx))
-	if err != nil {
-		return err
-	}
-
-	sender := autorest.GetSendDecorators(req.Context(),
-		autorest.DoRetryForStatusCodes(c.client.RetryAttempts, c.client.RetryDuration, autorest.StatusCodesForRetry...),
 	)
-	resp, err := autorest.SendWithSender(c.client, req, sender...)
-	if err != nil {
-		return err
-	}
-
-	respBody := map[string]interface{}{}
-
-	return autorest.Respond(
-		resp,
-		c.client.ByInspecting(),
-		azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent),
-		autorest.ByUnmarshallingJSON(&respBody),
-		autorest.ByClosing(),
-	)
+	return c.sendRequest(ctx, preparer, azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent))
 }
 
 func (c AppClient) RemoveGroupMember(ctx context.Context, groupObjectID, memberObjectID string) error {
@@ -381,31 +361,12 @@ func (c AppClient) RemoveGroupMember(ctx context.Context, groupObjectID, memberO
 		"groupObjectID":  groupObjectID,
 		"memberObjectID": memberObjectID,
 	}
-	preparer := autorest.CreatePreparer(
-		autorest.AsContentType("application/json; charset=utf-8"),
+
+	preparer := c.getPreparer(
 		autorest.AsDelete(),
-		autorest.WithBaseURL(c.client.BaseURI),
 		autorest.WithPathParameters("/v1.0/groups/{groupObjectID}/members/{memberObjectID}/$ref", pathParams),
-		c.client.WithAuthorization())
-	req, err := preparer.Prepare((&http.Request{}).WithContext(ctx))
-	if err != nil {
-		return err
-	}
-
-	sender := autorest.GetSendDecorators(req.Context(),
-		autorest.DoRetryForStatusCodes(c.client.RetryAttempts, c.client.RetryDuration, autorest.StatusCodesForRetry...),
 	)
-	resp, err := autorest.SendWithSender(c.client, req, sender...)
-	if err != nil {
-		return err
-	}
-
-	return autorest.Respond(
-		resp,
-		c.client.ByInspecting(),
-		azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent),
-		autorest.ByClosing(),
-	)
+	return c.sendRequest(ctx, preparer, azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent))
 }
 
 // groupResponse is a struct representation of the data we care about coming back from
@@ -424,33 +385,16 @@ func (c AppClient) GetGroup(ctx context.Context, groupID string) (result Group, 
 	pathParams := map[string]interface{}{
 		"groupID": groupID,
 	}
-	preparer := autorest.CreatePreparer(
-		autorest.AsContentType("application/json; charset=utf-8"),
-		autorest.AsGet(),
-		autorest.WithBaseURL(c.client.BaseURI),
-		autorest.WithPathParameters("/v1.0/groups/{groupID}", pathParams),
-		c.client.WithAuthorization())
-	req, err := preparer.Prepare((&http.Request{}).WithContext(ctx))
-	if err != nil {
-		return Group{}, err
-	}
 
-	sender := autorest.GetSendDecorators(req.Context(),
-		autorest.DoRetryForStatusCodes(c.client.RetryAttempts, c.client.RetryDuration, autorest.StatusCodesForRetry...),
+	preparer := c.getPreparer(
+		autorest.AsGet(),
+		autorest.WithPathParameters("/v1.0/groups/{groupID}", pathParams),
 	)
-	resp, err := autorest.SendWithSender(c.client, req, sender...)
-	if err != nil {
-		return Group{}, err
-	}
 
 	groupResp := groupResponse{}
-
-	err = autorest.Respond(
-		resp,
-		c.client.ByInspecting(),
+	err = c.sendRequest(ctx, preparer,
 		azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent),
 		autorest.ByUnmarshallingJSON(&groupResp),
-		autorest.ByClosing(),
 	)
 	if err != nil {
 		return Group{}, err
@@ -476,40 +420,22 @@ func (c AppClient) ListGroups(ctx context.Context, filter string) (result []Grou
 		filterArgs.Set("$filter", filter)
 	}
 
-	preparer := autorest.CreatePreparer(
-		autorest.AsContentType("application/json; charset=utf-8"),
+	preparer := c.getPreparer(
 		autorest.AsGet(),
-		autorest.WithBaseURL(c.client.BaseURI),
 		autorest.WithPath(fmt.Sprintf("/v1.0/groups?%s", filterArgs.Encode())),
-		c.client.WithAuthorization())
-	req, err := preparer.Prepare((&http.Request{}).WithContext(ctx))
-	if err != nil {
-		return nil, err
-	}
-
-	sender := autorest.GetSendDecorators(req.Context(),
-		autorest.DoRetryForStatusCodes(c.client.RetryAttempts, c.client.RetryDuration, autorest.StatusCodesForRetry...),
 	)
-	resp, err := autorest.SendWithSender(c.client, req, sender...)
-	if err != nil {
-		return nil, err
-	}
 
-	groupsResp := listGroupsResponse{}
-
-	err = autorest.Respond(
-		resp,
-		c.client.ByInspecting(),
+	respBody := listGroupsResponse{}
+	err = c.sendRequest(ctx, preparer,
 		azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent),
-		autorest.ByUnmarshallingJSON(&groupsResp),
-		autorest.ByClosing(),
+		autorest.ByUnmarshallingJSON(&respBody),
 	)
 	if err != nil {
 		return nil, err
 	}
 
 	groups := []Group{}
-	for _, rawGroup := range groupsResp.Groups {
+	for _, rawGroup := range respBody.Groups {
 		if rawGroup.ID == "" {
 			return nil, fmt.Errorf("missing group ID from response")
 		}
@@ -521,4 +447,116 @@ func (c AppClient) ListGroups(ctx context.Context, filter string) (result []Grou
 		groups = append(groups, group)
 	}
 	return groups, nil
+}
+
+func (c *AppClient) CreateServicePrincipal(ctx context.Context, appID string, startDate time.Time, endDate time.Time) (spID string, password string, err error) {
+	spID, err = c.createServicePrincipal(ctx, appID)
+	if err != nil {
+		return "", "", err
+	}
+	password, err = c.setPasswordForServicePrincipal(ctx, spID, startDate, endDate)
+	if err != nil {
+		dErr := c.deleteServicePrincipal(ctx, spID)
+		merr := multierror.Append(err, dErr)
+		return "", "", merr.ErrorOrNil()
+	}
+	return spID, password, nil
+}
+
+func (c *AppClient) createServicePrincipal(ctx context.Context, appID string) (id string, err error) {
+	body := map[string]interface{}{
+		"appId":          appID,
+		"accountEnabled": true,
+	}
+	preparer := c.getPreparer(
+		autorest.AsPost(),
+		autorest.WithPath("/v1.0/servicePrincipals"),
+		autorest.WithJSON(body),
+	)
+
+	respBody := createServicePrincipalResponse{}
+	err = c.sendRequest(ctx, preparer,
+		autorest.WithErrorUnlessStatusCode(http.StatusOK, http.StatusCreated),
+		autorest.ByUnmarshallingJSON(&respBody),
+	)
+	if err != nil {
+		return "", err
+	}
+
+	return respBody.ID, nil
+}
+
+func (c *AppClient) setPasswordForServicePrincipal(ctx context.Context, spID string, startDate time.Time, endDate time.Time) (password string, err error) {
+	pathParams := map[string]interface{}{
+		"id": spID,
+	}
+	reqBody := map[string]interface{}{
+		"startDateTime": startDate.UTC().Format("2006-01-02T15:04:05Z"),
+		"endDateTime":   startDate.UTC().Format("2006-01-02T15:04:05Z"),
+	}
+
+	preparer := c.getPreparer(
+		autorest.AsPost(),
+		autorest.WithPathParameters("/v1.0/servicePrincipals/{id}/addPassword", pathParams),
+		autorest.WithJSON(reqBody),
+	)
+
+	respBody := PasswordCredential{}
+	err = c.sendRequest(ctx, preparer,
+		autorest.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent),
+		autorest.ByUnmarshallingJSON(&respBody),
+	)
+	if err != nil {
+		return "", err
+	}
+	return *respBody.SecretText, nil
+}
+
+type createServicePrincipalResponse struct {
+	ID string `json:"id"`
+}
+
+func (c *AppClient) deleteServicePrincipal(ctx context.Context, spID string) error {
+	pathParams := map[string]interface{}{
+		"id": spID,
+	}
+
+	preparer := c.getPreparer(
+		autorest.AsDelete(),
+		autorest.WithPathParameters("/v1.0/servicePrincipals/{id}", pathParams),
+	)
+
+	return c.sendRequest(ctx, preparer, autorest.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent))
+}
+
+func (c *AppClient) getPreparer(prepareDecorators ...autorest.PrepareDecorator) autorest.Preparer {
+	decs := []autorest.PrepareDecorator{
+		autorest.AsContentType("application/json; charset=utf-8"),
+		autorest.WithBaseURL(c.client.BaseURI),
+		c.client.WithAuthorization(),
+	}
+	decs = append(decs, prepareDecorators...)
+	preparer := autorest.CreatePreparer(decs...)
+	return preparer
+}
+
+func (c *AppClient) sendRequest(ctx context.Context, preparer autorest.Preparer, respDecs ...autorest.RespondDecorator) error {
+	req, err := preparer.Prepare((&http.Request{}).WithContext(ctx))
+	if err != nil {
+		return err
+	}
+
+	sender := autorest.GetSendDecorators(req.Context(),
+		autorest.DoRetryForStatusCodes(c.client.RetryAttempts, c.client.RetryDuration, autorest.StatusCodesForRetry...),
+	)
+	resp, err := autorest.SendWithSender(c.client, req, sender...)
+	if err != nil {
+		return err
+	}
+
+	// Put ByInspecting() before any provided decorators
+	respDecs = append([]autorest.RespondDecorator{c.client.ByInspecting()}, respDecs...)
+	respDecs = append(respDecs, autorest.ByClosing())
+
+	return autorest.Respond(resp, respDecs...)
 }

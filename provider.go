@@ -3,6 +3,7 @@ package azuresecrets
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/authorization/mgmt/authorization"
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
@@ -23,7 +24,7 @@ type provider struct {
 	settings *clientSettings
 
 	appClient    api.ApplicationsClient
-	spClient     *graphrbac.ServicePrincipalsClient
+	spClient     api.ServicePrincipalClient
 	groupsClient api.GroupsClient
 	raClient     *authorization.RoleAssignmentsClient
 	rdClient     *authorization.RoleDefinitionsClient
@@ -39,12 +40,9 @@ func newAzureProvider(settings *clientSettings, useMsGraphApi bool, passwords ap
 
 	userAgent := getUserAgent(settings)
 
-	spClient := graphrbac.NewServicePrincipalsClient(settings.TenantID)
-	spClient.Authorizer = graphAuthorizer
-	spClient.AddToUserAgent(userAgent)
-
 	var appClient api.ApplicationsClient
 	var groupsClient api.GroupsClient
+	var spClient api.ServicePrincipalClient
 	if useMsGraphApi {
 		graphApiAuthorizer, err := getAuthorizer(settings, api.DefaultGraphMicrosoftComURI)
 		if err != nil {
@@ -58,6 +56,7 @@ func newAzureProvider(settings *clientSettings, useMsGraphApi bool, passwords ap
 
 		appClient = msGraphAppClient
 		groupsClient = msGraphAppClient
+		spClient = msGraphAppClient
 	} else {
 		aadGraphClient := graphrbac.NewApplicationsClient(settings.TenantID)
 		aadGraphClient.Authorizer = graphAuthorizer
@@ -73,6 +72,15 @@ func newAzureProvider(settings *clientSettings, useMsGraphApi bool, passwords ap
 			BaseURI:  aadGroupsClient.BaseURI,
 			TenantID: aadGroupsClient.TenantID,
 			Client:   aadGroupsClient,
+		}
+
+		servicePrincipalClient := graphrbac.NewServicePrincipalsClient(settings.TenantID)
+		servicePrincipalClient.Authorizer = graphAuthorizer
+		servicePrincipalClient.AddToUserAgent(userAgent)
+
+		spClient = api.AADServicePrincipalsClient{
+			Client:    servicePrincipalClient,
+			Passwords: passwords,
 		}
 	}
 
@@ -94,7 +102,7 @@ func newAzureProvider(settings *clientSettings, useMsGraphApi bool, passwords ap
 		settings: settings,
 
 		appClient:    appClient,
-		spClient:     &spClient,
+		spClient:     spClient,
 		groupsClient: groupsClient,
 		raClient:     &raClient,
 		rdClient:     &rdClient,
@@ -172,12 +180,12 @@ func (p *provider) RemoveApplicationPassword(ctx context.Context, applicationObj
 
 // CreateServicePrincipal creates a new Azure service principal.
 // An Application must be created prior to calling this and pass in parameters.
-func (p *provider) CreateServicePrincipal(ctx context.Context, parameters graphrbac.ServicePrincipalCreateParameters) (graphrbac.ServicePrincipal, error) {
-	return p.spClient.Create(ctx, parameters)
+func (p *provider) CreateServicePrincipal(ctx context.Context, appID string, startDate time.Time, endDate time.Time) (id string, password string, err error) {
+	return p.spClient.CreateServicePrincipal(ctx, appID, startDate, endDate)
 }
 
 // ListRoles like all Azure roles with a scope (often subscription).
-func (p *provider) ListRoles(ctx context.Context, scope string, filter string) (result []authorization.RoleDefinition, err error) {
+func (p *provider) ListRoleDefinitions(ctx context.Context, scope string, filter string) (result []authorization.RoleDefinition, err error) {
 	page, err := p.rdClient.List(ctx, scope, filter)
 
 	if err != nil {
@@ -188,7 +196,7 @@ func (p *provider) ListRoles(ctx context.Context, scope string, filter string) (
 }
 
 // GetRoleByID fetches the full role definition given a roleID.
-func (p *provider) GetRoleByID(ctx context.Context, roleID string) (result authorization.RoleDefinition, err error) {
+func (p *provider) GetRoleDefinitionByID(ctx context.Context, roleID string) (result authorization.RoleDefinition, err error) {
 	return p.rdClient.GetByID(ctx, roleID)
 }
 

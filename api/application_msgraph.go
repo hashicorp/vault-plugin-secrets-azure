@@ -342,12 +342,12 @@ func (c AppClient) AddGroupMember(ctx context.Context, groupObjectID string, mem
 	body := map[string]interface{}{
 		"@odata.id": fmt.Sprintf("%s/v1.0/directoryObjects/%s", DefaultGraphMicrosoftComURI, memberObjectID),
 	}
-	preparer := c.getPreparer(
+	preparer := c.GetPreparer(
 		autorest.AsPost(),
 		autorest.WithPathParameters("/v1.0/groups/{groupObjectID}/members/$ref", pathParams),
 		autorest.WithJSON(body),
 	)
-	return c.sendRequest(ctx, preparer, azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent))
+	return c.SendRequest(ctx, preparer, azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent))
 }
 
 func (c AppClient) RemoveGroupMember(ctx context.Context, groupObjectID, memberObjectID string) error {
@@ -362,11 +362,11 @@ func (c AppClient) RemoveGroupMember(ctx context.Context, groupObjectID, memberO
 		"memberObjectID": memberObjectID,
 	}
 
-	preparer := c.getPreparer(
+	preparer := c.GetPreparer(
 		autorest.AsDelete(),
 		autorest.WithPathParameters("/v1.0/groups/{groupObjectID}/members/{memberObjectID}/$ref", pathParams),
 	)
-	return c.sendRequest(ctx, preparer, azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent))
+	return c.SendRequest(ctx, preparer, azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent))
 }
 
 // groupResponse is a struct representation of the data we care about coming back from
@@ -386,13 +386,13 @@ func (c AppClient) GetGroup(ctx context.Context, groupID string) (result Group, 
 		"groupID": groupID,
 	}
 
-	preparer := c.getPreparer(
+	preparer := c.GetPreparer(
 		autorest.AsGet(),
 		autorest.WithPathParameters("/v1.0/groups/{groupID}", pathParams),
 	)
 
 	groupResp := groupResponse{}
-	err = c.sendRequest(ctx, preparer,
+	err = c.SendRequest(ctx, preparer,
 		azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent),
 		autorest.ByUnmarshallingJSON(&groupResp),
 	)
@@ -420,13 +420,13 @@ func (c AppClient) ListGroups(ctx context.Context, filter string) (result []Grou
 		filterArgs.Set("$filter", filter)
 	}
 
-	preparer := c.getPreparer(
+	preparer := c.GetPreparer(
 		autorest.AsGet(),
 		autorest.WithPath(fmt.Sprintf("/v1.0/groups?%s", filterArgs.Encode())),
 	)
 
 	respBody := listGroupsResponse{}
-	err = c.sendRequest(ctx, preparer,
+	err = c.SendRequest(ctx, preparer,
 		azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent),
 		autorest.ByUnmarshallingJSON(&respBody),
 	)
@@ -468,14 +468,14 @@ func (c *AppClient) createServicePrincipal(ctx context.Context, appID string) (i
 		"appId":          appID,
 		"accountEnabled": true,
 	}
-	preparer := c.getPreparer(
+	preparer := c.GetPreparer(
 		autorest.AsPost(),
 		autorest.WithPath("/v1.0/servicePrincipals"),
 		autorest.WithJSON(body),
 	)
 
 	respBody := createServicePrincipalResponse{}
-	err = c.sendRequest(ctx, preparer,
+	err = c.SendRequest(ctx, preparer,
 		autorest.WithErrorUnlessStatusCode(http.StatusOK, http.StatusCreated),
 		autorest.ByUnmarshallingJSON(&respBody),
 	)
@@ -495,14 +495,14 @@ func (c *AppClient) setPasswordForServicePrincipal(ctx context.Context, spID str
 		"endDateTime":   startDate.UTC().Format("2006-01-02T15:04:05Z"),
 	}
 
-	preparer := c.getPreparer(
+	preparer := c.GetPreparer(
 		autorest.AsPost(),
 		autorest.WithPathParameters("/v1.0/servicePrincipals/{id}/addPassword", pathParams),
 		autorest.WithJSON(reqBody),
 	)
 
 	respBody := PasswordCredential{}
-	err = c.sendRequest(ctx, preparer,
+	err = c.SendRequest(ctx, preparer,
 		autorest.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent),
 		autorest.ByUnmarshallingJSON(&respBody),
 	)
@@ -521,15 +521,15 @@ func (c *AppClient) deleteServicePrincipal(ctx context.Context, spID string) err
 		"id": spID,
 	}
 
-	preparer := c.getPreparer(
+	preparer := c.GetPreparer(
 		autorest.AsDelete(),
 		autorest.WithPathParameters("/v1.0/servicePrincipals/{id}", pathParams),
 	)
 
-	return c.sendRequest(ctx, preparer, autorest.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent))
+	return c.SendRequest(ctx, preparer, autorest.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent))
 }
 
-func (c *AppClient) getPreparer(prepareDecorators ...autorest.PrepareDecorator) autorest.Preparer {
+func (c *AppClient) GetPreparer(prepareDecorators ...autorest.PrepareDecorator) autorest.Preparer {
 	decs := []autorest.PrepareDecorator{
 		autorest.AsContentType("application/json; charset=utf-8"),
 		autorest.WithBaseURL(c.client.BaseURI),
@@ -540,7 +540,7 @@ func (c *AppClient) getPreparer(prepareDecorators ...autorest.PrepareDecorator) 
 	return preparer
 }
 
-func (c *AppClient) sendRequest(ctx context.Context, preparer autorest.Preparer, respDecs ...autorest.RespondDecorator) error {
+func (c *AppClient) SendRequest(ctx context.Context, preparer autorest.Preparer, respDecs ...autorest.RespondDecorator) error {
 	req, err := preparer.Prepare((&http.Request{}).WithContext(ctx))
 	if err != nil {
 		return err

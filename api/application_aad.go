@@ -122,7 +122,7 @@ func (a *ActiveDirectoryApplicationClient) RemoveApplicationPassword(ctx context
 	// Load current credentials
 	resp, err := a.Client.ListPasswordCredentials(ctx, applicationObjectID)
 	if err != nil {
-		return errwrap.Wrapf("error fetching credentials: {{err}}", err)
+		return fmt.Errorf("error fetching credentials: %w", err)
 	}
 	curCreds := *resp.Value
 
@@ -149,7 +149,7 @@ func (a *ActiveDirectoryApplicationClient) RemoveApplicationPassword(ctx context
 		},
 	)
 	if err != nil {
-		return errwrap.Wrapf("error updating credentials: {{err}}", err)
+		return fmt.Errorf("error updating credentials: %w", err)
 	}
 
 	return nil

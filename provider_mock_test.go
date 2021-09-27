@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/authorization/mgmt/authorization"
+	"github.com/Azure/azure-sdk-for-go/profiles/latest/compute/mgmt/compute"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
@@ -137,7 +138,7 @@ func (m *mockProvider) AddApplicationPassword(_ context.Context, _ string, displ
 	}, nil
 }
 
-func (m *mockProvider) RemoveApplicationPassword(_ context.Context, _ string, keyID string) error {
+func (m *mockProvider) RemoveApplicationPassword(_ context.Context, _ string, keyID string) (err error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 

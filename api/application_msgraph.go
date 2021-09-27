@@ -227,9 +227,7 @@ func (c AppClient) addPasswordResponder(resp *http.Response) (PasswordCredential
 		azure.WithErrorUnlessStatusCode(http.StatusOK),
 		autorest.ByUnmarshallingJSON(&result),
 		autorest.ByClosing())
-	result = PasswordCredentialResult{
-		Response: autorest.Response{Response: resp},
-	}
+	result.Response = autorest.Response{Response: resp}
 	return result, err
 }
 
@@ -267,9 +265,7 @@ func (c AppClient) removePasswordResponder(resp *http.Response) (autorest.Respon
 		azure.WithErrorUnlessStatusCode(http.StatusNoContent),
 		autorest.ByUnmarshallingJSON(&result),
 		autorest.ByClosing())
-	result = autorest.Response{
-		Response: resp,
-	}
+	result.Response = resp
 	return result, err
 }
 
@@ -303,9 +299,7 @@ func (c AppClient) createApplicationResponder(resp *http.Response) (ApplicationR
 		azure.WithErrorUnlessStatusCode(http.StatusCreated),
 		autorest.ByUnmarshallingJSON(&result),
 		autorest.ByClosing())
-	result = ApplicationResult{
-		Response: autorest.Response{Response: resp},
-	}
+	result.Response = autorest.Response{Response: resp}
 	return result, nil
 }
 

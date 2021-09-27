@@ -11,7 +11,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/Azure/go-autorest/autorest/to"
-	"github.com/hashicorp/errwrap"
 	"github.com/hashicorp/go-uuid"
 )
 
@@ -89,7 +88,7 @@ func (a *ActiveDirectoryApplicationClient) AddApplicationPassword(ctx context.Co
 	// Load current credentials
 	resp, err := a.Client.ListPasswordCredentials(ctx, applicationObjectID)
 	if err != nil {
-		return PasswordCredentialResult{}, errwrap.Wrapf("error fetching credentials: {{err}}", err)
+		return PasswordCredentialResult{}, fmt.Errorf("error fetching credentials: %w", err)
 	}
 	curCreds := *resp.Value
 
@@ -104,7 +103,7 @@ func (a *ActiveDirectoryApplicationClient) AddApplicationPassword(ctx context.Co
 		if strings.Contains(err.Error(), "size of the object has exceeded its limit") {
 			err = errors.New("maximum number of Application passwords reached")
 		}
-		return PasswordCredentialResult{}, errwrap.Wrapf("error updating credentials: {{err}}", err)
+		return PasswordCredentialResult{}, fmt.Errorf("error updating credentials: %w", err)
 	}
 
 	result = PasswordCredentialResult{
@@ -123,7 +122,7 @@ func (a *ActiveDirectoryApplicationClient) RemoveApplicationPassword(ctx context
 	// Load current credentials
 	resp, err := a.Client.ListPasswordCredentials(ctx, applicationObjectID)
 	if err != nil {
-		return errwrap.Wrapf("error fetching credentials: {{err}}", err)
+		return fmt.Errorf("error fetching credentials: %w", err)
 	}
 	curCreds := *resp.Value
 
@@ -150,7 +149,7 @@ func (a *ActiveDirectoryApplicationClient) RemoveApplicationPassword(ctx context
 		},
 	)
 	if err != nil {
-		return errwrap.Wrapf("error updating credentials: {{err}}", err)
+		return fmt.Errorf("error updating credentials: %w", err)
 	}
 
 	return nil

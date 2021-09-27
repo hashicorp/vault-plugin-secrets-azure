@@ -110,7 +110,8 @@ func (c *client) addAppPassword(ctx context.Context, appObjID string, expiresIn 
 
 // deleteAppPassword removes a password, if present, from an App's credentials list.
 func (c *client) deleteAppPassword(ctx context.Context, appObjID, keyID string) error {
-	if _, err := c.provider.RemoveApplicationPassword(ctx, appObjID, keyID); err != nil {
+	err := c.provider.RemoveApplicationPassword(ctx, appObjID, keyID)
+	if err != nil {
 		if strings.Contains(err.Error(), "No password credential found with keyId") {
 			return nil
 		}
@@ -122,14 +123,7 @@ func (c *client) deleteAppPassword(ctx context.Context, appObjID, keyID string) 
 
 // deleteApp deletes an Azure application.
 func (c *client) deleteApp(ctx context.Context, appObjectID string) error {
-	resp, err := c.provider.DeleteApplication(ctx, appObjectID)
-
-	// Don't consider it an error if the object wasn't present
-	if err != nil && resp.Response != nil && resp.StatusCode == 404 {
-		return nil
-	}
-
-	return err
+	return c.provider.DeleteApplication(ctx, appObjectID)
 }
 
 // assignRoles assigns Azure roles to a service principal.

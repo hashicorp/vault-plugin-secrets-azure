@@ -11,7 +11,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/authorization/mgmt/authorization"
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/compute/mgmt/compute"
-	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
@@ -115,9 +114,9 @@ func (m *mockProvider) GetApplication(_ context.Context, _ string) (api.Applicat
 	}, nil
 }
 
-func (m *mockProvider) DeleteApplication(_ context.Context, applicationObjectID string) (autorest.Response, error) {
+func (m *mockProvider) DeleteApplication(_ context.Context, applicationObjectID string) error {
 	delete(m.applications, applicationObjectID)
-	return autorest.Response{}, nil
+	return nil
 }
 
 func (m *mockProvider) AddApplicationPassword(_ context.Context, _ string, displayName string, endDateTime date.Time) (result api.PasswordCredentialResult, err error) {
@@ -139,13 +138,13 @@ func (m *mockProvider) AddApplicationPassword(_ context.Context, _ string, displ
 	}, nil
 }
 
-func (m *mockProvider) RemoveApplicationPassword(_ context.Context, _ string, keyID string) (result autorest.Response, err error) {
+func (m *mockProvider) RemoveApplicationPassword(_ context.Context, _ string, keyID string) (err error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
 	delete(m.passwords, keyID)
 
-	return autorest.Response{}, nil
+	return nil
 }
 
 func (m *mockProvider) appExists(s string) bool {

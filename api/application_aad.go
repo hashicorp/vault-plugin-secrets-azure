@@ -106,7 +106,7 @@ func (a *ActiveDirectoryApplicationClient) AddApplicationPassword(ctx context.Co
 		return PasswordCredentialResult{}, fmt.Errorf("error updating credentials: %w", err)
 	}
 
-	result := PasswordCredentialResult{
+	result = PasswordCredentialResult{
 		PasswordCredential: PasswordCredential{
 			DisplayName: to.StringPtr(displayName),
 			StartDate:   &now,
@@ -118,11 +118,11 @@ func (a *ActiveDirectoryApplicationClient) AddApplicationPassword(ctx context.Co
 	return result, nil
 }
 
-func (a *ActiveDirectoryApplicationClient) RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) error {
+func (a *ActiveDirectoryApplicationClient) RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) (err error) {
 	// Load current credentials
 	resp, err := a.Client.ListPasswordCredentials(ctx, applicationObjectID)
 	if err != nil {
-		return fmt.Errorf("error fetching credentials: %w", err)
+		return errwrap.Wrapf("error fetching credentials: {{err}}", err)
 	}
 	curCreds := *resp.Value
 
@@ -149,7 +149,7 @@ func (a *ActiveDirectoryApplicationClient) RemoveApplicationPassword(ctx context
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("error updating credentials: %w", err)
+		return errwrap.Wrapf("error updating credentials: {{err}}", err)
 	}
 
 	return nil

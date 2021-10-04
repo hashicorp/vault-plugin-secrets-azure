@@ -48,6 +48,7 @@ func backend() *azureSecretBackend {
 			[]*framework.Path{
 				pathConfig(&b),
 				pathServicePrincipal(&b),
+				pathRotateRoot(&b),
 			},
 		),
 		Secrets: []*framework.Secret{

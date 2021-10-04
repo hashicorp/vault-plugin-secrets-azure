@@ -72,6 +72,30 @@ func (c *AppClient) GetApplication(ctx context.Context, applicationObjectID stri
 	return result, nil
 }
 
+type listApplicationsResponse struct {
+	Value []ApplicationResult
+}
+
+func (c *AppClient) ListApplications(ctx context.Context, filter string) ([]ApplicationResult, error) {
+	filterArgs := url.Values{}
+	if filter != "" {
+		filterArgs.Set("$filter", filter)
+	}
+	preparer := c.GetPreparer(
+		autorest.AsGet(),
+		autorest.WithPath(fmt.Sprintf("/v1.0/applications?%s", filterArgs.Encode())),
+	)
+	listAppResp := listApplicationsResponse{}
+	err := c.SendRequest(ctx, preparer,
+		azure.WithErrorUnlessStatusCode(http.StatusOK),
+		autorest.ByUnmarshallingJSON(&listAppResp),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return listAppResp.Value, nil
+}
+
 // CreateApplication create a new Azure application object.
 func (c *AppClient) CreateApplication(ctx context.Context, displayName string) (ApplicationResult, error) {
 	var result ApplicationResult
@@ -116,10 +140,8 @@ func (c *AppClient) DeleteApplication(ctx context.Context, applicationObjectID s
 		autorest.ByClosing())
 }
 
-func (c *AppClient) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime date.Time) (PasswordCredentialResult, error) {
-	var result PasswordCredentialResult
-
-	req, err := c.addPasswordPreparer(ctx, applicationObjectID, displayName, endDateTime)
+func (c *AppClient) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime time.Time) (result PasswordCredentialResult, err error) {
+	req, err := c.addPasswordPreparer(ctx, applicationObjectID, displayName, date.Time{endDateTime})
 	if err != nil {
 		return PasswordCredentialResult{}, autorest.NewErrorWithError(err, "provider", "AddApplicationPassword", nil, "Failure preparing request")
 	}

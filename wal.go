@@ -21,9 +21,17 @@ type walApp struct {
 }
 
 func (b *azureSecretBackend) walRollback(ctx context.Context, req *logical.Request, kind string, data interface{}) error {
-	if kind != walAppKey {
+	switch kind {
+	case walAppKey:
+		return b.rollbackAppWAL(ctx, req, data)
+	case walRemoveCreds:
+		return b.rollbackCredsWAL(ctx, req, data)
+	default:
 		return fmt.Errorf("unknown rollback type %q", kind)
 	}
+}
+
+func (b *azureSecretBackend) rollbackAppWAL(ctx context.Context, req *logical.Request, data interface{}) error {
 	// Decode the WAL data
 	var entry walApp
 	d, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{

@@ -114,17 +114,21 @@ func (m *mockProvider) GetApplication(_ context.Context, _ string) (api.Applicat
 	}, nil
 }
 
+func (m *mockProvider) ListApplications(_ context.Context, _ string) ([]api.ApplicationResult, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
 func (m *mockProvider) DeleteApplication(_ context.Context, applicationObjectID string) error {
 	delete(m.applications, applicationObjectID)
 	return nil
 }
 
-func (m *mockProvider) AddApplicationPassword(_ context.Context, _ string, displayName string, endDateTime date.Time) (result api.PasswordCredentialResult, err error) {
+func (m *mockProvider) AddApplicationPassword(_ context.Context, _ string, displayName string, endDateTime time.Time) (result api.PasswordCredentialResult, err error) {
 	keyID := generateUUID()
 	cred := api.PasswordCredential{
 		DisplayName: to.StringPtr(displayName),
 		StartDate:   &date.Time{Time: time.Now()},
-		EndDate:     &endDateTime,
+		EndDate:     &date.Time{endDateTime},
 		KeyID:       to.StringPtr(keyID),
 		SecretText:  to.StringPtr(generateUUID()),
 	}

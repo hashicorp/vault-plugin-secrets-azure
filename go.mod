@@ -12,7 +12,7 @@ require (
 	github.com/fatih/color v1.9.0 // indirect
 	github.com/frankban/quicktest v1.10.0 // indirect
 	github.com/go-test/deep v1.0.2-0.20181118220953-042da051cf31
-	github.com/golang/mock v1.1.1
+	github.com/golang/mock v1.6.0
 	github.com/hashicorp/go-hclog v0.14.1
 	github.com/hashicorp/go-multierror v1.1.0
 	github.com/hashicorp/go-retryablehttp v0.6.6 // indirect
@@ -27,9 +27,6 @@ require (
 	github.com/mitchellh/mapstructure v1.3.2
 	github.com/pierrec/lz4 v2.5.2+incompatible // indirect
 	golang.org/x/crypto v0.0.0-20200604202706-70a84ac30bf9 // indirect
-	golang.org/x/net v0.0.0-20200602114024-627f9648deb9 // indirect
-	golang.org/x/sys v0.0.0-20200602225109-6fdc65e7d980 // indirect
-	golang.org/x/text v0.3.2 // indirect
 	golang.org/x/time v0.0.0-20200416051211-89c76fbcd5d1 // indirect
 	google.golang.org/protobuf v1.24.0 // indirect
 	gopkg.in/square/go-jose.v2 v2.5.1 // indirect

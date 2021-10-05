@@ -45,7 +45,7 @@ func (b *azureSecretBackend) pathRotateRoot(ctx context.Context, req *logical.Re
 	}
 
 	resultData := map[string]interface{}{
-		"client_id": *passCred.KeyID,
+		"secret_id": *passCred.KeyID,
 		"end_date":  *passCred.EndDate,
 	}
 	if passCred.DisplayName != nil && *passCred.DisplayName != "" {

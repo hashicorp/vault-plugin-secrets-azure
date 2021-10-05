@@ -130,11 +130,12 @@ func (c *AppClient) DeleteApplication(ctx context.Context, applicationObjectID s
 		return autorest.NewErrorWithError(err, "provider", "DeleteApplication", resp, "Failure sending request")
 	}
 
-	return autorest.Respond(
+	err = autorest.Respond(
 		resp,
 		c.client.ByInspecting(),
 		azure.WithErrorUnlessStatusCode(http.StatusNoContent, http.StatusNotFound),
 		autorest.ByClosing())
+	return autorest.NewErrorWithError(err, "provider", "DeleteApplication", resp, "Failure responding to request")
 }
 
 func (c *AppClient) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime time.Time) (result PasswordCredentialResult, err error) {

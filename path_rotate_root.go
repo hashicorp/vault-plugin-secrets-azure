@@ -20,8 +20,14 @@ import (
 func pathRotateRoot(b *azureSecretBackend) *framework.Path {
 	return &framework.Path{
 		Pattern: "rotate-root",
-		Fields:  map[string]*framework.FieldSchema{
-			// None
+		Fields: map[string]*framework.FieldSchema{
+			"expiration": {
+				Type: framework.TypeDurationSecond,
+				// 28 weeks (~6 months) -> days -> hours
+				Default:     28 * 7 * 24 * time.Hour,
+				Description: "The expiration date of the new credentials in Azure",
+				Required:    false,
+			},
 		},
 		Operations: map[logical.Operation]framework.OperationHandler{
 			logical.UpdateOperation: &framework.PathOperation{
@@ -38,8 +44,15 @@ func pathRotateRoot(b *azureSecretBackend) *framework.Path {
 }
 
 func (b *azureSecretBackend) pathRotateRoot(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	expiration := time.Now().AddDate(0, 6, 0)
-	passCred, warnings, err := b.rotateRootCredentials(ctx, req.Storage, expiration)
+	expirationDur := data.Get("expiration").(time.Duration)
+	expiration := time.Now().Add(expirationDur)
+
+	config, err := b.getConfig(ctx, req.Storage)
+	if err != nil {
+		return nil, err
+	}
+
+	passCred, warnings, err := b.rotateRootCredentials(ctx, req.Storage, *config, expiration)
 	if err != nil {
 		return nil, err
 	}
@@ -57,15 +70,10 @@ func (b *azureSecretBackend) pathRotateRoot(ctx context.Context, req *logical.Re
 		Warnings: warnings,
 	}
 
-	return resp, nil
+	return addAADWarning(resp, config), nil
 }
 
-func (b *azureSecretBackend) rotateRootCredentials(ctx context.Context, storage logical.Storage, expiration time.Time) (cred api.PasswordCredential, warnings []string, err error) {
-	cfg, err := b.getConfig(ctx, storage)
-	if err != nil {
-		return api.PasswordCredential{}, nil, err
-	}
-
+func (b *azureSecretBackend) rotateRootCredentials(ctx context.Context, storage logical.Storage, cfg azureConfig, expiration time.Time) (cred api.PasswordCredential, warnings []string, err error) {
 	client, err := b.getClient(ctx, storage)
 	if err != nil {
 		return api.PasswordCredential{}, nil, err
@@ -100,7 +108,7 @@ func (b *azureSecretBackend) rotateRootCredentials(ctx context.Context, storage 
 	}
 
 	// This could have the same username customization logic put on it if we really wanted it here
-	passwordDisplayName := fmt.Sprintf("vault-plugin-secrets-azure-%s", uniqueID)
+	passwordDisplayName := fmt.Sprintf("vault-%s", uniqueID)
 
 	newPasswordResp, err := client.provider.AddApplicationPassword(ctx, *app.ID, passwordDisplayName, expiration)
 	if err != nil {
@@ -109,7 +117,7 @@ func (b *azureSecretBackend) rotateRootCredentials(ctx context.Context, storage 
 
 	cfg.ClientSecret = *newPasswordResp.PasswordCredential.SecretText
 
-	err = b.saveConfig(ctx, cfg, storage)
+	err = b.saveConfig(ctx, &cfg, storage)
 	if err != nil {
 		// Remove the key since we failed to save it to Vault storage. It's reasonable to assume that this call
 		// to Azure will succeed since the AddApplicationPassword call succeeded above. If it doesn't, we aren't going

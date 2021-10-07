@@ -105,7 +105,7 @@ func TestRotateRootCredentials(t *testing.T) {
 			assertErrorIsNil(t, err)
 			assertNotNil(t, client)
 
-			passCred, warnings, err := b.rotateRootCredentials(ctx, storage, expiration)
+			passCred, warnings, err := b.rotateRootCredentials(ctx, storage, originalCfg, expiration)
 			assertErrorIsNil(t, err)
 			assertStrSliceIsEmpty(t, warnings)
 

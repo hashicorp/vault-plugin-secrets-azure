@@ -65,11 +65,19 @@ func pathConfig(b *azureSecretBackend) *framework.Path {
 				Description: "Enable usage of the Microsoft Graph API over the deprecated Azure AD Graph API.",
 			},
 		},
-		Callbacks: map[logical.Operation]framework.OperationFunc{
-			logical.ReadOperation:   b.pathConfigRead,
-			logical.CreateOperation: b.pathConfigWrite,
-			logical.UpdateOperation: b.pathConfigWrite,
-			logical.DeleteOperation: b.pathConfigDelete,
+		Operations: map[logical.Operation]framework.OperationHandler{
+			logical.ReadOperation: &framework.PathOperation{
+				Callback: b.pathConfigRead,
+			},
+			logical.CreateOperation: &framework.PathOperation{
+				Callback: b.pathConfigWrite,
+			},
+			logical.UpdateOperation: &framework.PathOperation{
+				Callback: b.pathConfigWrite,
+			},
+			logical.DeleteOperation: &framework.PathOperation{
+				Callback: b.pathConfigDelete,
+			},
 		},
 		ExistenceCheck:  b.pathConfigExistenceCheck,
 		HelpSynopsis:    confHelpSyn,
@@ -129,7 +137,20 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 
 	err = b.saveConfig(ctx, config, req.Storage)
 
-	return nil, err
+	return addAADWarning(nil, config), err
+}
+
+func addAADWarning(resp *logical.Response, config *azureConfig) *logical.Response {
+	if !config.UseMsGraphAPI {
+		return resp
+	}
+	if resp == nil {
+		resp = &logical.Response{}
+	}
+	resp.AddWarning("This configuration is using the Azure Active Directory API which is being " +
+		"removed soon. Please migrate to using the Microsoft Graph API using the " +
+		"use_microsoft_graph_api configuration parameter.")
+	return resp
 }
 
 func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
@@ -152,7 +173,7 @@ func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Re
 			"use_microsoft_graph_api": config.UseMsGraphAPI,
 		},
 	}
-	return resp, nil
+	return addAADWarning(resp, config), nil
 }
 
 func (b *azureSecretBackend) pathConfigDelete(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {

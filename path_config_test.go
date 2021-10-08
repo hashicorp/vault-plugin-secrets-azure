@@ -2,6 +2,7 @@ package azuresecrets
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/hashicorp/vault/sdk/logical"
@@ -88,6 +89,68 @@ func TestConfigDelete(t *testing.T) {
 		"use_microsoft_graph_api": false,
 	}
 	testConfigRead(t, b, s, config)
+}
+
+func TestAddAADWarning(t *testing.T) {
+	type testCase struct {
+		useMSGraphAPI bool
+		resp          *logical.Response
+		expectedResp  *logical.Response
+	}
+
+	tests := map[string]testCase{
+		"nil resp, using AAD": {
+			useMSGraphAPI: false,
+			resp:          nil,
+			expectedResp: &logical.Response{
+				Warnings: []string{aadWarning},
+			},
+		},
+		"nil resp, using ms-graph": {
+			useMSGraphAPI: true,
+			resp:          nil,
+			expectedResp:  nil,
+		},
+		"non-nil resp, using AAD": {
+			useMSGraphAPI: false,
+			resp: &logical.Response{
+				Data: map[string]interface{}{
+					"foo": "bar",
+				},
+			},
+			expectedResp: &logical.Response{
+				Data: map[string]interface{}{
+					"foo": "bar",
+				},
+				Warnings: []string{aadWarning},
+			},
+		},
+		"non-nil resp, using ms-graph": {
+			useMSGraphAPI: true,
+			resp: &logical.Response{
+				Data: map[string]interface{}{
+					"foo": "bar",
+				},
+			},
+			expectedResp: &logical.Response{
+				Data: map[string]interface{}{
+					"foo": "bar",
+				},
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			cfg := &azureConfig{
+				UseMsGraphAPI: test.useMSGraphAPI,
+			}
+			actualResp := addAADWarning(test.resp, cfg)
+			if !reflect.DeepEqual(actualResp, test.expectedResp) {
+				t.Fatalf("Actual: %#v\nExpected: %#v", actualResp, test.expectedResp)
+			}
+		})
+	}
 }
 
 func testConfigCreate(t *testing.T, b logical.Backend, s logical.Storage, d map[string]interface{}) {

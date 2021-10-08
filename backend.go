@@ -2,14 +2,20 @@ package azuresecrets
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
+	"github.com/hashicorp/vault-plugin-secrets-azure/ticker"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/locksutil"
 	"github.com/hashicorp/vault/sdk/logical"
+)
+
+const (
+	rootCredTickerID = "root-creds"
 )
 
 type azureSecretBackend struct {
@@ -23,6 +29,8 @@ type azureSecretBackend struct {
 	// Creating/deleting passwords against a single Application is a PATCH
 	// operation that must be locked per Application Object ID.
 	appLocks []*locksutil.LockEntry
+
+	ticker *ticker.Ticker
 }
 
 func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend, error) {
@@ -30,6 +38,14 @@ func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend,
 	if err := b.Setup(ctx, conf); err != nil {
 		return nil, err
 	}
+
+	// Need to set up the ticker after calling Setup() so we can reference the logger
+	ticker, err := ticker.NewTicker(b.Logger(), 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set up asynchronous ticker: %w", err)
+	}
+	b.ticker = ticker
+
 	return b, nil
 }
 
@@ -63,6 +79,8 @@ func backend() *azureSecretBackend {
 		// Role assignment can take up to a few minutes, so ensure we don't try
 		// to roll back during creation.
 		WALRollbackMinAge: 10 * time.Minute,
+		InitializeFunc:    b.initialize,
+		Clean:             b.cleanup,
 	}
 
 	b.getProvider = newAzureProvider
@@ -141,6 +159,40 @@ func (b *azureSecretBackend) getClient(ctx context.Context, s logical.Storage) (
 	b.client = c
 
 	return c, nil
+}
+
+func (b *azureSecretBackend) initialize(ctx context.Context, req *logical.InitializationRequest) error {
+	// Set up automatic rotation logic
+	cfg, err := b.getConfig(ctx, req.Storage)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve configuration: %w", err)
+	}
+	// No config exists, don't set up the ticker
+	if cfg == nil {
+		return nil
+	}
+
+	// No regular rotation set, also don't set up the ticker
+	if cfg.NextRootRotationTime.IsZero() {
+		return nil
+	}
+
+	// TODO: Set up auto root rotation when saving the config
+	// Make sure it handles updating auto root rotation too
+	// On update: Next run should be when? Immediate?
+	firstRun := cfg.NextRootRotationTime
+	_, err = b.ticker.Run(cfg.RootRotationCadence, b.automaticRotateRootFunc(req.Storage),
+		ticker.ID(rootCredTickerID),
+		ticker.FirstRun(firstRun),
+	)
+	return err
+}
+
+func (b *azureSecretBackend) cleanup(ctx context.Context) {
+	err := b.ticker.Close()
+	if err != nil {
+		b.Logger().Error("Not all goroutines closed cleanly", "error", err)
+	}
 }
 
 const backendHelp = `

@@ -52,7 +52,7 @@ func (b *azureSecretBackend) pathRotateRoot(ctx context.Context, req *logical.Re
 		return nil, err
 	}
 
-	passCred, warnings, err := b.rotateRootCredentials(ctx, req.Storage, *config, expiration)
+	passCred, warnings, err := b.rotateRootCredentials(ctx, req.Storage, expiration)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,12 @@ func (b *azureSecretBackend) pathRotateRoot(ctx context.Context, req *logical.Re
 	return addAADWarning(resp, config), nil
 }
 
-func (b *azureSecretBackend) rotateRootCredentials(ctx context.Context, storage logical.Storage, cfg azureConfig, expiration time.Time) (cred api.PasswordCredential, warnings []string, err error) {
+func (b *azureSecretBackend) rotateRootCredentials(ctx context.Context, storage logical.Storage, expiration time.Time) (cred api.PasswordCredential, warnings []string, err error) {
+	cfg, err := b.getConfig(ctx, storage)
+	if err != nil {
+		return api.PasswordCredential{}, nil, err
+	}
+
 	client, err := b.getClient(ctx, storage)
 	if err != nil {
 		return api.PasswordCredential{}, nil, err
@@ -117,7 +122,7 @@ func (b *azureSecretBackend) rotateRootCredentials(ctx context.Context, storage 
 
 	cfg.ClientSecret = *newPasswordResp.PasswordCredential.SecretText
 
-	err = b.saveConfig(ctx, &cfg, storage)
+	err = b.saveConfig(ctx, cfg, storage)
 	if err != nil {
 		// Remove the key since we failed to save it to Vault storage. It's reasonable to assume that this call
 		// to Azure will succeed since the AddApplicationPassword call succeeded above. If it doesn't, we aren't going

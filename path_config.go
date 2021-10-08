@@ -136,20 +136,27 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 	}
 
 	err = b.saveConfig(ctx, config, req.Storage)
+	if err != nil {
+		return nil, err
+	}
 
-	return addAADWarning(nil, config), err
+	resp := addAADWarning(nil, config)
+
+	return resp, nil
 }
 
+const aadWarning = "This configuration is using the Azure Active Directory API which is being " +
+	"removed soon. Please migrate to using the Microsoft Graph API using the " +
+	"use_microsoft_graph_api configuration parameter."
+
 func addAADWarning(resp *logical.Response, config *azureConfig) *logical.Response {
-	if !config.UseMsGraphAPI {
+	if config.UseMsGraphAPI {
 		return resp
 	}
 	if resp == nil {
 		resp = &logical.Response{}
 	}
-	resp.AddWarning("This configuration is using the Azure Active Directory API which is being " +
-		"removed soon. Please migrate to using the Microsoft Graph API using the " +
-		"use_microsoft_graph_api configuration parameter.")
+	resp.AddWarning(aadWarning)
 	return resp
 }
 

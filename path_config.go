@@ -187,6 +187,7 @@ func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Re
 			"environment":             config.Environment,
 			"client_id":               config.ClientID,
 			"use_microsoft_graph_api": config.UseMsGraphAPI,
+			"default_expiration":      config.DefaultExpiration.Seconds(),
 		},
 	}
 	return addAADWarning(resp, config), nil

@@ -9,7 +9,6 @@ import (
 	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 	"github.com/hashicorp/vault/sdk/framework"
-	"github.com/hashicorp/vault/sdk/helper/parseutil"
 	"github.com/hashicorp/vault/sdk/logical"
 	"github.com/mitchellh/mapstructure"
 )
@@ -17,14 +16,8 @@ import (
 func pathRotateRoot(b *azureSecretBackend) *framework.Path {
 	return &framework.Path{
 		Pattern: "rotate-root",
-		Fields: map[string]*framework.FieldSchema{
-			"expiration": {
-				Type: framework.TypeString,
-				// 28 weeks (~6 months) -> days -> hours
-				Default:     (28 * 7 * 24 * time.Hour).String(),
-				Description: "The expiration date of the new credentials in Azure. This can be either a number of seconds or a time formatted duration (ex: 24h)",
-				Required:    false,
-			},
+		Fields:  map[string]*framework.FieldSchema{
+			// None
 		},
 		Operations: map[logical.Operation]framework.OperationHandler{
 			logical.UpdateOperation: &framework.PathOperation{
@@ -41,16 +34,16 @@ func pathRotateRoot(b *azureSecretBackend) *framework.Path {
 }
 
 func (b *azureSecretBackend) pathRotateRoot(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	expirationDur, err := parseutil.ParseDurationSecond(data.Get("expiration").(string))
-	if err != nil {
-		return nil, fmt.Errorf("invalid expiration: %w", err)
-	}
-	expiration := time.Now().Add(expirationDur)
-
 	config, err := b.getConfig(ctx, req.Storage)
 	if err != nil {
 		return nil, err
 	}
+
+	expDur := config.DefaultExpiration
+	if expDur == 0 {
+		expDur = 28 * 7 * 24 * time.Hour
+	}
+	expiration := time.Now().Add(expDur)
 
 	passCred, warnings, err := b.rotateRootCredentials(ctx, req.Storage, *config, expiration)
 	if err != nil {

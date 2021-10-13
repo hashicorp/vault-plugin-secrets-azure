@@ -73,7 +73,7 @@ func (c *AppClient) GetApplication(ctx context.Context, applicationObjectID stri
 }
 
 type listApplicationsResponse struct {
-	Value []ApplicationResult
+	Value []ApplicationResult `json:"value"`
 }
 
 func (c *AppClient) ListApplications(ctx context.Context, filter string) ([]ApplicationResult, error) {

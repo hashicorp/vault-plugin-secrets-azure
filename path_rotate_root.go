@@ -249,7 +249,6 @@ func intersectStrings(a []string, b []string) []string {
 	for _, bStr := range b {
 		if _, exists := aMap[bStr]; exists {
 			result = append(result, bStr)
-			continue
 		}
 	}
 	return result

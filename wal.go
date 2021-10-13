@@ -24,8 +24,8 @@ func (b *azureSecretBackend) walRollback(ctx context.Context, req *logical.Reque
 	switch kind {
 	case walAppKey:
 		return b.rollbackAppWAL(ctx, req, data)
-	case walRemoveCreds:
-		return b.rollbackCredsWAL(ctx, req, data)
+	case walRotateRootCreds:
+		return b.rotateRootCredsWAL(ctx, req, data)
 	default:
 		return fmt.Errorf("unknown rollback type %q", kind)
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 	"github.com/hashicorp/vault/sdk/framework"
+	"github.com/hashicorp/vault/sdk/logical"
 )
 
 func TestRotateRootCredentials(t *testing.T) {
@@ -97,6 +98,8 @@ func TestRotateRootCredentials(t *testing.T) {
 
 			mockProvider.EXPECT().RemoveApplicationPassword(gomock.Any(), objID, keyID).Return(nil)
 
+			mockProvider.EXPECT().GetApplication(gomock.Any(), objID).Return(apps[0], nil)
+
 			b.getProvider = func(_ *clientSettings, _ bool, _ api.Passwords) (api.AzureProvider, error) {
 				return mockProvider, nil
 			}
@@ -105,9 +108,8 @@ func TestRotateRootCredentials(t *testing.T) {
 			assertErrorIsNil(t, err)
 			assertNotNil(t, client)
 
-			passCred, warnings, err := b.rotateRootCredentials(ctx, storage, *originalCfg, expiration)
+			passCred, err := b.rotateRootCredentials(ctx, storage, *originalCfg, expiration)
 			assertErrorIsNil(t, err)
-			assertStrSliceIsEmpty(t, warnings)
 
 			expectedCred := newPasswordResult.PasswordCredential
 
@@ -115,6 +117,31 @@ func TestRotateRootCredentials(t *testing.T) {
 				t.Fatalf("Expected: %#v\nActual: %#v", expectedCred, passCred)
 			}
 
+			// Ensure the WAL exists
+			wals, err := framework.ListWAL(ctx, storage)
+			assertErrorIsNil(t, err)
+			if len(wals) == 0 {
+				t.Fatalf("Missing WAL for saving config & removing old passwords")
+			}
+			if len(wals) > 1 {
+				t.Fatalf("More than one WAL found")
+			}
+			walEntry, err := framework.GetWAL(ctx, storage, wals[0])
+			assertErrorIsNil(t, err)
+
+			if walEntry.Kind != walRotateRootCreds {
+				t.Fatalf("Actual WAL kind: %s Expected WAL kind: %s", walEntry.Kind, walRotateRootCreds)
+			}
+
+			walReq := &logical.Request{
+				Storage: storage,
+			}
+
+			// Force the WAL to execute
+			err = b.rotateRootCredsWAL(ctx, walReq, walEntry.Data)
+			assertErrorIsNil(t, err)
+
+			// Check the config
 			updatedCfg, err := b.getConfig(ctx, storage)
 			assertErrorIsNil(t, err)
 
@@ -125,11 +152,6 @@ func TestRotateRootCredentials(t *testing.T) {
 			if updatedCfg.ClientSecret != *newPasswordResult.PasswordCredential.SecretText {
 				t.Fatalf("Expected client secret: %s Actual client secret: %s", *newPasswordResult.PasswordCredential.SecretText, updatedCfg.ClientSecret)
 			}
-
-			wals, err := framework.ListWAL(ctx, storage)
-			assertErrorIsNil(t, err)
-
-			assertStrSliceIsEmpty(t, wals)
 		})
 	}
 }

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/hashicorp/vault/sdk/helper/parseutil"
+
 	"github.com/Azure/go-autorest/autorest/azure"
 	multierror "github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/vault/sdk/framework"
@@ -140,6 +142,16 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 
 	config.PasswordPolicy = data.Get("password_policy").(string)
 
+	exp, exists := data.GetOk("default_expiration")
+	if exists {
+		expiration, err := parseutil.ParseDurationSecond(exp.(string))
+		if err != nil {
+			merr = multierror.Append(merr, err)
+		} else {
+			config.DefaultExpiration = expiration
+		}
+	}
+
 	if merr.ErrorOrNil() != nil {
 		return logical.ErrorResponse(merr.Error()), nil
 	}
@@ -187,7 +199,7 @@ func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Re
 			"environment":             config.Environment,
 			"client_id":               config.ClientID,
 			"use_microsoft_graph_api": config.UseMsGraphAPI,
-			"default_expiration":      config.DefaultExpiration.Seconds(),
+			"default_expiration":      int(config.DefaultExpiration.Seconds()),
 		},
 	}
 	return addAADWarning(resp, config), nil

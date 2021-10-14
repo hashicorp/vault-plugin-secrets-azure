@@ -177,7 +177,6 @@ func (b *azureSecretBackend) initialize(ctx context.Context, req *logical.Initia
 		return nil
 	}
 
-	// TODO: Set up auto root rotation when saving the config
 	// Make sure it handles updating auto root rotation too
 	// On update: Next run should be when? Immediate?
 	firstRun := cfg.NextRootRotationTime

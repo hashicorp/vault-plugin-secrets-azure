@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hashicorp/vault-plugin-secrets-azure/ticker"
+
+	"github.com/hashicorp/go-hclog"
+
 	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
@@ -241,4 +245,43 @@ func intersectStrings(a []string, b []string) []string {
 		}
 	}
 	return result
+}
+
+func (b *azureSecretBackend) automaticRotateRootFunc(storage logical.Storage) ticker.RunFunc {
+	return func(ctx context.Context, logger hclog.Logger, runnerDetails ticker.RunnerDetails) error {
+		cfg, err := b.getConfig(ctx, storage)
+		if err != nil {
+			return fmt.Errorf("failed to retrieve configuration: %w", err)
+		}
+
+		if cfg == nil {
+			return nil
+		}
+
+		expDur := cfg.DefaultExpiration
+		if expDur == 0 {
+			expDur = 28 * 7 * 24 * time.Hour
+		}
+		expiration := time.Now().Add(expDur)
+
+		b.Logger().Info("Rotating root credential")
+
+		passCred, err := b.rotateRootCredentials(ctx, storage, *cfg, expiration)
+		if err != nil {
+			return fmt.Errorf("failed to automatically rotate root credentials: %w", err)
+		}
+
+		b.Logger().Info("Root credential has been successfully rotated",
+			"displayName", passCred.DisplayName,
+			"expiration", passCred.EndDate,
+		)
+
+		cfg.NextRootRotationTime = runnerDetails.NextRun
+		err = b.saveConfig(ctx, cfg, storage)
+		if err != nil {
+			b.Logger().Error("Next root credential time failed to save", "error", err)
+		}
+
+		return nil
+	}
 }

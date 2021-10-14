@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/hashicorp/vault-plugin-secrets-azure/ticker"
 	"github.com/hashicorp/vault/sdk/helper/parseutil"
 
 	"github.com/Azure/go-autorest/autorest/azure"
@@ -21,14 +22,17 @@ const (
 // defaults for roles. The zero value is useful and results in
 // environments variable and system defaults being used.
 type azureConfig struct {
-	SubscriptionID    string        `json:"subscription_id"`
-	TenantID          string        `json:"tenant_id"`
-	ClientID          string        `json:"client_id"`
-	ClientSecret      string        `json:"client_secret"`
-	Environment       string        `json:"environment"`
-	PasswordPolicy    string        `json:"password_policy"`
-	UseMsGraphAPI     bool          `json:"use_microsoft_graph_api"`
-	DefaultExpiration time.Duration `json:"default_expiration"`
+	SubscriptionID      string        `json:"subscription_id"`
+	TenantID            string        `json:"tenant_id"`
+	ClientID            string        `json:"client_id"`
+	ClientSecret        string        `json:"client_secret"`
+	Environment         string        `json:"environment"`
+	PasswordPolicy      string        `json:"password_policy"`
+	UseMsGraphAPI       bool          `json:"use_microsoft_graph_api"`
+	DefaultExpiration   time.Duration `json:"default_expiration"`
+	RootRotationCadence time.Duration `json:"root_rotation_cadence"`
+
+	NextRootRotationTime time.Time `json:"next_root_rotation_time"`
 }
 
 func pathConfig(b *azureSecretBackend) *framework.Path {
@@ -74,6 +78,12 @@ func pathConfig(b *azureSecretBackend) *framework.Path {
 				Default:     (28 * 7 * 24 * time.Hour).String(),
 				Description: "The expiration date of the new credentials in Azure. This can be either a number of seconds or a time formatted duration (ex: 24h)",
 				Required:    false,
+			},
+			"root_rotation_cadence": &framework.FieldSchema{
+				Type: framework.TypeString,
+				Description: "How often to automatically rotate the root credentials in Azure. This is equivalent to " +
+					"calling the rotate-root endpoint on a regular cadence. Explicitly set to 0 or empty string if this should be disabled.",
+				Required: false,
 			},
 		},
 		Operations: map[logical.Operation]framework.OperationHandler{
@@ -152,8 +162,31 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 		}
 	}
 
+	rootRotationRaw, exists := data.GetOk("root_rotation_cadence")
+	if exists {
+		rootRotation, err := parseutil.ParseDurationSecond(rootRotationRaw)
+		if err != nil {
+			merr = multierror.Append(merr, err)
+		} else {
+			config.RootRotationCadence = rootRotation
+		}
+	}
+
 	if merr.ErrorOrNil() != nil {
 		return logical.ErrorResponse(merr.Error()), nil
+	}
+
+	if config.RootRotationCadence == 0 {
+		b.ticker.Stop(rootCredTickerID)
+		config.NextRootRotationTime = time.Time{}
+	} else {
+		// TODO: Consider smarter logic around when the first execution of this should be
+		// For instance: if automatic rotation is already set up and is being updated, should this execute immediately?
+		firstRun := time.Now()
+		_, err = b.ticker.Run(config.RootRotationCadence, b.automaticRotateRootFunc(req.Storage),
+			ticker.ID(rootCredTickerID),
+			ticker.FirstRun(firstRun),
+		)
 	}
 
 	err = b.saveConfig(ctx, config, req.Storage)

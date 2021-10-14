@@ -72,7 +72,7 @@ func (c *AppClient) GetApplication(ctx context.Context, applicationObjectID stri
 }
 
 type listApplicationsResponse struct {
-	Value []ApplicationResult
+	Value []ApplicationResult `json:"value"`
 }
 
 func (c *AppClient) ListApplications(ctx context.Context, filter string) ([]ApplicationResult, error) {
@@ -119,7 +119,7 @@ func (c *AppClient) CreateApplication(ctx context.Context, displayName string) (
 
 // DeleteApplication deletes an Azure application object.
 // This will in turn remove the service principal (but not the role assignments).
-func (c *AppClient) DeleteApplication(ctx context.Context, applicationObjectID string) (err error) {
+func (c *AppClient) DeleteApplication(ctx context.Context, applicationObjectID string) error {
 	req, err := c.deleteApplicationPreparer(ctx, applicationObjectID)
 	if err != nil {
 		return autorest.NewErrorWithError(err, "provider", "DeleteApplication", nil, "Failure preparing request")
@@ -135,7 +135,10 @@ func (c *AppClient) DeleteApplication(ctx context.Context, applicationObjectID s
 		c.client.ByInspecting(),
 		azure.WithErrorUnlessStatusCode(http.StatusNoContent, http.StatusNotFound),
 		autorest.ByClosing())
-	return autorest.NewErrorWithError(err, "provider", "DeleteApplication", resp, "Failure responding to request")
+	if err != nil {
+		return autorest.NewErrorWithError(err, "provider", "DeleteApplication", resp, "Failure responding to request")
+	}
+	return nil
 }
 
 func (c *AppClient) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime time.Time) (result PasswordCredentialResult, err error) {

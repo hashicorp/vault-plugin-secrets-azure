@@ -9,7 +9,6 @@ import (
 	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 	"github.com/hashicorp/vault/sdk/framework"
-	"github.com/hashicorp/vault/sdk/helper/parseutil"
 	"github.com/hashicorp/vault/sdk/logical"
 	"github.com/mitchellh/mapstructure"
 )
@@ -17,14 +16,8 @@ import (
 func pathRotateRoot(b *azureSecretBackend) *framework.Path {
 	return &framework.Path{
 		Pattern: "rotate-root",
-		Fields: map[string]*framework.FieldSchema{
-			"expiration": {
-				Type: framework.TypeString,
-				// 28 weeks (~6 months) -> days -> hours
-				Default:     (28 * 7 * 24 * time.Hour).String(),
-				Description: "The expiration date of the new credentials in Azure. This can be either a number of seconds or a time formatted duration (ex: 24h)",
-				Required:    false,
-			},
+		Fields:  map[string]*framework.FieldSchema{
+			// None
 		},
 		Operations: map[logical.Operation]framework.OperationHandler{
 			logical.UpdateOperation: &framework.PathOperation{
@@ -41,18 +34,18 @@ func pathRotateRoot(b *azureSecretBackend) *framework.Path {
 }
 
 func (b *azureSecretBackend) pathRotateRoot(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	expirationDur, err := parseutil.ParseDurationSecond(data.Get("expiration").(string))
-	if err != nil {
-		return nil, fmt.Errorf("invalid expiration: %w", err)
-	}
-	expiration := time.Now().Add(expirationDur)
-
 	config, err := b.getConfig(ctx, req.Storage)
 	if err != nil {
 		return nil, err
 	}
 
-	passCred, warnings, err := b.rotateRootCredentials(ctx, req.Storage, expiration)
+	expDur := config.DefaultExpiration
+	if expDur == 0 {
+		expDur = 28 * 7 * 24 * time.Hour
+	}
+	expiration := time.Now().Add(expDur)
+
+	passCred, err := b.rotateRootCredentials(ctx, req.Storage, *config, expiration)
 	if err != nil {
 		return nil, err
 	}
@@ -66,36 +59,30 @@ func (b *azureSecretBackend) pathRotateRoot(ctx context.Context, req *logical.Re
 	}
 
 	resp := &logical.Response{
-		Data:     resultData,
-		Warnings: warnings,
+		Data: resultData,
 	}
 
 	return addAADWarning(resp, config), nil
 }
 
-func (b *azureSecretBackend) rotateRootCredentials(ctx context.Context, storage logical.Storage, expiration time.Time) (cred api.PasswordCredential, warnings []string, err error) {
-	cfg, err := b.getConfig(ctx, storage)
-	if err != nil {
-		return api.PasswordCredential{}, nil, err
-	}
-
+func (b *azureSecretBackend) rotateRootCredentials(ctx context.Context, storage logical.Storage, cfg azureConfig, expiration time.Time) (cred api.PasswordCredential, err error) {
 	client, err := b.getClient(ctx, storage)
 	if err != nil {
-		return api.PasswordCredential{}, nil, err
+		return api.PasswordCredential{}, err
 	}
 
 	// We need to use List instead of Get here because we don't have the Object ID
 	// (which is different from the Application/Client ID)
 	apps, err := client.provider.ListApplications(ctx, fmt.Sprintf("appId eq '%s'", cfg.ClientID))
 	if err != nil {
-		return api.PasswordCredential{}, nil, err
+		return api.PasswordCredential{}, err
 	}
 
 	if len(apps) == 0 {
-		return api.PasswordCredential{}, nil, fmt.Errorf("no application found")
+		return api.PasswordCredential{}, fmt.Errorf("no application found")
 	}
 	if len(apps) > 1 {
-		return api.PasswordCredential{}, nil, fmt.Errorf("multiple applications found - double check your client_id")
+		return api.PasswordCredential{}, fmt.Errorf("multiple applications found - double check your client_id")
 	}
 
 	app := apps[0]
@@ -109,7 +96,7 @@ func (b *azureSecretBackend) rotateRootCredentials(ctx context.Context, storage 
 
 	uniqueID, err := uuid.GenerateUUID()
 	if err != nil {
-		return api.PasswordCredential{}, nil, fmt.Errorf("failed to generate UUID: %w", err)
+		return api.PasswordCredential{}, fmt.Errorf("failed to generate UUID: %w", err)
 	}
 
 	// This could have the same username customization logic put on it if we really wanted it here
@@ -117,34 +104,41 @@ func (b *azureSecretBackend) rotateRootCredentials(ctx context.Context, storage 
 
 	newPasswordResp, err := client.provider.AddApplicationPassword(ctx, *app.ID, passwordDisplayName, expiration)
 	if err != nil {
-		return api.PasswordCredential{}, nil, fmt.Errorf("failed to add new password: %w", err)
+		return api.PasswordCredential{}, fmt.Errorf("failed to add new password: %w", err)
 	}
 
-	cfg.ClientSecret = *newPasswordResp.PasswordCredential.SecretText
+	// Write a WAL with the new credential (and some other info) to write to the config later
+	// This is done because the new credential is typically not available to use IMMEDIATELY
+	// after creating it. This can create errors for callers so instead this will write
+	// the config and clean up old keys asynchronously after ~10m (backend.WALRollbackMinAge)
+	// This also will automatically retry because of the standard WAL behavior
+	wal := rotateCredsWAL{
+		AppID:          *app.ID,
+		NewSecret:      *newPasswordResp.PasswordCredential.SecretText,
+		KeyIDsToRemove: credsToDelete,
+		Expiration:     time.Now().Add(walRotateRootCredsExpiration),
+	}
 
-	err = b.saveConfig(ctx, cfg, storage)
-	if err != nil {
-		// Remove the key since we failed to save it to Vault storage. It's reasonable to assume that this call
+	_, walErr := framework.PutWAL(ctx, storage, walRotateRootCreds, wal)
+	if walErr != nil {
+		// Remove the key since we failed to save the WAL to Vault storage. It's reasonable to assume that this call
 		// to Azure will succeed since the AddApplicationPassword call succeeded above. If it doesn't, we aren't going
 		// to do any retries via a WAL here since the current configuration will continue to work.
 		azureErr := client.provider.RemoveApplicationPassword(ctx, *app.ID, *newPasswordResp.PasswordCredential.KeyID)
 		merr := multierror.Append(err, azureErr)
-		return api.PasswordCredential{}, nil, merr
+		return api.PasswordCredential{}, merr
 	}
 
-	err = removeApplicationPasswords(ctx, storage, client.provider, *app.ID, credsToDelete...)
-	if err != nil {
-		warnings = append(warnings, fmt.Sprintf("failed to clean up all other credentials for root user. Will attempt again later.\n%s", err.Error()))
-	}
-
-	return newPasswordResp.PasswordCredential, warnings, nil
+	return newPasswordResp.PasswordCredential, nil
 }
 
-const walRemoveCreds = "removeCreds"
-const walRemoveCredsExpiration = 24 * time.Hour
+const walRotateRootCreds = "rotateRootCreds"
+const walRotateRootCredsExpiration = 24 * time.Hour
 
-type removeCredsWAL struct {
+type rotateCredsWAL struct {
 	AppID          string
+	OldSecret      string
+	NewSecret      string
 	KeyIDsToRemove []string
 	Expiration     time.Time
 }
@@ -153,16 +147,7 @@ type passwordRemover interface {
 	RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) error
 }
 
-func removeApplicationPasswords(ctx context.Context, storage logical.Storage, passRemover passwordRemover, appID string, passwordKeyIDs ...string) (err error) {
-	wal := removeCredsWAL{
-		AppID:          appID,
-		KeyIDsToRemove: passwordKeyIDs,
-		Expiration:     time.Now().Add(walRemoveCredsExpiration),
-	}
-	walID, walErr := framework.PutWAL(ctx, storage, walRemoveCreds, wal)
-
-	// If writing the WAL failed, continue to try to remove the creds from Azure and report the WAL error later if
-	// the removal failed
+func removeApplicationPasswords(ctx context.Context, passRemover passwordRemover, appID string, passwordKeyIDs ...string) (err error) {
 	merr := new(multierror.Error)
 	var remainingCreds []string
 	for _, keyID := range passwordKeyIDs {
@@ -174,22 +159,11 @@ func removeApplicationPasswords(ctx context.Context, storage logical.Storage, pa
 		}
 	}
 
-	if len(remainingCreds) == 0 {
-		// If walErr != nil we failed to write the WAL in the first place, so we don't need to remove it
-		if walErr == nil {
-			err := framework.DeleteWAL(ctx, storage, walID)
-			if err != nil {
-				return fmt.Errorf("passwords removed, but WAL failed to be removed: %w", err)
-			}
-		}
-		return nil
-	}
-
 	return merr.ErrorOrNil()
 }
 
-func (b *azureSecretBackend) rollbackCredsWAL(ctx context.Context, req *logical.Request, data interface{}) error {
-	entry := removeCredsWAL{}
+func (b *azureSecretBackend) rotateRootCredsWAL(ctx context.Context, req *logical.Request, data interface{}) error {
+	entry := rotateCredsWAL{}
 
 	d, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		DecodeHook: mapstructure.StringToTimeHookFunc(time.RFC3339),
@@ -208,6 +182,19 @@ func (b *azureSecretBackend) rollbackCredsWAL(ctx context.Context, req *logical.
 		return nil
 	}
 
+	cfg, err := b.getConfig(ctx, req.Storage)
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	cfg.ClientSecret = entry.NewSecret
+
+	err = b.saveConfig(ctx, cfg, req.Storage)
+	if err != nil {
+		return fmt.Errorf("failed to save new configuration: %w", err)
+	}
+
+	// b.saveConfig does a reset so this should get a new client with the updated creds
 	client, err := b.getClient(ctx, req.Storage)
 	if err != nil {
 		return err
@@ -229,15 +216,12 @@ func (b *azureSecretBackend) rollbackCredsWAL(ctx context.Context, req *logical.
 
 	b.Logger().Debug("Attempting to remove dangling credentials for root user")
 
-	merr := new(multierror.Error)
-	for _, keyID := range keysToRemove {
-		// Attempt to remove all of them, don't fail early
-		err := client.provider.RemoveApplicationPassword(ctx, entry.AppID, keyID)
-		if err != nil {
-			merr = multierror.Append(merr, err)
-		}
+	err = removeApplicationPasswords(ctx, client.provider, entry.AppID, keysToRemove...)
+	if err != nil {
+		return err
 	}
-	return merr.ErrorOrNil()
+	b.Logger().Debug("Successfully removed dangling credentials for root user")
+	return nil
 }
 
 func intersectStrings(a []string, b []string) []string {
@@ -254,7 +238,6 @@ func intersectStrings(a []string, b []string) []string {
 	for _, bStr := range b {
 		if _, exists := aMap[bStr]; exists {
 			result = append(result, bStr)
-			continue
 		}
 	}
 	return result

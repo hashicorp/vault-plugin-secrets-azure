@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/vault/sdk/logical"
 )
@@ -12,37 +13,38 @@ func TestConfig(t *testing.T) {
 	b, s := getTestBackend(t, false)
 
 	// Test valid config
-	config := map[string]interface{}{
+	expectedConfig := map[string]interface{}{
 		"subscription_id":         "a228ceec-bf1a-4411-9f95-39678d8cdb34",
 		"tenant_id":               "7ac36e27-80fc-4209-a453-e8ad83dc18c2",
 		"client_id":               "testClientId",
 		"client_secret":           "testClientSecret",
 		"environment":             "AZURECHINACLOUD",
 		"use_microsoft_graph_api": false,
+		"default_expiration":      int((24 * time.Hour).Seconds()),
 	}
 
-	testConfigCreate(t, b, s, config)
+	testConfigCreate(t, b, s, expectedConfig)
 
-	delete(config, "client_secret")
-	testConfigRead(t, b, s, config)
+	delete(expectedConfig, "client_secret")
+	testConfigRead(t, b, s, expectedConfig)
 
 	// Test test updating one element retains the others
-	config["tenant_id"] = "800e371d-ee51-4145-9ac8-5c43e4ceb79b"
+	expectedConfig["tenant_id"] = "800e371d-ee51-4145-9ac8-5c43e4ceb79b"
 	configSubset := map[string]interface{}{
 		"tenant_id": "800e371d-ee51-4145-9ac8-5c43e4ceb79b",
 	}
 	testConfigCreate(t, b, s, configSubset)
-	testConfigUpdate(t, b, s, config)
+	testConfigUpdate(t, b, s, expectedConfig)
 
 	// Test bad environment
-	config = map[string]interface{}{
+	expectedConfig = map[string]interface{}{
 		"environment": "invalidEnv",
 	}
 
 	resp, _ := b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.UpdateOperation,
 		Path:      "config",
-		Data:      config,
+		Data:      expectedConfig,
 		Storage:   s,
 	})
 
@@ -62,6 +64,7 @@ func TestConfigDelete(t *testing.T) {
 		"client_secret":           "testClientSecret",
 		"environment":             "AZURECHINACLOUD",
 		"use_microsoft_graph_api": false,
+		"default_expiration":      int((24 * time.Hour).Seconds()),
 	}
 
 	testConfigCreate(t, b, s, config)
@@ -87,6 +90,7 @@ func TestConfigDelete(t *testing.T) {
 		"client_id":               "",
 		"environment":             "",
 		"use_microsoft_graph_api": false,
+		"default_expiration":      0,
 	}
 	testConfigRead(t, b, s, config)
 }

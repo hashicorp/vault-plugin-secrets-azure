@@ -294,8 +294,10 @@ func (c AppClient) createApplicationSender(req *http.Request) (*http.Response, e
 	return autorest.SendWithSender(c.client, req, sd...)
 }
 
-func (c AppClient) createApplicationResponder(resp *http.Response) (result ApplicationResult, err error) {
-	err = autorest.Respond(
+func (c AppClient) createApplicationResponder(resp *http.Response) (ApplicationResult, error) {
+	var result ApplicationResult
+
+	err := autorest.Respond(
 		resp,
 		c.client.ByInspecting(),
 		azure.WithErrorUnlessStatusCode(http.StatusCreated),

@@ -16,9 +16,6 @@ import (
 func pathRotateRoot(b *azureSecretBackend) *framework.Path {
 	return &framework.Path{
 		Pattern: "rotate-root",
-		Fields:  map[string]*framework.FieldSchema{
-			// None
-		},
 		Operations: map[logical.Operation]framework.OperationHandler{
 			logical.UpdateOperation: &framework.PathOperation{
 				Callback:                    b.pathRotateRoot,

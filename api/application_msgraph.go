@@ -183,8 +183,9 @@ func (c AppClient) getApplicationSender(req *http.Request) (*http.Response, erro
 	return autorest.SendWithSender(c.client, req, sd...)
 }
 
-func (c AppClient) getApplicationResponder(resp *http.Response) (result ApplicationResult, err error) {
-	err = autorest.Respond(
+func (c AppClient) getApplicationResponder(resp *http.Response) (ApplicationResult, error) {
+	var result ApplicationResult
+	err := autorest.Respond(
 		resp,
 		c.client.ByInspecting(),
 		azure.WithErrorUnlessStatusCode(http.StatusOK),
@@ -261,8 +262,9 @@ func (c AppClient) removePasswordSender(req *http.Request) (*http.Response, erro
 	return autorest.SendWithSender(c.client, req, sd...)
 }
 
-func (c AppClient) removePasswordResponder(resp *http.Response) (result autorest.Response, err error) {
-	err = autorest.Respond(
+func (c AppClient) removePasswordResponder(resp *http.Response) (autorest.Response, error) {
+	var result autorest.Response
+	err := autorest.Respond(
 		resp,
 		c.client.ByInspecting(),
 		azure.WithErrorUnlessStatusCode(http.StatusNoContent),
@@ -296,7 +298,6 @@ func (c AppClient) createApplicationSender(req *http.Request) (*http.Response, e
 
 func (c AppClient) createApplicationResponder(resp *http.Response) (ApplicationResult, error) {
 	var result ApplicationResult
-
 	err := autorest.Respond(
 		resp,
 		c.client.ByInspecting(),

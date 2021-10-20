@@ -36,9 +36,9 @@ func (b *azureSecretBackend) pathRotateRoot(ctx context.Context, req *logical.Re
 		return nil, err
 	}
 
-	expDur := config.DefaultExpiration
+	expDur := config.RootPasswordExpiration
 	if expDur == 0 {
-		expDur = 28 * 7 * 24 * time.Hour
+		expDur = rootPasswordExpiration
 	}
 	expiration := time.Now().Add(expDur)
 

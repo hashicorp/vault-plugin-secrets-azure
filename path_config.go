@@ -5,8 +5,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/hashicorp/vault/sdk/helper/parseutil"
-
 	"github.com/Azure/go-autorest/autorest/azure"
 	multierror "github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/vault/sdk/framework"
@@ -15,20 +13,24 @@ import (
 
 const (
 	configStoragePath = "config"
+	// The default password expiration duration is 6 months in
+	// the Azure UI, so we're setting it to 6 months (in hours)
+	// as the default.
+	rootPasswordExpiration = 4380
 )
 
 // azureConfig contains values to configure Azure clients and
 // defaults for roles. The zero value is useful and results in
 // environments variable and system defaults being used.
 type azureConfig struct {
-	SubscriptionID    string        `json:"subscription_id"`
-	TenantID          string        `json:"tenant_id"`
-	ClientID          string        `json:"client_id"`
-	ClientSecret      string        `json:"client_secret"`
-	Environment       string        `json:"environment"`
-	PasswordPolicy    string        `json:"password_policy"`
-	UseMsGraphAPI     bool          `json:"use_microsoft_graph_api"`
-	DefaultExpiration time.Duration `json:"default_expiration"`
+	SubscriptionID         string        `json:"subscription_id"`
+	TenantID               string        `json:"tenant_id"`
+	ClientID               string        `json:"client_id"`
+	ClientSecret           string        `json:"client_secret"`
+	Environment            string        `json:"environment"`
+	PasswordPolicy         string        `json:"password_policy"`
+	UseMsGraphAPI          bool          `json:"use_microsoft_graph_api"`
+	RootPasswordExpiration time.Duration `json:"root_password_expiration"`
 }
 
 func pathConfig(b *azureSecretBackend) *framework.Path {
@@ -68,10 +70,9 @@ func pathConfig(b *azureSecretBackend) *framework.Path {
 				Type:        framework.TypeBool,
 				Description: "Enable usage of the Microsoft Graph API over the deprecated Azure AD Graph API.",
 			},
-			"default_expiration": &framework.FieldSchema{
-				Type: framework.TypeString,
-				// 28 weeks (~6 months) -> days -> hours
-				Default:     (28 * 7 * 24 * time.Hour).String(),
+			"root_password_expiration": &framework.FieldSchema{
+				Type:        framework.TypeDurationSecond,
+				Default:     rootPasswordExpiration,
 				Description: "The expiration date of the new credentials in Azure. This can be either a number of seconds or a time formatted duration (ex: 24h)",
 				Required:    false,
 			},
@@ -142,14 +143,10 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 
 	config.PasswordPolicy = data.Get("password_policy").(string)
 
-	exp, exists := data.GetOk("default_expiration")
-	if exists {
-		expiration, err := parseutil.ParseDurationSecond(exp.(string))
-		if err != nil {
-			merr = multierror.Append(merr, err)
-		} else {
-			config.DefaultExpiration = expiration
-		}
+	config.RootPasswordExpiration = time.Hour * time.Duration(rootPasswordExpiration)
+	rootExpirationRaw, ok := data.GetOk("root_password_expiration")
+	if ok {
+		config.RootPasswordExpiration = time.Second * time.Duration(rootExpirationRaw.(int))
 	}
 
 	if merr.ErrorOrNil() != nil {
@@ -194,12 +191,12 @@ func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Re
 
 	resp := &logical.Response{
 		Data: map[string]interface{}{
-			"subscription_id":         config.SubscriptionID,
-			"tenant_id":               config.TenantID,
-			"environment":             config.Environment,
-			"client_id":               config.ClientID,
-			"use_microsoft_graph_api": config.UseMsGraphAPI,
-			"default_expiration":      int(config.DefaultExpiration.Seconds()),
+			"subscription_id":          config.SubscriptionID,
+			"tenant_id":                config.TenantID,
+			"environment":              config.Environment,
+			"client_id":                config.ClientID,
+			"use_microsoft_graph_api":  config.UseMsGraphAPI,
+			"root_password_expiration": int(config.RootPasswordExpiration.Seconds()),
 		},
 	}
 	return addAADWarning(resp, config), nil

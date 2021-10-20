@@ -133,11 +133,12 @@ func (c *AppClient) DeleteApplication(ctx context.Context, applicationObjectID s
 		return autorest.NewErrorWithError(err, "provider", "DeleteApplication", resp, "Failure sending request")
 	}
 
-	return autorest.Respond(
+	err = autorest.Respond(
 		resp,
 		c.client.ByInspecting(),
 		azure.WithErrorUnlessStatusCode(http.StatusNoContent, http.StatusNotFound),
 		autorest.ByClosing())
+
 	if err != nil {
 		return autorest.NewErrorWithError(err, "provider", "DeleteApplication", resp, "Failure responding to request")
 	}
@@ -508,7 +509,7 @@ func (c *AppClient) setPasswordForServicePrincipal(ctx context.Context, spID str
 	}
 	reqBody := map[string]interface{}{
 		"startDateTime": startDate.UTC().Format("2006-01-02T15:04:05Z"),
-		"endDateTime":   startDate.UTC().Format("2006-01-02T15:04:05Z"),
+		"endDateTime":   endDate.UTC().Format("2006-01-02T15:04:05Z"),
 	}
 
 	preparer := c.GetPreparer(

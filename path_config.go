@@ -16,7 +16,7 @@ const (
 	// The default password expiration duration is 6 months in
 	// the Azure UI, so we're setting it to 6 months (in hours)
 	// as the default.
-	rootPasswordExpiration = 4380
+	defaultRootPasswordExpiration = 4380
 )
 
 // azureConfig contains values to configure Azure clients and
@@ -72,7 +72,7 @@ func pathConfig(b *azureSecretBackend) *framework.Path {
 			},
 			"root_password_expiration": &framework.FieldSchema{
 				Type:        framework.TypeDurationSecond,
-				Default:     rootPasswordExpiration,
+				Default:     defaultRootPasswordExpiration,
 				Description: "The expiration date of the new credentials in Azure. This can be either a number of seconds or a time formatted duration (ex: 24h)",
 				Required:    false,
 			},

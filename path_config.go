@@ -143,7 +143,7 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 
 	config.PasswordPolicy = data.Get("password_policy").(string)
 
-	config.RootPasswordExpiration = time.Hour * time.Duration(rootPasswordExpiration)
+	config.RootPasswordExpiration = defaultRootPasswordExpiration * time.Hour
 	rootExpirationRaw, ok := data.GetOk("root_password_expiration")
 	if ok {
 		config.RootPasswordExpiration = time.Second * time.Duration(rootExpirationRaw.(int))

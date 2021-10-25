@@ -2,6 +2,7 @@ package azuresecrets
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -22,7 +23,8 @@ type azureSecretBackend struct {
 
 	// Creating/deleting passwords against a single Application is a PATCH
 	// operation that must be locked per Application Object ID.
-	appLocks []*locksutil.LockEntry
+	appLocks       []*locksutil.LockEntry
+	updatePassword bool
 }
 
 func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend, error) {
@@ -34,7 +36,9 @@ func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend,
 }
 
 func backend() *azureSecretBackend {
-	var b = azureSecretBackend{}
+	var b = azureSecretBackend{
+		updatePassword: true,
+	}
 
 	b.Backend = &framework.Backend{
 		Help: strings.TrimSpace(backendHelp),
@@ -63,12 +67,78 @@ func backend() *azureSecretBackend {
 		// Role assignment can take up to a few minutes, so ensure we don't try
 		// to roll back during creation.
 		WALRollbackMinAge: 10 * time.Minute,
-	}
 
+		PeriodicFunc: b.periodicFunc,
+	}
 	b.getProvider = newAzureProvider
 	b.appLocks = locksutil.CreateLocks()
 
 	return &b
+}
+
+func (b *azureSecretBackend) periodicFunc(ctx context.Context, sys *logical.Request) error {
+	if !b.updatePassword {
+		return nil
+	}
+
+	config, err := b.getConfig(ctx, sys.Storage)
+	if err != nil {
+		return err
+	}
+
+	if config.NewClientSecret != "" {
+		if config.NewClientSecretCreated.Add(time.Second * 60).After(time.Now()) {
+			b.Logger().Debug("periodic func", "new password detected, swapping in storage")
+			client, err := b.getClient(ctx, sys.Storage)
+			if err != nil {
+				return err
+			}
+
+			b.Logger().Debug("periodic func", "getting object ID for root application")
+			apps, err := client.provider.ListApplications(ctx, fmt.Sprintf("appId eq '%s'", config.ClientID))
+			if err != nil {
+				return err
+			}
+
+			if len(apps) == 0 {
+				return fmt.Errorf("no application found")
+			}
+			if len(apps) > 1 {
+				return fmt.Errorf("multiple applications found - double check your client_id")
+			}
+
+			app := apps[0]
+
+			credsToDelete := []string{}
+			for _, cred := range app.PasswordCredentials {
+				if *cred.KeyID != config.NewClientSecretKeyID {
+					credsToDelete = append(credsToDelete, *cred.KeyID)
+				}
+			}
+
+			b.Logger().Debug("periodic func", "removing old passwords from Azure")
+			err = removeApplicationPasswords(ctx, client.provider, *app.ID, credsToDelete...)
+			if err != nil {
+				return err
+			}
+
+			b.Logger().Debug("periodic func", "updating config with new password")
+			config.ClientSecret = config.NewClientSecret
+			config.ClientSecretKeyID = config.NewClientSecretKeyID
+			config.NewClientSecret = ""
+			config.NewClientSecretKeyID = ""
+			config.NewClientSecretCreated = time.Time{}
+		}
+
+		err := b.saveConfig(ctx, config, sys.Storage)
+		if err != nil {
+			return err
+		}
+
+		b.updatePassword = false
+	}
+
+	return nil
 }
 
 // reset clears the backend's cached client

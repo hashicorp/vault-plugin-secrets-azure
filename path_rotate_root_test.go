@@ -5,154 +5,68 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
-	"time"
 
-	"github.com/Azure/go-autorest/autorest/date"
-	"github.com/golang/mock/gomock"
-	"github.com/hashicorp/vault-plugin-secrets-azure/api"
-	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/logical"
 )
 
-func TestRotateRootCredentials(t *testing.T) {
-	type testCase struct {
-		rawConfig map[string]interface{}
+func TestRotateRoot(t *testing.T) {
+	b, s := getTestBackend(t, true)
+
+	resp, err := b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.UpdateOperation,
+		Path:      "rotate-root",
+		Data:      map[string]interface{}{},
+		Storage:   s,
+	})
+
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	tests := map[string]testCase{
-		"AAD": {
-			rawConfig: map[string]interface{}{
-				"subscription_id": generateUUID(),
-				"tenant_id":       generateUUID(),
-				"client_id":       testClientID,
-				"client_secret":   testClientSecret,
-				"environment":     "AZURECHINACLOUD",
-				"ttl":             defaultTestTTL,
-				"max_ttl":         defaultTestMaxTTL,
-			},
-		},
-		"MS-Graph": {
-			rawConfig: map[string]interface{}{
-				"subscription_id":         generateUUID(),
-				"tenant_id":               generateUUID(),
-				"client_id":               testClientID,
-				"client_secret":           testClientSecret,
-				"environment":             "AZURECHINACLOUD",
-				"ttl":                     defaultTestTTL,
-				"max_ttl":                 defaultTestMaxTTL,
-				"use_microsoft_graph_api": true,
-			},
-		},
+	if resp != nil && resp.IsError() {
+		t.Fatal(resp.Error())
 	}
 
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
+	config, err := b.getConfig(context.Background(), s)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-			b, storage := getTestBackend(t, false)
-			testConfigCreate(t, b, storage, test.rawConfig)
+	if config.ClientSecret == "" {
+		t.Fatal(fmt.Errorf("root password was empty after rotate root, it shouldn't be"))
+	}
 
-			ctx := context.Background()
+	if config.NewClientSecret == config.ClientSecret {
+		t.Fatal("old and new password equal after rotate-root, it shouldn't be")
+	}
 
-			originalCfg, err := b.getConfig(ctx, storage)
-			assertErrorIsNil(t, err)
+	if config.NewClientSecret == "" {
+		t.Fatal("new password is empty, it shouldn't be")
+	}
 
-			now := time.Now()
+	if config.NewClientSecretKeyID == "" {
+		t.Fatal("new password key id is empty, it shouldn't be")
+	}
 
-			objID := "test-client-uuid"
-			keyID := "original-credential"
+	if !b.updatePassword {
+		t.Fatal("update password is false, it shouldn't be")
+	}
 
-			apps := []api.ApplicationResult{
-				{
-					AppID: &testClientID,
-					ID:    &objID,
-					PasswordCredentials: []*api.PasswordCredential{
-						{
-							DisplayName: strPtr("test-credential-01"),
-							StartDate:   &date.Time{now.Add(-1 * time.Hour)},
-							EndDate:     &date.Time{now.Add(1 * time.Hour)},
-							KeyID:       &keyID,
-						},
-					},
-				},
-			}
+	err = b.periodicFunc(context.Background(), &logical.Request{
+		Storage: s,
+	})
 
-			expiration := now.Add(6 * time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-			mockProvider := NewMockAzureProvider(ctrl)
-			mockProvider.EXPECT().ListApplications(gomock.Any(), fmt.Sprintf("appId eq '%s'", testClientID)).
-				Return(apps, nil)
+	newConfig, err := b.getConfig(context.Background(), s)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-			newPasswordResult := api.PasswordCredentialResult{
-				PasswordCredential: api.PasswordCredential{
-					DisplayName: strPtr("vault-plugin-secrets-azure-someuuid"),
-					StartDate:   &date.Time{now},
-					EndDate:     &date.Time{expiration},
-					KeyID:       strPtr("new-credential"),
-					SecretText:  strPtr("myreallysecurepassword"),
-				},
-			}
-			mockProvider.EXPECT().AddApplicationPassword(gomock.Any(), objID, gomock.Any(), expiration).
-				Return(newPasswordResult, nil)
-
-			mockProvider.EXPECT().RemoveApplicationPassword(gomock.Any(), objID, keyID).Return(nil)
-
-			mockProvider.EXPECT().GetApplication(gomock.Any(), objID).Return(apps[0], nil)
-
-			b.getProvider = func(_ *clientSettings, _ bool, _ api.Passwords) (api.AzureProvider, error) {
-				return mockProvider, nil
-			}
-
-			client, err := b.getClient(ctx, storage)
-			assertErrorIsNil(t, err)
-			assertNotNil(t, client)
-
-			passCred, err := b.rotateRootCredentials(ctx, storage, *originalCfg, expiration)
-			assertErrorIsNil(t, err)
-
-			expectedCred := newPasswordResult.PasswordCredential
-
-			if !reflect.DeepEqual(passCred, expectedCred) {
-				t.Fatalf("Expected: %#v\nActual: %#v", expectedCred, passCred)
-			}
-
-			// Ensure the WAL exists
-			wals, err := framework.ListWAL(ctx, storage)
-			assertErrorIsNil(t, err)
-			if len(wals) == 0 {
-				t.Fatalf("Missing WAL for saving config & removing old passwords")
-			}
-			if len(wals) > 1 {
-				t.Fatalf("More than one WAL found")
-			}
-			walEntry, err := framework.GetWAL(ctx, storage, wals[0])
-			assertErrorIsNil(t, err)
-
-			if walEntry.Kind != walRotateRootCreds {
-				t.Fatalf("Actual WAL kind: %s Expected WAL kind: %s", walEntry.Kind, walRotateRootCreds)
-			}
-
-			walReq := &logical.Request{
-				Storage: storage,
-			}
-
-			// Force the WAL to execute
-			err = b.rotateRootCredsWAL(ctx, walReq, walEntry.Data)
-			assertErrorIsNil(t, err)
-
-			// Check the config
-			updatedCfg, err := b.getConfig(ctx, storage)
-			assertErrorIsNil(t, err)
-
-			if reflect.DeepEqual(updatedCfg, originalCfg) {
-				t.Fatalf("New config should not equal the original config")
-			}
-
-			if updatedCfg.ClientSecret != *newPasswordResult.PasswordCredential.SecretText {
-				t.Fatalf("Expected client secret: %s Actual client secret: %s", *newPasswordResult.PasswordCredential.SecretText, updatedCfg.ClientSecret)
-			}
-		})
+	if newConfig.ClientSecret != config.NewClientSecret {
+		t.Fatal(fmt.Errorf("old and new password aren't equal after periodic function, they should be"))
 	}
 }
 

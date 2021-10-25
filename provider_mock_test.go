@@ -108,13 +108,21 @@ func (m *mockProvider) CreateApplication(_ context.Context, _ string) (api.Appli
 }
 
 func (m *mockProvider) GetApplication(_ context.Context, _ string) (api.ApplicationResult, error) {
+	appObjID := generateUUID()
 	return api.ApplicationResult{
 		AppID: to.StringPtr("00000000-0000-0000-0000-000000000000"),
+		ID:    &appObjID,
 	}, nil
 }
 
 func (m *mockProvider) ListApplications(_ context.Context, _ string) ([]api.ApplicationResult, error) {
-	return nil, fmt.Errorf("not implemented")
+	appObjID := generateUUID()
+	return []api.ApplicationResult{
+		{
+			AppID: to.StringPtr("00000000-0000-0000-0000-000000000000"),
+			ID:    &appObjID,
+		},
+	}, nil
 }
 
 func (m *mockProvider) DeleteApplication(_ context.Context, applicationObjectID string) error {

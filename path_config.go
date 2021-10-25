@@ -16,21 +16,26 @@ const (
 	// The default password expiration duration is 6 months in
 	// the Azure UI, so we're setting it to 6 months (in hours)
 	// as the default.
-	defaultRootPasswordExpiration = 4380
+	defaultRootPasswordTTL = 4380
 )
 
 // azureConfig contains values to configure Azure clients and
 // defaults for roles. The zero value is useful and results in
 // environments variable and system defaults being used.
 type azureConfig struct {
-	SubscriptionID         string        `json:"subscription_id"`
-	TenantID               string        `json:"tenant_id"`
-	ClientID               string        `json:"client_id"`
-	ClientSecret           string        `json:"client_secret"`
-	Environment            string        `json:"environment"`
-	PasswordPolicy         string        `json:"password_policy"`
-	UseMsGraphAPI          bool          `json:"use_microsoft_graph_api"`
-	RootPasswordExpiration time.Duration `json:"root_password_expiration"`
+	SubscriptionID             string        `json:"subscription_id"`
+	TenantID                   string        `json:"tenant_id"`
+	ClientID                   string        `json:"client_id"`
+	ClientSecret               string        `json:"client_secret"`
+	ClientSecretKeyID          string        `json:"client_secret_key_id"`
+	NewClientSecret            string        `json:"new_client_secret"`
+	NewClientSecretCreated     time.Time     `json:"new_client_secret_created"`
+	NewClientSecretKeyID       string        `json:"new_client_secret_key_id"`
+	Environment                string        `json:"environment"`
+	PasswordPolicy             string        `json:"password_policy"`
+	UseMsGraphAPI              bool          `json:"use_microsoft_graph_api"`
+	RootPasswordTTL            time.Duration `json:"root_password_ttl"`
+	RootPasswordExpirationDate string        `json:"root_password_expiration_date`
 }
 
 func pathConfig(b *azureSecretBackend) *framework.Path {
@@ -70,10 +75,15 @@ func pathConfig(b *azureSecretBackend) *framework.Path {
 				Type:        framework.TypeBool,
 				Description: "Enable usage of the Microsoft Graph API over the deprecated Azure AD Graph API.",
 			},
-			"root_password_expiration": &framework.FieldSchema{
+			"root_password_ttl": &framework.FieldSchema{
 				Type:        framework.TypeDurationSecond,
-				Default:     defaultRootPasswordExpiration,
-				Description: "The expiration date of the new credentials in Azure. This can be either a number of seconds or a time formatted duration (ex: 24h)",
+				Default:     defaultRootPasswordTTL,
+				Description: "The TTL of the root password in Azure. This can be either a number of seconds or a time formatted duration (ex: 24h, 48ds)",
+				Required:    false,
+			},
+			"root_password_expiration_date": &framework.FieldSchema{
+				Type:        framework.TypeString,
+				Description: "The date when the root password will expire in Azure.",
 				Required:    false,
 			},
 		},
@@ -143,10 +153,10 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 
 	config.PasswordPolicy = data.Get("password_policy").(string)
 
-	config.RootPasswordExpiration = defaultRootPasswordExpiration * time.Hour
-	rootExpirationRaw, ok := data.GetOk("root_password_expiration")
+	config.RootPasswordTTL = defaultRootPasswordTTL * time.Hour
+	rootExpirationRaw, ok := data.GetOk("root_password_ttl")
 	if ok {
-		config.RootPasswordExpiration = time.Second * time.Duration(rootExpirationRaw.(int))
+		config.RootPasswordTTL = time.Second * time.Duration(rootExpirationRaw.(int))
 	}
 
 	if merr.ErrorOrNil() != nil {
@@ -191,14 +201,19 @@ func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Re
 
 	resp := &logical.Response{
 		Data: map[string]interface{}{
-			"subscription_id":          config.SubscriptionID,
-			"tenant_id":                config.TenantID,
-			"environment":              config.Environment,
-			"client_id":                config.ClientID,
-			"use_microsoft_graph_api":  config.UseMsGraphAPI,
-			"root_password_expiration": int(config.RootPasswordExpiration.Seconds()),
+			"subscription_id":         config.SubscriptionID,
+			"tenant_id":               config.TenantID,
+			"environment":             config.Environment,
+			"client_id":               config.ClientID,
+			"use_microsoft_graph_api": config.UseMsGraphAPI,
+			"root_password_ttl":       int(config.RootPasswordTTL.Seconds()),
 		},
 	}
+
+	if config.RootPasswordExpirationDate != "" {
+		resp.Data["root_password_expiration_date"] = config.RootPasswordExpirationDate
+	}
+
 	return addAADWarning(resp, config), nil
 }
 

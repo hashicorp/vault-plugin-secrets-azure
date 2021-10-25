@@ -93,6 +93,7 @@ func (c *AppClient) ListApplications(ctx context.Context, filter string) ([]Appl
 	if err != nil {
 		return nil, err
 	}
+
 	return listAppResp.Value, nil
 }
 

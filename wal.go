@@ -104,6 +104,7 @@ func (b *azureSecretBackend) rollbackRootWAL(ctx context.Context, req *logical.R
 	config.RootPasswordExpirationDate = entry.OldPasswordExpirationDate
 	config.NewClientSecret = ""
 	config.NewClientSecretCreated = time.Time{}
+	config.NewClientSecretExpirationDate = time.Time{}
 	config.NewClientSecretKeyID = ""
 
 	err = b.saveConfig(ctx, config, req.Storage)

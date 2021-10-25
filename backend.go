@@ -88,13 +88,12 @@ func (b *azureSecretBackend) periodicFunc(ctx context.Context, sys *logical.Requ
 
 	if config.NewClientSecret != "" {
 		if config.NewClientSecretCreated.Add(time.Second * 60).After(time.Now()) {
-			b.Logger().Debug("periodic func", "new password detected, swapping in storage")
+			b.Logger().Debug("periodic func", "new", "new password detected, swapping in storage")
 			client, err := b.getClient(ctx, sys.Storage)
 			if err != nil {
 				return err
 			}
 
-			b.Logger().Debug("periodic func", "getting object ID for root application")
 			apps, err := client.provider.ListApplications(ctx, fmt.Sprintf("appId eq '%s'", config.ClientID))
 			if err != nil {
 				return err
@@ -116,13 +115,13 @@ func (b *azureSecretBackend) periodicFunc(ctx context.Context, sys *logical.Requ
 				}
 			}
 
-			b.Logger().Debug("periodic func", "removing old passwords from Azure")
+			b.Logger().Debug("periodic func", "remove", "removing old passwords from Azure")
 			err = removeApplicationPasswords(ctx, client.provider, *app.ID, credsToDelete...)
 			if err != nil {
 				return err
 			}
 
-			b.Logger().Debug("periodic func", "updating config with new password")
+			b.Logger().Debug("periodic func", "updating", "updating config with new password")
 			config.ClientSecret = config.NewClientSecret
 			config.ClientSecretKeyID = config.NewClientSecretKeyID
 			config.NewClientSecret = ""

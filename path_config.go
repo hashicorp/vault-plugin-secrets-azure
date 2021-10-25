@@ -23,19 +23,20 @@ const (
 // defaults for roles. The zero value is useful and results in
 // environments variable and system defaults being used.
 type azureConfig struct {
-	SubscriptionID             string        `json:"subscription_id"`
-	TenantID                   string        `json:"tenant_id"`
-	ClientID                   string        `json:"client_id"`
-	ClientSecret               string        `json:"client_secret"`
-	ClientSecretKeyID          string        `json:"client_secret_key_id"`
-	NewClientSecret            string        `json:"new_client_secret"`
-	NewClientSecretCreated     time.Time     `json:"new_client_secret_created"`
-	NewClientSecretKeyID       string        `json:"new_client_secret_key_id"`
-	Environment                string        `json:"environment"`
-	PasswordPolicy             string        `json:"password_policy"`
-	UseMsGraphAPI              bool          `json:"use_microsoft_graph_api"`
-	RootPasswordTTL            time.Duration `json:"root_password_ttl"`
-	RootPasswordExpirationDate string        `json:"root_password_expiration_date`
+	SubscriptionID                string        `json:"subscription_id"`
+	TenantID                      string        `json:"tenant_id"`
+	ClientID                      string        `json:"client_id"`
+	ClientSecret                  string        `json:"client_secret"`
+	ClientSecretKeyID             string        `json:"client_secret_key_id"`
+	NewClientSecret               string        `json:"new_client_secret"`
+	NewClientSecretCreated        time.Time     `json:"new_client_secret_created"`
+	NewClientSecretExpirationDate time.Time     `json:"new_client_secret_expiration_date"`
+	NewClientSecretKeyID          string        `json:"new_client_secret_key_id"`
+	Environment                   string        `json:"environment"`
+	PasswordPolicy                string        `json:"password_policy"`
+	UseMsGraphAPI                 bool          `json:"use_microsoft_graph_api"`
+	RootPasswordTTL               time.Duration `json:"root_password_ttl"`
+	RootPasswordExpirationDate    string        `json:"root_password_expiration_date`
 }
 
 func pathConfig(b *azureSecretBackend) *framework.Path {
@@ -79,11 +80,6 @@ func pathConfig(b *azureSecretBackend) *framework.Path {
 				Type:        framework.TypeDurationSecond,
 				Default:     defaultRootPasswordTTL,
 				Description: "The TTL of the root password in Azure. This can be either a number of seconds or a time formatted duration (ex: 24h, 48ds)",
-				Required:    false,
-			},
-			"root_password_expiration_date": &framework.FieldSchema{
-				Type:        framework.TypeString,
-				Description: "The date when the root password will expire in Azure.",
 				Required:    false,
 			},
 		},

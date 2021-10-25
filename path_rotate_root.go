@@ -88,6 +88,7 @@ func (b *azureSecretBackend) pathRotateRoot(ctx context.Context, req *logical.Re
 
 	config.NewClientSecret = *newPasswordResp.SecretText
 	config.NewClientSecretCreated = time.Now()
+	config.NewClientSecretExpirationDate = newPasswordResp.EndDate.Time
 	config.NewClientSecretKeyID = *newPasswordResp.KeyID
 
 	err = b.saveConfig(ctx, config, req.Storage)

@@ -146,7 +146,7 @@ func (c *AppClient) DeleteApplication(ctx context.Context, applicationObjectID s
 	return nil
 }
 
-func (c *AppClient) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime time.Time) (result PasswordCredentialResult, err error) {
+func (c *AppClient) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime time.Time) (PasswordCredentialResult, error) {
 	req, err := c.addPasswordPreparer(ctx, applicationObjectID, displayName, date.Time{endDateTime})
 	if err != nil {
 		return PasswordCredentialResult{}, autorest.NewErrorWithError(err, "provider", "AddApplicationPassword", nil, "Failure preparing request")
@@ -154,13 +154,13 @@ func (c *AppClient) AddApplicationPassword(ctx context.Context, applicationObjec
 
 	resp, err := c.addPasswordSender(req)
 	if err != nil {
-		result = PasswordCredentialResult{
+		result := PasswordCredentialResult{
 			Response: autorest.Response{Response: resp},
 		}
 		return result, autorest.NewErrorWithError(err, "provider", "AddApplicationPassword", resp, "Failure sending request")
 	}
 
-	result, err = c.addPasswordResponder(resp)
+	result, err := c.addPasswordResponder(resp)
 	if err != nil {
 		return result, autorest.NewErrorWithError(err, "provider", "AddApplicationPassword", resp, "Failure responding to request")
 	}
@@ -168,7 +168,7 @@ func (c *AppClient) AddApplicationPassword(ctx context.Context, applicationObjec
 	return result, nil
 }
 
-func (c *AppClient) RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) (err error) {
+func (c *AppClient) RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) error {
 	req, err := c.removePasswordPreparer(ctx, applicationObjectID, keyID)
 	if err != nil {
 		return autorest.NewErrorWithError(err, "provider", "RemoveApplicationPassword", nil, "Failure preparing request")

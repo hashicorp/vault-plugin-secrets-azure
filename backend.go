@@ -77,10 +77,9 @@ func backend() *azureSecretBackend {
 }
 
 func (b *azureSecretBackend) periodicFunc(ctx context.Context, sys *logical.Request) error {
-	b.Logger().Debug("periodic func", "debug", "tick")
-
+	b.Logger().Debug("periodic func", "rotate-root", "starting periodic func")
 	if !b.updatePassword {
-		b.Logger().Debug("periodic func", "debug", "no rotate-root update")
+		b.Logger().Debug("periodic func", "rotate-root", "no rotate-root update")
 		return nil
 	}
 
@@ -90,12 +89,11 @@ func (b *azureSecretBackend) periodicFunc(ctx context.Context, sys *logical.Requ
 	}
 
 	// Password should be at least a minute old before we process it
-	b.Logger().Debug("periodic func", "debug", !(time.Since(config.NewClientSecretCreated) > time.Minute))
 	if config.NewClientSecret == "" || (time.Since(config.NewClientSecretCreated) > time.Minute) {
 		return nil
 	}
 
-	b.Logger().Debug("periodic func", "msg", "new password detected, swapping in storage")
+	b.Logger().Debug("periodic func", "rotate-root", "new password detected, swapping in storage")
 	client, err := b.getClient(ctx, sys.Storage)
 	if err != nil {
 		return err
@@ -122,15 +120,16 @@ func (b *azureSecretBackend) periodicFunc(ctx context.Context, sys *logical.Requ
 		}
 	}
 
-	b.Logger().Debug("periodic func", "msg", "removing old passwords from Azure")
+	b.Logger().Debug("periodic func", "rotate-root", "removing old passwords from Azure")
 	err = removeApplicationPasswords(ctx, client.provider, *app.ID, credsToDelete...)
 	if err != nil {
 		return err
 	}
 
-	b.Logger().Debug("periodic func", "msg", "updating config with new password")
+	b.Logger().Debug("periodic func", "rotate-root", "updating config with new password")
 	config.ClientSecret = config.NewClientSecret
 	config.ClientSecretKeyID = config.NewClientSecretKeyID
+	config.RootPasswordExpirationDate = config.NewClientSecretExpirationDate
 	config.NewClientSecret = ""
 	config.NewClientSecretKeyID = ""
 	config.NewClientSecretCreated = time.Time{}

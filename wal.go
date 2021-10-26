@@ -75,7 +75,7 @@ func (b *azureSecretBackend) rollbackAppWAL(ctx context.Context, req *logical.Re
 type walRotateRoot struct {
 	OldPassword               string
 	OldPasswordKeyID          string
-	OldPasswordExpirationDate string
+	OldPasswordExpirationDate time.Time
 }
 
 func (b *azureSecretBackend) rollbackRootWAL(ctx context.Context, req *logical.Request, data interface{}) error {

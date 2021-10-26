@@ -36,7 +36,7 @@ type azureConfig struct {
 	PasswordPolicy                string        `json:"password_policy"`
 	UseMsGraphAPI                 bool          `json:"use_microsoft_graph_api"`
 	RootPasswordTTL               time.Duration `json:"root_password_ttl"`
-	RootPasswordExpirationDate    string        `json:"root_password_expiration_date`
+	RootPasswordExpirationDate    time.Time     `json:"root_password_expiration_date`
 }
 
 func pathConfig(b *azureSecretBackend) *framework.Path {
@@ -206,7 +206,7 @@ func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Re
 		},
 	}
 
-	if config.RootPasswordExpirationDate != "" {
+	if !config.RootPasswordExpirationDate.IsZero() {
 		resp.Data["root_password_expiration_date"] = config.RootPasswordExpirationDate
 	}
 

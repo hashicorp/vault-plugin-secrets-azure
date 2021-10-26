@@ -77,7 +77,10 @@ func backend() *azureSecretBackend {
 }
 
 func (b *azureSecretBackend) periodicFunc(ctx context.Context, sys *logical.Request) error {
+	b.Logger().Debug("periodic func", "debug", "tick")
+
 	if !b.updatePassword {
+		b.Logger().Debug("periodic func", "debug", "no rotate-root update")
 		return nil
 	}
 
@@ -86,56 +89,58 @@ func (b *azureSecretBackend) periodicFunc(ctx context.Context, sys *logical.Requ
 		return err
 	}
 
-	if config.NewClientSecret != "" {
-		if config.NewClientSecretCreated.Add(time.Second * 60).After(time.Now()) {
-			b.Logger().Debug("periodic func", "new", "new password detected, swapping in storage")
-			client, err := b.getClient(ctx, sys.Storage)
-			if err != nil {
-				return err
-			}
-
-			apps, err := client.provider.ListApplications(ctx, fmt.Sprintf("appId eq '%s'", config.ClientID))
-			if err != nil {
-				return err
-			}
-
-			if len(apps) == 0 {
-				return fmt.Errorf("no application found")
-			}
-			if len(apps) > 1 {
-				return fmt.Errorf("multiple applications found - double check your client_id")
-			}
-
-			app := apps[0]
-
-			credsToDelete := []string{}
-			for _, cred := range app.PasswordCredentials {
-				if *cred.KeyID != config.NewClientSecretKeyID {
-					credsToDelete = append(credsToDelete, *cred.KeyID)
-				}
-			}
-
-			b.Logger().Debug("periodic func", "remove", "removing old passwords from Azure")
-			err = removeApplicationPasswords(ctx, client.provider, *app.ID, credsToDelete...)
-			if err != nil {
-				return err
-			}
-
-			b.Logger().Debug("periodic func", "updating", "updating config with new password")
-			config.ClientSecret = config.NewClientSecret
-			config.ClientSecretKeyID = config.NewClientSecretKeyID
-			config.NewClientSecret = ""
-			config.NewClientSecretKeyID = ""
-			config.NewClientSecretCreated = time.Time{}
-		}
-
-		err := b.saveConfig(ctx, config, sys.Storage)
-		if err != nil {
-			return err
-		}
-
-		b.updatePassword = false
+	// Password should be at least a minute old before we process it
+	b.Logger().Debug("periodic func", "debug", !(time.Since(config.NewClientSecretCreated) > time.Minute))
+	if config.NewClientSecret == "" || (time.Since(config.NewClientSecretCreated) > time.Minute) {
+		return nil
 	}
+
+	b.Logger().Debug("periodic func", "msg", "new password detected, swapping in storage")
+	client, err := b.getClient(ctx, sys.Storage)
+	if err != nil {
+		return err
+	}
+
+	apps, err := client.provider.ListApplications(ctx, fmt.Sprintf("appId eq '%s'", config.ClientID))
+	if err != nil {
+		return err
+	}
+
+	if len(apps) == 0 {
+		return fmt.Errorf("no application found")
+	}
+	if len(apps) > 1 {
+		return fmt.Errorf("multiple applications found - double check your client_id")
+	}
+
+	app := apps[0]
+
+	credsToDelete := []string{}
+	for _, cred := range app.PasswordCredentials {
+		if *cred.KeyID != config.NewClientSecretKeyID {
+			credsToDelete = append(credsToDelete, *cred.KeyID)
+		}
+	}
+
+	b.Logger().Debug("periodic func", "msg", "removing old passwords from Azure")
+	err = removeApplicationPasswords(ctx, client.provider, *app.ID, credsToDelete...)
+	if err != nil {
+		return err
+	}
+
+	b.Logger().Debug("periodic func", "msg", "updating config with new password")
+	config.ClientSecret = config.NewClientSecret
+	config.ClientSecretKeyID = config.NewClientSecretKeyID
+	config.NewClientSecret = ""
+	config.NewClientSecretKeyID = ""
+	config.NewClientSecretCreated = time.Time{}
+
+	err = b.saveConfig(ctx, config, sys.Storage)
+	if err != nil {
+		return err
+	}
+
+	b.updatePassword = false
 
 	return nil
 }

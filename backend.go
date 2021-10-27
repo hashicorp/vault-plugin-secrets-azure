@@ -59,15 +59,9 @@ func backend() *azureSecretBackend {
 			secretServicePrincipal(&b),
 			secretStaticServicePrincipal(&b),
 		},
-		BackendType: logical.TypeLogical,
-		Invalidate:  b.invalidate,
-
-		WALRollback: b.walRollback,
-
-		// Role assignment can take up to a few minutes, so ensure we don't try
-		// to roll back during creation.
-		WALRollbackMinAge: 10 * time.Minute,
-
+		BackendType:  logical.TypeLogical,
+		Invalidate:   b.invalidate,
+		WALRollback:  b.walRollback,
 		PeriodicFunc: b.periodicFunc,
 	}
 	b.getProvider = newAzureProvider
@@ -89,7 +83,7 @@ func (b *azureSecretBackend) periodicFunc(ctx context.Context, sys *logical.Requ
 	}
 
 	// Password should be at least a minute old before we process it
-	if config.NewClientSecret == "" || (time.Since(config.NewClientSecretCreated) > time.Minute) {
+	if config.NewClientSecret == "" || (time.Since(config.NewClientSecretCreated) < time.Minute) {
 		return nil
 	}
 
@@ -120,10 +114,12 @@ func (b *azureSecretBackend) periodicFunc(ctx context.Context, sys *logical.Requ
 		}
 	}
 
-	b.Logger().Debug("periodic func", "rotate-root", "removing old passwords from Azure")
-	err = removeApplicationPasswords(ctx, client.provider, *app.ID, credsToDelete...)
-	if err != nil {
-		return err
+	if len(credsToDelete) != 0 {
+		b.Logger().Debug("periodic func", "rotate-root", "removing old passwords from Azure")
+		err = removeApplicationPasswords(ctx, client.provider, *app.ID, credsToDelete...)
+		if err != nil {
+			return err
+		}
 	}
 
 	b.Logger().Debug("periodic func", "rotate-root", "updating config with new password")

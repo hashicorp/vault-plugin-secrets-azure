@@ -72,11 +72,7 @@ func (b *azureSecretBackend) rollbackAppWAL(ctx context.Context, req *logical.Re
 	return nil
 }
 
-type walRotateRoot struct {
-	OldPassword               string
-	OldPasswordKeyID          string
-	OldPasswordExpirationDate time.Time
-}
+type walRotateRoot struct{}
 
 func (b *azureSecretBackend) rollbackRootWAL(ctx context.Context, req *logical.Request, data interface{}) error {
 	// Decode the WAL data
@@ -93,15 +89,12 @@ func (b *azureSecretBackend) rollbackRootWAL(ctx context.Context, req *logical.R
 		return err
 	}
 
-	b.Logger().Debug("rolling back root password in storage")
+	b.Logger().Debug("rolling back config")
 	config, err := b.getConfig(ctx, req.Storage)
 	if err != nil {
 		return err
 	}
 
-	config.ClientID = entry.OldPasswordKeyID
-	config.ClientSecret = entry.OldPassword
-	config.RootPasswordExpirationDate = entry.OldPasswordExpirationDate
 	config.NewClientSecret = ""
 	config.NewClientSecretCreated = time.Time{}
 	config.NewClientSecretExpirationDate = time.Time{}

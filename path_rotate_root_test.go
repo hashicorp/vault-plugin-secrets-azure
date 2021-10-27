@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/vault/sdk/logical"
 )
 
-func TestRotateRoot(t *testing.T) {
+func TestRotateRootSuccess(t *testing.T) {
 	b, s := getTestBackend(t, true)
 
 	resp, err := b.HandleRequest(context.Background(), &logical.Request{
@@ -52,6 +53,12 @@ func TestRotateRoot(t *testing.T) {
 		t.Fatal("update password is false, it shouldn't be")
 	}
 
+	config.NewClientSecretCreated = config.NewClientSecretCreated.Add(-(time.Minute * 1))
+	err = b.saveConfig(context.Background(), config, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	err = b.periodicFunc(context.Background(), &logical.Request{
 		Storage: s,
 	})
@@ -67,6 +74,78 @@ func TestRotateRoot(t *testing.T) {
 
 	if newConfig.ClientSecret != config.NewClientSecret {
 		t.Fatal(fmt.Errorf("old and new password aren't equal after periodic function, they should be"))
+	}
+}
+
+func TestRotateRootPeroidicFunctionBeforeMinute(t *testing.T) {
+	b, s := getTestBackend(t, true)
+
+	resp, err := b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.UpdateOperation,
+		Path:      "rotate-root",
+		Data:      map[string]interface{}{},
+		Storage:   s,
+	})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if resp != nil && resp.IsError() {
+		t.Fatal(resp.Error())
+	}
+
+	tests := []struct {
+		Name    string
+		Created time.Duration
+	}{
+		{
+			Name:    "1 second test:",
+			Created: time.Second * 1,
+		},
+		{
+			Name:    "5 seconds test:",
+			Created: time.Second * 5,
+		},
+		{
+			Name:    "30 seconds test:",
+			Created: time.Second * 30,
+		},
+		{
+			Name:    "50 seconds test:",
+			Created: time.Second * 50,
+		},
+	}
+
+	for _, test := range tests {
+		t.Log(test.Name)
+		config, err := b.getConfig(context.Background(), s)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		config.NewClientSecretCreated = time.Now().Add(-(test.Created))
+		err = b.saveConfig(context.Background(), config, s)
+		if err != nil {
+			t.Fatal(test.Name, err)
+		}
+
+		err = b.periodicFunc(context.Background(), &logical.Request{
+			Storage: s,
+		})
+
+		if err != nil {
+			t.Fatal(test.Name, err)
+		}
+
+		newConfig, err := b.getConfig(context.Background(), s)
+		if err != nil {
+			t.Fatal(test.Name, err)
+		}
+
+		if newConfig.ClientSecret == config.NewClientSecret {
+			t.Fatal(test.Name, fmt.Errorf("old and new password are equal after periodic function, they shouldn't be"))
+		}
 	}
 }
 

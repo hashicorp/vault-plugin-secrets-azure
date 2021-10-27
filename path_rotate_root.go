@@ -73,12 +73,7 @@ func (b *azureSecretBackend) pathRotateRoot(ctx context.Context, req *logical.Re
 		return nil, fmt.Errorf("failed to add new password: %w", err)
 	}
 
-	wal := walRotateRoot{
-		OldPassword:               config.ClientSecret,
-		OldPasswordKeyID:          config.ClientSecretKeyID,
-		OldPasswordExpirationDate: config.RootPasswordExpirationDate,
-	}
-
+	var wal walRotateRoot
 	walID, walErr := framework.PutWAL(ctx, req.Storage, walRotateRootCreds, wal)
 	if walErr != nil {
 		err = client.provider.RemoveApplicationPassword(ctx, *app.ID, *newPasswordResp.PasswordCredential.KeyID)
@@ -99,7 +94,11 @@ func (b *azureSecretBackend) pathRotateRoot(ctx context.Context, req *logical.Re
 	b.updatePassword = true
 
 	err = framework.DeleteWAL(ctx, req.Storage, walID)
-	return addAADWarning(&logical.Response{}, config), err
+	if err != nil {
+		b.Logger().Error("rotate root", "delete wal", err)
+	}
+
+	return addAADWarning(&logical.Response{}, config), nil
 }
 
 type passwordRemover interface {

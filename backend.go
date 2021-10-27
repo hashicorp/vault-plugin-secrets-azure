@@ -77,7 +77,7 @@ func backend() *azureSecretBackend {
 }
 
 func (b *azureSecretBackend) periodicFunc(ctx context.Context, sys *logical.Request) error {
-	b.Logger().Debug("periodic func", "rotate-root", "starting periodic func")
+	b.Logger().Debug("starting periodic func")
 	if !b.updatePassword {
 		b.Logger().Debug("periodic func", "rotate-root", "no rotate-root update")
 		return nil

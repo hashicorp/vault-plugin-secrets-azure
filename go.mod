@@ -1,6 +1,6 @@
 module github.com/hashicorp/vault-plugin-secrets-azure
 
-go 1.12
+go 1.16
 
 require (
 	github.com/Azure/azure-sdk-for-go v58.3.0+incompatible

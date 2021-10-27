@@ -59,8 +59,13 @@ func backend() *azureSecretBackend {
 			secretServicePrincipal(&b),
 			secretStaticServicePrincipal(&b),
 		},
-		BackendType:  logical.TypeLogical,
-		Invalidate:   b.invalidate,
+		BackendType: logical.TypeLogical,
+		Invalidate:  b.invalidate,
+
+		// Role assignment can take up to a few minutes, so ensure we don't try
+		// to roll back during creation.
+		WALRollbackMinAge: 10 * time.Minute,
+
 		WALRollback:  b.walRollback,
 		PeriodicFunc: b.periodicFunc,
 	}

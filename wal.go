@@ -75,20 +75,6 @@ func (b *azureSecretBackend) rollbackAppWAL(ctx context.Context, req *logical.Re
 type walRotateRoot struct{}
 
 func (b *azureSecretBackend) rollbackRootWAL(ctx context.Context, req *logical.Request, data interface{}) error {
-	// Decode the WAL data
-	var entry walRotateRoot
-	d, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		DecodeHook: mapstructure.StringToTimeHookFunc(time.RFC3339),
-		Result:     &entry,
-	})
-	if err != nil {
-		return err
-	}
-	err = d.Decode(data)
-	if err != nil {
-		return err
-	}
-
 	b.Logger().Debug("rolling back config")
 	config, err := b.getConfig(ctx, req.Storage)
 	if err != nil {

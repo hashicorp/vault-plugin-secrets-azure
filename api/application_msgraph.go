@@ -49,7 +49,8 @@ func (c *AppClient) AddToUserAgent(extension string) error {
 	return c.client.AddToUserAgent(extension)
 }
 
-func (c *AppClient) GetApplication(ctx context.Context, applicationObjectID string) (result ApplicationResult, err error) {
+func (c *AppClient) GetApplication(ctx context.Context, applicationObjectID string) (ApplicationResult, error) {
+	var result ApplicationResult
 	req, err := c.getApplicationPreparer(ctx, applicationObjectID)
 	if err != nil {
 		return result, autorest.NewErrorWithError(err, "provider", "GetApplication", nil, "Failure preparing request")
@@ -71,8 +72,35 @@ func (c *AppClient) GetApplication(ctx context.Context, applicationObjectID stri
 	return result, nil
 }
 
+type listApplicationsResponse struct {
+	Value []ApplicationResult `json:"value"`
+}
+
+func (c *AppClient) ListApplications(ctx context.Context, filter string) ([]ApplicationResult, error) {
+	filterArgs := url.Values{}
+	if filter != "" {
+		filterArgs.Set("$filter", filter)
+	}
+	preparer := c.GetPreparer(
+		autorest.AsGet(),
+		autorest.WithPath(fmt.Sprintf("/v1.0/applications?%s", filterArgs.Encode())),
+	)
+	listAppResp := listApplicationsResponse{}
+	err := c.SendRequest(ctx, preparer,
+		azure.WithErrorUnlessStatusCode(http.StatusOK),
+		autorest.ByUnmarshallingJSON(&listAppResp),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return listAppResp.Value, nil
+}
+
 // CreateApplication create a new Azure application object.
-func (c *AppClient) CreateApplication(ctx context.Context, displayName string) (result ApplicationResult, err error) {
+func (c *AppClient) CreateApplication(ctx context.Context, displayName string) (ApplicationResult, error) {
+	var result ApplicationResult
+
 	req, err := c.createApplicationPreparer(ctx, displayName)
 	if err != nil {
 		return result, autorest.NewErrorWithError(err, "provider", "CreateApplication", nil, "Failure preparing request")
@@ -95,7 +123,7 @@ func (c *AppClient) CreateApplication(ctx context.Context, displayName string) (
 
 // DeleteApplication deletes an Azure application object.
 // This will in turn remove the service principal (but not the role assignments).
-func (c *AppClient) DeleteApplication(ctx context.Context, applicationObjectID string) (err error) {
+func (c *AppClient) DeleteApplication(ctx context.Context, applicationObjectID string) error {
 	req, err := c.deleteApplicationPreparer(ctx, applicationObjectID)
 	if err != nil {
 		return autorest.NewErrorWithError(err, "provider", "DeleteApplication", nil, "Failure preparing request")
@@ -111,24 +139,28 @@ func (c *AppClient) DeleteApplication(ctx context.Context, applicationObjectID s
 		c.client.ByInspecting(),
 		azure.WithErrorUnlessStatusCode(http.StatusNoContent, http.StatusNotFound),
 		autorest.ByClosing())
-	return autorest.NewErrorWithError(err, "provider", "DeleteApplication", resp, "Failure responding to request")
+
+	if err != nil {
+		return autorest.NewErrorWithError(err, "provider", "DeleteApplication", resp, "Failure responding to request")
+	}
+	return nil
 }
 
-func (c *AppClient) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime date.Time) (result PasswordCredentialResult, err error) {
-	req, err := c.addPasswordPreparer(ctx, applicationObjectID, displayName, endDateTime)
+func (c *AppClient) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime time.Time) (PasswordCredentialResult, error) {
+	req, err := c.addPasswordPreparer(ctx, applicationObjectID, displayName, date.Time{endDateTime})
 	if err != nil {
 		return PasswordCredentialResult{}, autorest.NewErrorWithError(err, "provider", "AddApplicationPassword", nil, "Failure preparing request")
 	}
 
 	resp, err := c.addPasswordSender(req)
 	if err != nil {
-		result = PasswordCredentialResult{
+		result := PasswordCredentialResult{
 			Response: autorest.Response{Response: resp},
 		}
 		return result, autorest.NewErrorWithError(err, "provider", "AddApplicationPassword", resp, "Failure sending request")
 	}
 
-	result, err = c.addPasswordResponder(resp)
+	result, err := c.addPasswordResponder(resp)
 	if err != nil {
 		return result, autorest.NewErrorWithError(err, "provider", "AddApplicationPassword", resp, "Failure responding to request")
 	}
@@ -136,7 +168,7 @@ func (c *AppClient) AddApplicationPassword(ctx context.Context, applicationObjec
 	return result, nil
 }
 
-func (c *AppClient) RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) (err error) {
+func (c *AppClient) RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) error {
 	req, err := c.removePasswordPreparer(ctx, applicationObjectID, keyID)
 	if err != nil {
 		return autorest.NewErrorWithError(err, "provider", "RemoveApplicationPassword", nil, "Failure preparing request")
@@ -174,8 +206,9 @@ func (c AppClient) getApplicationSender(req *http.Request) (*http.Response, erro
 	return autorest.SendWithSender(c.client, req, sd...)
 }
 
-func (c AppClient) getApplicationResponder(resp *http.Response) (result ApplicationResult, err error) {
-	err = autorest.Respond(
+func (c AppClient) getApplicationResponder(resp *http.Response) (ApplicationResult, error) {
+	var result ApplicationResult
+	err := autorest.Respond(
 		resp,
 		c.client.ByInspecting(),
 		azure.WithErrorUnlessStatusCode(http.StatusOK),
@@ -214,8 +247,9 @@ func (c AppClient) addPasswordSender(req *http.Request) (*http.Response, error) 
 	return autorest.SendWithSender(c.client, req, sd...)
 }
 
-func (c AppClient) addPasswordResponder(resp *http.Response) (result PasswordCredentialResult, err error) {
-	err = autorest.Respond(
+func (c AppClient) addPasswordResponder(resp *http.Response) (PasswordCredentialResult, error) {
+	var result PasswordCredentialResult
+	err := autorest.Respond(
 		resp,
 		c.client.ByInspecting(),
 		azure.WithErrorUnlessStatusCode(http.StatusOK),
@@ -251,8 +285,9 @@ func (c AppClient) removePasswordSender(req *http.Request) (*http.Response, erro
 	return autorest.SendWithSender(c.client, req, sd...)
 }
 
-func (c AppClient) removePasswordResponder(resp *http.Response) (result autorest.Response, err error) {
-	err = autorest.Respond(
+func (c AppClient) removePasswordResponder(resp *http.Response) (autorest.Response, error) {
+	var result autorest.Response
+	err := autorest.Respond(
 		resp,
 		c.client.ByInspecting(),
 		azure.WithErrorUnlessStatusCode(http.StatusNoContent),
@@ -284,15 +319,16 @@ func (c AppClient) createApplicationSender(req *http.Request) (*http.Response, e
 	return autorest.SendWithSender(c.client, req, sd...)
 }
 
-func (c AppClient) createApplicationResponder(resp *http.Response) (result ApplicationResult, err error) {
-	err = autorest.Respond(
+func (c AppClient) createApplicationResponder(resp *http.Response) (ApplicationResult, error) {
+	var result ApplicationResult
+	err := autorest.Respond(
 		resp,
 		c.client.ByInspecting(),
 		azure.WithErrorUnlessStatusCode(http.StatusCreated),
 		autorest.ByUnmarshallingJSON(&result),
 		autorest.ByClosing())
 	result.Response = autorest.Response{Response: resp}
-	return result, nil
+	return result, err
 }
 
 func (c AppClient) deleteApplicationPreparer(ctx context.Context, applicationObjectID string) (*http.Request, error) {
@@ -360,7 +396,7 @@ type groupResponse struct {
 	DisplayName string `json:"displayName"`
 }
 
-func (c AppClient) GetGroup(ctx context.Context, groupID string) (result Group, err error) {
+func (c AppClient) GetGroup(ctx context.Context, groupID string) (Group, error) {
 	if groupID == "" {
 		return Group{}, fmt.Errorf("missing groupID")
 	}
@@ -374,7 +410,7 @@ func (c AppClient) GetGroup(ctx context.Context, groupID string) (result Group, 
 	)
 
 	groupResp := groupResponse{}
-	err = c.SendRequest(ctx, preparer,
+	err := c.SendRequest(ctx, preparer,
 		azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent),
 		autorest.ByUnmarshallingJSON(&groupResp),
 	)
@@ -396,7 +432,7 @@ type listGroupsResponse struct {
 	Groups []groupResponse `json:"value"`
 }
 
-func (c AppClient) ListGroups(ctx context.Context, filter string) (result []Group, err error) {
+func (c AppClient) ListGroups(ctx context.Context, filter string) ([]Group, error) {
 	filterArgs := url.Values{}
 	if filter != "" {
 		filterArgs.Set("$filter", filter)
@@ -408,7 +444,7 @@ func (c AppClient) ListGroups(ctx context.Context, filter string) (result []Grou
 	)
 
 	respBody := listGroupsResponse{}
-	err = c.SendRequest(ctx, preparer,
+	err := c.SendRequest(ctx, preparer,
 		azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent),
 		autorest.ByUnmarshallingJSON(&respBody),
 	)
@@ -431,12 +467,12 @@ func (c AppClient) ListGroups(ctx context.Context, filter string) (result []Grou
 	return groups, nil
 }
 
-func (c *AppClient) CreateServicePrincipal(ctx context.Context, appID string, startDate time.Time, endDate time.Time) (spID string, password string, err error) {
-	spID, err = c.createServicePrincipal(ctx, appID)
+func (c *AppClient) CreateServicePrincipal(ctx context.Context, appID string, startDate time.Time, endDate time.Time) (string, string, error) {
+	spID, err := c.createServicePrincipal(ctx, appID)
 	if err != nil {
 		return "", "", err
 	}
-	password, err = c.setPasswordForServicePrincipal(ctx, spID, startDate, endDate)
+	password, err := c.setPasswordForServicePrincipal(ctx, spID, startDate, endDate)
 	if err != nil {
 		dErr := c.deleteServicePrincipal(ctx, spID)
 		merr := multierror.Append(err, dErr)
@@ -445,7 +481,7 @@ func (c *AppClient) CreateServicePrincipal(ctx context.Context, appID string, st
 	return spID, password, nil
 }
 
-func (c *AppClient) createServicePrincipal(ctx context.Context, appID string) (id string, err error) {
+func (c *AppClient) createServicePrincipal(ctx context.Context, appID string) (string, error) {
 	body := map[string]interface{}{
 		"appId":          appID,
 		"accountEnabled": true,
@@ -457,7 +493,7 @@ func (c *AppClient) createServicePrincipal(ctx context.Context, appID string) (i
 	)
 
 	respBody := createServicePrincipalResponse{}
-	err = c.SendRequest(ctx, preparer,
+	err := c.SendRequest(ctx, preparer,
 		autorest.WithErrorUnlessStatusCode(http.StatusOK, http.StatusCreated),
 		autorest.ByUnmarshallingJSON(&respBody),
 	)
@@ -468,13 +504,13 @@ func (c *AppClient) createServicePrincipal(ctx context.Context, appID string) (i
 	return respBody.ID, nil
 }
 
-func (c *AppClient) setPasswordForServicePrincipal(ctx context.Context, spID string, startDate time.Time, endDate time.Time) (password string, err error) {
+func (c *AppClient) setPasswordForServicePrincipal(ctx context.Context, spID string, startDate time.Time, endDate time.Time) (string, error) {
 	pathParams := map[string]interface{}{
 		"id": spID,
 	}
 	reqBody := map[string]interface{}{
 		"startDateTime": startDate.UTC().Format("2006-01-02T15:04:05Z"),
-		"endDateTime":   startDate.UTC().Format("2006-01-02T15:04:05Z"),
+		"endDateTime":   endDate.UTC().Format("2006-01-02T15:04:05Z"),
 	}
 
 	preparer := c.GetPreparer(
@@ -484,7 +520,7 @@ func (c *AppClient) setPasswordForServicePrincipal(ctx context.Context, spID str
 	)
 
 	respBody := PasswordCredential{}
-	err = c.SendRequest(ctx, preparer,
+	err := c.SendRequest(ctx, preparer,
 		autorest.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent),
 		autorest.ByUnmarshallingJSON(&respBody),
 	)

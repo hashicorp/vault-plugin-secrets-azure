@@ -89,6 +89,6 @@ func TestPeriodicFuncNilConfig(t *testing.T) {
 	})
 
 	if err != nil {
-		t.Fatalf("periodicFunc error'd, it should not have: %v", err)
+		t.Fatalf("periodicFunc error not nil, it should have been: %v", err)
 	}
 }

@@ -195,15 +195,15 @@ func (b *azureSecretBackend) getClient(ctx context.Context, s logical.Storage) (
 			config = new(azureConfig)
 		}
 
-		if config == nil {
-			return nil, fmt.Errorf("config is nil")
-		}
-
 		settings, err := b.getClientSettings(ctx, config)
 		if err != nil {
 			return nil, err
 		}
 		b.settings = settings
+	}
+
+	if config == nil {
+		return nil, fmt.Errorf("config is nil")
 	}
 
 	passwords := api.Passwords{

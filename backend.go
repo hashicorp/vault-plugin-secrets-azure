@@ -87,6 +87,10 @@ func (b *azureSecretBackend) periodicFunc(ctx context.Context, sys *logical.Requ
 		return err
 	}
 
+	if config == nil {
+		return nil
+	}
+
 	// Password should be at least a minute old before we process it
 	if config.NewClientSecret == "" || (time.Since(config.NewClientSecretCreated) < time.Minute) {
 		return nil

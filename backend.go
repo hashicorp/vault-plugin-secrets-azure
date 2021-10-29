@@ -87,6 +87,8 @@ func (b *azureSecretBackend) periodicFunc(ctx context.Context, sys *logical.Requ
 		return err
 	}
 
+	// Config can be nil if deleted or when the engine is enabled
+	// but not yet configured.
 	if config == nil {
 		return nil
 	}
@@ -186,6 +188,10 @@ func (b *azureSecretBackend) getClient(ctx context.Context, s logical.Storage) (
 	config, err := b.getConfig(ctx, s)
 	if err != nil {
 		return nil, err
+	}
+
+	if config == nil {
+		return nil, fmt.Errorf("config is nil")
 	}
 
 	if b.settings == nil {

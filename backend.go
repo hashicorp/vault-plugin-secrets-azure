@@ -190,13 +190,13 @@ func (b *azureSecretBackend) getClient(ctx context.Context, s logical.Storage) (
 		return nil, err
 	}
 
-	if config == nil {
-		return nil, fmt.Errorf("config is nil")
-	}
-
 	if b.settings == nil {
 		if config == nil {
 			config = new(azureConfig)
+		}
+
+		if config == nil {
+			return nil, fmt.Errorf("config is nil")
 		}
 
 		settings, err := b.getClientSettings(ctx, config)

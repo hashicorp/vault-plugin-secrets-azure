@@ -128,7 +128,9 @@ Acceptance tests requires Azure access, and the following to be installed:
 - [Terraform](https://learn.hashicorp.com/tutorials/terraform/install-cli)
 - [bats](https://bats-core.readthedocs.io/en/stable)
 
-_You will need to be properly logged in to Azure with your subscription set_
+_You will need to be properly logged in to Azure with your subscription set. See
+['Azure Provider: Authenticating using the Azure CLI'](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/guides/azure_cli)_
+for more information.
 ```sh
 $ make test-acceptance AZURE_TENANT_ID=<your_tenant_id>
 ```

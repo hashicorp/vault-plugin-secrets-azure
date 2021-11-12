@@ -129,7 +129,7 @@ teardown(){
     local tf_output=$(terraform output -json | tee ${CONFIG_DIR}/tf-output.json)
     popd
 
-    # TODO: remove this sleep, tests periodically fails if the credentials created during infrastructure
+    # TODO: remove this sleep, tests periodically fail if the credentials created during infrastructure
     # provisioning are not considered valid by Azure. Need to find a way to poll for the creds status.
     sleep 10
 
@@ -143,12 +143,12 @@ teardown(){
 
     vault write azure/config \
         subscription_id=${subscription_id} \
-        tenant_id=${tenant_id} \
+        tenant_id="${tenant_id}" \
         client_id="${client_id}" \
         client_secret="${client_secret}"
 
     local ttl=10
-    vault write azure/roles/my-role ttl=${ttl} azure_roles=-<<EOF
+    vault write azure/roles/my-role ttl="${ttl}" azure_roles=-<<EOF
 [
     {
         "role_name": "Reader",
@@ -169,6 +169,7 @@ EOF
     do
         if [[ "${tries}" -ge 10 ]]; then
             echo "vault failed to remove service principal ${sp_id}, ttl=${ttl}" >&2
+            exit 1
         fi
         ((++tries))
         sleep .5
@@ -182,7 +183,7 @@ EOF
     local tf_output=$(terraform output -json | tee ${CONFIG_DIR}/tf-output.json)
     popd
 
-    # TODO: remove this sleep, tests periodically fails if the credentials created during infrastructure
+    # TODO: remove this sleep, tests periodically fail if the credentials created during infrastructure
     # provisioning are not considered valid by Azure. Need to find a way to poll for the creds status.
     sleep 10
 
@@ -196,13 +197,13 @@ EOF
 
     vault write azure/config \
         use_microsoft_graph_api=true \
-        subscription_id=${subscription_id} \
-        tenant_id=${tenant_id} \
+        subscription_id="${subscription_id}" \
+        tenant_id="${tenant_id}" \
         client_id="${client_id}" \
         client_secret="${client_secret}"
 
     local ttl=10
-    vault write azure/roles/my-role ttl=${ttl} azure_roles=-<<EOF
+    vault write azure/roles/my-role ttl="${ttl}" azure_roles=-<<EOF
 [
     {
         "role_name": "Reader",
@@ -213,6 +214,8 @@ EOF
     local secret="$(vault read azure/creds/my-role -format=json)"
     local sp_id="$(echo ${secret} | jq -er .data.client_id)"
     local sp="$(az ad sp show --id "${sp_id}")"
+    echo ${secret} | jq
+    echo ${sp} | jq
 
     sleep ${ttl}
     local tries=0
@@ -221,6 +224,7 @@ EOF
     do
         if [[ "${tries}" -ge 10 ]]; then
             echo "vault failed to remove service principal ${sp_id}, ttl=${ttl}" >&2
+            exit 1
         fi
         ((++tries))
         sleep .5

@@ -565,7 +565,7 @@ func TestCredentialInteg_aad(t *testing.T) {
 		roleDefs, err := provider.ListRoleDefinitions(context.Background(), fmt.Sprintf("subscriptions/%s", subscriptionID), "")
 		assertErrorIsNil(t, err)
 
-		defID := *ra.Properties.RoleDefinitionID
+		defID := *ra.ID
 		found := false
 		for _, def := range roleDefs {
 			if *def.ID == defID && *def.RoleName == "Reader" {
@@ -826,7 +826,7 @@ func TestCredentialInteg_msgraph(t *testing.T) {
 		roleDefs, err := provider.ListRoleDefinitions(context.Background(), fmt.Sprintf("subscriptions/%s", subscriptionID), "")
 		assertErrorIsNil(t, err)
 
-		defID := *ra.Properties.RoleDefinitionID
+		defID := *ra.ID
 		found := false
 		for _, def := range roleDefs {
 			if *def.ID == defID && *def.RoleName == "Reader" {

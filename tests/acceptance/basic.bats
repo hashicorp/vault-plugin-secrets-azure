@@ -159,7 +159,6 @@ teardown(){
     sleep 30
 
     local roles=('Reader' 'Storage Blob Data Owner')
-    local roles=('Reader' 'Storage Blob Data Owner')
     for ((i=0; i < ${#roles[@]}; i++)); do
         testAzureSecret "${roles[$i]}" ${subscription_id} ${resource_group_name} "role-${i}" ${CONFIG_DIR} ${ENGINE_NAME}
     done

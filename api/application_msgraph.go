@@ -27,7 +27,7 @@ type AppClient struct {
 // Reference: https://docs.microsoft.com/en-us/graph/deployments#microsoft-graph-and-graph-explorer-service-root-endpoints
 func GetGraphURI(env string) (string, error) {
 	switch env {
-	case "AzurePublicCloud":
+	case "AzurePublicCloud", "":
 		return "https://graph.microsoft.com/", nil
 	case "AzureUSGovernmentCloud":
 		return "https://graph.microsoft.us/", nil

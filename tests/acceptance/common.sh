@@ -36,10 +36,43 @@ EOF
     sp_id=$(cat "${secret_file}" | jq -er .data.client_id)
     log "Secret created successfully, azure_role='${role_name}', vault_role='${vault_role_name}', file=${secret_file}"
 
+    if !assertSPExistence ; then
+        exit 1
+    fi
+
+    if !waitLeaseExpiration ${role_name} ${vault_role_name} ${sp_id} ${ttl}; then
+        exit 1
+    fi
+
+    log "Test completed successfully, azure_role='${role_name}', vault_role='${vault_role_name}'"
+}
+
+function waitLeaseExpiration() {
+    local role_name="${1}"
+    local vault_role_name="${2}"
+    local sp_id="${3}"
+    local ttl="${4}"
+    log "Waiting for lease expiration, azure_role='${role_name}', vault_role='${vault_role_name}'"
+    sleep ${ttl}
+    local tries=0
+    # wait for the service principal to expire and be removed by Vault - adds a 60 second buffer to the ttl.
+    until ! az ad sp show --id "${sp_id}" &> /dev/null
+    do
+        if [[ "${tries}" -ge 60 ]]; then
+            logError "Vault failed to remove service principal ${sp_id}, ttl=${ttl}"
+            return 1
+        fi
+        ((++tries))
+        sleep 1
+    done
+}
+
+function assertSPExistence() {
+    local sp_id="${1}"
     local found=''
     for n in {0..30}
     do
-         if ! az ad sp show --id "${sp_id}" > /dev/null ; then
+         if ! az ad sp show --id "${sp_id}" >&1 /dev/null ; then
             logWarn "Failed to check service principal exists for ID ${sp_id}"
             sleep 1
             continue
@@ -50,23 +83,8 @@ EOF
 
     if [ -z "${found}" ]; then
         logError "Expected SP ID '${sp_id}' not found in Azure"
-        exit 1
+        return 1
     fi
-
-    log "Waiting for lease expiration, azure_role='${role_name}', vault_role='${vault_role_name}'"
-    sleep ${ttl}
-    local tries=0
-    # wait for the service principal to expire and be removed by Vault - adds a 60 second buffer to the ttl.
-    until ! az ad sp show --id "${sp_id}" &> /dev/null
-    do
-        if [[ "${tries}" -ge 60 ]]; then
-            logError "Vault failed to remove service principal ${sp_id}, ttl=${ttl}"
-            exit 1
-        fi
-        ((++tries))
-        sleep 1
-    done
-    log "Test completed successfully, azure_role='${role_name}', vault_role='${vault_role_name}'"
 }
 
 function execTerraform() {

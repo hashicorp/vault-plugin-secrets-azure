@@ -36,10 +36,9 @@ if [[ -z "${AZURE_TENANT_ID}" ]]; then
     exit 1
 fi
 
-
 if [[ -n "${WITH_DEV_PLUGIN}" ]]; then
     PLUGIN=${REPO_ROOT}/pkg/linux_amd64/${PLUGIN_NAME}
-    PLUGIN_SHA256="$(sha256sum ${PLUGIN} | cut -d ' ' -f 1)"
+    PLUGIN_SHA256="$(sha256sum ${PLUGIN} | cut -d ' ' -f 1)" || exit 1
 fi
 
 setup(){

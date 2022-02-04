@@ -6,7 +6,7 @@ load common.sh
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 PLUGIN_NAME="${REPO_ROOT##*/}"
-VAULT_IMAGE="${VAULT_IMAGE:-hashicorp/vault:1.9.0}"
+VAULT_IMAGE="${VAULT_IMAGE:-hashicorp/vault:1.9.3}"
 CONTAINER_NAME=''
 VAULT_TOKEN='root'
 

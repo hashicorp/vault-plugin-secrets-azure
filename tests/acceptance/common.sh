@@ -37,11 +37,11 @@ EOF
     log "Secret created successfully, azure_role='${role_name}', vault_role='${vault_role_name}', file=${secret_file}"
 
     if !assertSPExistence ; then
-        exit 1
+        return 1
     fi
 
     if !waitLeaseExpiration ${role_name} ${vault_role_name} ${sp_id} ${ttl}; then
-        exit 1
+        return 1
     fi
 
     log "Test completed successfully, azure_role='${role_name}', vault_role='${vault_role_name}'"
@@ -72,7 +72,7 @@ function assertSPExistence() {
     local found=''
     for n in {0..30}
     do
-         if ! az ad sp show --id "${sp_id}" >&1 /dev/null ; then
+         if ! az ad sp show --id "${sp_id}" 1> /dev/null ; then
             logWarn "Failed to check service principal exists for ID ${sp_id}"
             sleep 1
             continue

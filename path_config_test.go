@@ -6,14 +6,130 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 	"github.com/hashicorp/vault/sdk/logical"
 )
 
 func TestConfig(t *testing.T) {
 	b, s := getTestBackend(t, false)
 
-	// Test valid config
-	expectedConfig := map[string]interface{}{
+	tests := []struct {
+		name     string
+		config   map[string]interface{}
+		expected map[string]interface{}
+		wantErr  bool
+	}{
+		{
+			name: "use_microsoft_graph_api defaults to true",
+			config: map[string]interface{}{
+				"subscription_id": "a228ceec-bf1a-4411-9f95-39678d8cdb34",
+				"tenant_id":       "7ac36e27-80fc-4209-a453-e8ad83dc18c2",
+				"client_id":       "testClientId",
+				"client_secret":   "testClientSecret",
+			},
+			expected: map[string]interface{}{
+				"subscription_id":         "a228ceec-bf1a-4411-9f95-39678d8cdb34",
+				"tenant_id":               "7ac36e27-80fc-4209-a453-e8ad83dc18c2",
+				"client_id":               "testClientId",
+				"environment":             "",
+				"use_microsoft_graph_api": true,
+				"root_password_ttl":       15768000,
+			},
+		},
+		{
+			name: "use_microsoft_graph_api set if provided",
+			config: map[string]interface{}{
+				"subscription_id":         "a228ceec-bf1a-4411-9f95-39678d8cdb34",
+				"tenant_id":               "7ac36e27-80fc-4209-a453-e8ad83dc18c2",
+				"client_id":               "testClientId",
+				"client_secret":           "testClientSecret",
+				"use_microsoft_graph_api": false,
+			},
+			expected: map[string]interface{}{
+				"subscription_id":         "a228ceec-bf1a-4411-9f95-39678d8cdb34",
+				"tenant_id":               "7ac36e27-80fc-4209-a453-e8ad83dc18c2",
+				"client_id":               "testClientId",
+				"environment":             "",
+				"use_microsoft_graph_api": false,
+				"root_password_ttl":       15768000,
+			},
+		},
+		{
+			name: "root_password_ttl defaults to 6 months",
+			config: map[string]interface{}{
+				"subscription_id": "a228ceec-bf1a-4411-9f95-39678d8cdb34",
+				"tenant_id":       "7ac36e27-80fc-4209-a453-e8ad83dc18c2",
+				"client_id":       "testClientId",
+				"client_secret":   "testClientSecret",
+			},
+			expected: map[string]interface{}{
+				"subscription_id":         "a228ceec-bf1a-4411-9f95-39678d8cdb34",
+				"tenant_id":               "7ac36e27-80fc-4209-a453-e8ad83dc18c2",
+				"client_id":               "testClientId",
+				"environment":             "",
+				"use_microsoft_graph_api": true,
+				"root_password_ttl":       15768000,
+			},
+		},
+		{
+			name: "root_password_ttl set if provided",
+			config: map[string]interface{}{
+				"subscription_id":   "a228ceec-bf1a-4411-9f95-39678d8cdb34",
+				"tenant_id":         "7ac36e27-80fc-4209-a453-e8ad83dc18c2",
+				"client_id":         "testClientId",
+				"client_secret":     "testClientSecret",
+				"root_password_ttl": "1m",
+			},
+			expected: map[string]interface{}{
+				"subscription_id":         "a228ceec-bf1a-4411-9f95-39678d8cdb34",
+				"tenant_id":               "7ac36e27-80fc-4209-a453-e8ad83dc18c2",
+				"client_id":               "testClientId",
+				"environment":             "",
+				"use_microsoft_graph_api": true,
+				"root_password_ttl":       60,
+			},
+		},
+		{
+			name: "environment set if provided",
+			config: map[string]interface{}{
+				"subscription_id": "a228ceec-bf1a-4411-9f95-39678d8cdb34",
+				"tenant_id":       "7ac36e27-80fc-4209-a453-e8ad83dc18c2",
+				"client_id":       "testClientId",
+				"client_secret":   "testClientSecret",
+				"environment":     "AZURECHINACLOUD",
+			},
+			expected: map[string]interface{}{
+				"subscription_id":         "a228ceec-bf1a-4411-9f95-39678d8cdb34",
+				"tenant_id":               "7ac36e27-80fc-4209-a453-e8ad83dc18c2",
+				"client_id":               "testClientId",
+				"use_microsoft_graph_api": true,
+				"root_password_ttl":       15768000,
+				"environment":             "AZURECHINACLOUD",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			testConfigCreate(t, b, s, tc.config)
+			testConfigRead(t, b, s, tc.expected)
+
+			// Test that updating one element retains the others
+			tc.expected["tenant_id"] = "800e371d-ee51-4145-9ac8-5c43e4ceb79b"
+			configSubset := map[string]interface{}{
+				"tenant_id": "800e371d-ee51-4145-9ac8-5c43e4ceb79b",
+			}
+
+			testConfigUpdate(t, b, s, configSubset)
+			testConfigRead(t, b, s, tc.expected)
+		})
+	}
+}
+
+func TestConfigEnvironmentClouds(t *testing.T) {
+	b, s := getTestBackend(t, false)
+
+	config := map[string]interface{}{
 		"subscription_id":         "a228ceec-bf1a-4411-9f95-39678d8cdb34",
 		"tenant_id":               "7ac36e27-80fc-4209-a453-e8ad83dc18c2",
 		"client_id":               "testClientId",
@@ -23,33 +139,59 @@ func TestConfig(t *testing.T) {
 		"root_password_ttl":       int((24 * time.Hour).Seconds()),
 	}
 
-	testConfigCreate(t, b, s, expectedConfig)
+	testConfigCreate(t, b, s, config)
 
-	delete(expectedConfig, "client_secret")
-	testConfigRead(t, b, s, expectedConfig)
-
-	// Test test updating one element retains the others
-	expectedConfig["tenant_id"] = "800e371d-ee51-4145-9ac8-5c43e4ceb79b"
-	configSubset := map[string]interface{}{
-		"tenant_id": "800e371d-ee51-4145-9ac8-5c43e4ceb79b",
-	}
-	testConfigCreate(t, b, s, configSubset)
-	testConfigUpdate(t, b, s, expectedConfig)
-
-	// Test bad environment
-	expectedConfig = map[string]interface{}{
-		"environment": "invalidEnv",
+	tests := []struct {
+		env      string
+		url      string
+		expError bool
+	}{
+		{"AZURECHINACLOUD", "https://microsoftgraph.chinacloudapi.cn", false},
+		{"AZUREPUBLICCLOUD", "https://graph.microsoft.com", false},
+		{"AZUREUSGOVERNMENTCLOUD", "https://graph.microsoft.us", false},
+		{"AZUREGERMANCLOUD", "https://graph.microsoft.de", false},
+		{"invalidEnv", "", true},
 	}
 
-	resp, _ := b.HandleRequest(context.Background(), &logical.Request{
-		Operation: logical.UpdateOperation,
-		Path:      "config",
-		Data:      expectedConfig,
-		Storage:   s,
-	})
+	for _, test := range tests {
+		expectedConfig := map[string]interface{}{
+			"environment": test.env,
+		}
 
-	if !resp.IsError() {
-		t.Fatal("expected a response error")
+		// Error is in the response, not in the error variable.
+		resp, err := b.HandleRequest(context.Background(), &logical.Request{
+			Operation: logical.UpdateOperation,
+			Path:      "config",
+			Data:      expectedConfig,
+			Storage:   s,
+		})
+
+		if resp.Error() == nil && test.expError {
+			t.Fatal("expected error, got none")
+		} else if err != nil && !test.expError {
+			t.Fatalf("expected no errors: %s", err)
+		}
+
+		if !test.expError {
+			config, err := b.getConfig(context.Background(), s)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			clientSettings, err := b.getClientSettings(context.Background(), config)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			url, err := api.GetGraphURI(clientSettings.Environment.Name)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if url != test.url {
+				t.Fatalf("expected url %s, got %s", test.url, url)
+			}
+		}
 	}
 }
 

@@ -2,7 +2,6 @@ package azuresecrets
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
@@ -11,7 +10,7 @@ import (
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 	"github.com/hashicorp/vault/sdk/helper/useragent"
-	"github.com/hashicorp/vault/sdk/version"
+	"github.com/hashicorp/vault/sdk/logical"
 )
 
 var _ api.AzureProvider = (*provider)(nil)
@@ -32,7 +31,7 @@ type provider struct {
 // newAzureProvider creates an azureProvider, backed by Azure client objects for underlying services.
 func newAzureProvider(settings *clientSettings, useMsGraphApi bool, passwords api.Passwords) (api.AzureProvider, error) {
 	// build clients that use the GraphRBAC endpoint
-	userAgent := getUserAgent(settings)
+	userAgent := userAgent(settings.PluginEnv)
 
 	var appClient api.ApplicationsClient
 	var groupsClient api.GroupsClient
@@ -115,33 +114,24 @@ func newAzureProvider(settings *clientSettings, useMsGraphApi bool, passwords ap
 	return p, nil
 }
 
-func getUserAgent(settings *clientSettings) string {
-	var userAgent string
-	if settings.PluginEnv != nil {
-		userAgent = useragent.PluginString(settings.PluginEnv, "azure-secrets")
-	} else {
-		userAgent = useragent.String()
+const (
+	ossVaultGUID = `pid-15cd22ce-24af-43a4-aa83-4c1a36a4b177`
+	entVaultGUID = `pid-b2c13ec1-60e8-4733-9a76-88dbb2ce2471`
+)
+
+// userAgent returns the User-Agent header that's included in HTTP requests
+// made by this plugin. Returns an empty string if the pluginEnv is nil.
+func userAgent(pluginEnv *logical.PluginEnvironment) string {
+	if pluginEnv == nil {
+		return ""
 	}
 
-	// Sets a unique ID in the user-agent
-	// Normal user-agent looks like this:
-	//
-	// Vault/1.6.0 (+https://www.vaultproject.io/; azure-secrets; go1.15.7)
-	//
-	// Here we append a unique code if it's an enterprise version, where
-	// VersionMetadata will contain a non-empty string like "ent" or "prem".
-	// Otherwise use the default identifier for OSS Vault. The end result looks
-	// like so:
-	//
-	// Vault/1.6.0 (+https://www.vaultproject.io/; azure-secrets; go1.15.7; b2c13ec1-60e8-4733-9a76-88dbb2ce2471)
-	vaultIDString := "; 15cd22ce-24af-43a4-aa83-4c1a36a4b177)"
-	ver := version.GetVersion()
-	if ver.VersionMetadata != "" {
-		vaultIDString = "; b2c13ec1-60e8-4733-9a76-88dbb2ce2471)"
+	partnerGUID := ossVaultGUID
+	if pluginEnv.VaultVersionMetadata != "" {
+		partnerGUID = entVaultGUID
 	}
-	userAgent = strings.Replace(userAgent, ")", vaultIDString, 1)
 
-	return userAgent
+	return useragent.PluginString(pluginEnv, "azure-secrets", partnerGUID)
 }
 
 // getAuthorizer attempts to create an authorizer, preferring ClientID/Secret if present,

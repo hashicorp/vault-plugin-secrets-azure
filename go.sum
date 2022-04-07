@@ -233,6 +233,8 @@ github.com/hashicorp/vault/sdk v0.4.2-0.20220331221605-5f4e89084b6b h1:aBitgEC8W
 github.com/hashicorp/vault/sdk v0.4.2-0.20220331221605-5f4e89084b6b/go.mod h1:gqE65IIVlvR382JKqtzG1lJX5wVl/wdbdYhsTKTv13o=
 github.com/hashicorp/vault/sdk v0.4.2-0.20220401184911-6f11de6657a8 h1:Y4/Qw4z/Vj/uaVPr9+IiOEgLdW+axssAXxitbUOClew=
 github.com/hashicorp/vault/sdk v0.4.2-0.20220401184911-6f11de6657a8/go.mod h1:gqE65IIVlvR382JKqtzG1lJX5wVl/wdbdYhsTKTv13o=
+github.com/hashicorp/vault/sdk v0.4.2-0.20220407204703-33e5b32dd5fc h1:HL/fyUvQ5T+bSr7H48DATvz4ssERcP3IOGxFCkuOPZM=
+github.com/hashicorp/vault/sdk v0.4.2-0.20220407204703-33e5b32dd5fc/go.mod h1:gqE65IIVlvR382JKqtzG1lJX5wVl/wdbdYhsTKTv13o=
 github.com/hashicorp/yamux v0.0.0-20180604194846-3520598351bb/go.mod h1:+NfK9FKeTrX5uv1uIXGdwYDTeHna2qgaIlx54MXqjAM=
 github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d h1:kJCB4vdITiW1eC1vq2e6IsrXKrZit1bv/TDYFGMp4BQ=
 github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d/go.mod h1:+NfK9FKeTrX5uv1uIXGdwYDTeHna2qgaIlx54MXqjAM=

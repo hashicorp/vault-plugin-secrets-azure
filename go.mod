@@ -17,7 +17,7 @@ require (
 	github.com/hashicorp/go-secure-stdlib/base62 v0.1.2
 	github.com/hashicorp/go-uuid v1.0.2
 	github.com/hashicorp/vault/api v1.2.0
-	github.com/hashicorp/vault/sdk v0.4.2-0.20220401184911-6f11de6657a8
+	github.com/hashicorp/vault/sdk v0.4.2-0.20220407204703-33e5b32dd5fc
 	github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d // indirect
 	github.com/kr/pretty v0.3.0 // indirect
 	github.com/mitchellh/mapstructure v1.4.2

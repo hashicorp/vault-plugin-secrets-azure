@@ -1,0 +1,138 @@
+name: build
+
+on:
+  push: {}
+  workflow_dispatch:
+      inputs:
+        version:
+          description: "Version to build, e.g. 0.1.0"
+          type: string
+          required: false
+
+env:
+  PKG_NAME: "vault-plugin-secrets-azure"
+
+jobs:
+  get-go-version:
+    name: "Determine Go toolchain version"
+    runs-on: ubuntu-latest
+    outputs:
+      go-version: ${{ steps.get-go-version.outputs.go-version }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Determine Go version
+        id: get-go-version
+        run: |
+          echo "Building with Go $(cat .go-version)"
+          echo "::set-output name=go-version::$(cat .go-version)"
+
+  get-product-version:
+    runs-on: ubuntu-latest
+    outputs:
+      product-version: ${{ steps.get-product-version.outputs.product-version }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: get product version
+        id: get-product-version
+        run: |
+          VERSION="${{ github.event.inputs.version || '0.0.0-dev' }}"
+          echo "Using version ${VERSION}"
+          echo "::set-output name=product-version::${VERSION}"
+
+  generate-metadata-file:
+    needs: get-product-version
+    runs-on: ubuntu-latest
+    outputs:
+      filepath: ${{ steps.generate-metadata-file.outputs.filepath }}
+    steps:
+      - name: 'Checkout directory'
+        uses: actions/checkout@v2
+      - name: Generate metadata file
+        id: generate-metadata-file
+        uses: hashicorp/actions-generate-metadata@v1
+        with:
+          version: ${{ needs.get-product-version.outputs.product-version }}
+          product: ${{ env.PKG_NAME }}
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: metadata.json
+          path: ${{ steps.generate-metadata-file.outputs.filepath }}
+
+  test:
+    needs:
+      - get-go-version
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v3
+        with:
+          go-version: ${{ needs.get-go-version.outputs.go-version }}
+      - name: Test
+        run: make bootstrap dev test
+
+  build:
+    needs:
+      - get-product-version
+      - get-go-version
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        arch: ["386", "arm", "arm64", "amd64"]
+        os: ["linux", "darwin", "windows", "freebsd", "openbsd", "netbsd", "solaris"]
+        exclude:
+          - os: darwin
+            arch: "386"
+          - os: darwin
+            arch: arm
+          - os: solaris
+            arch: "386"
+          - os: solaris
+            arch: arm
+          - os: solaris
+            arch: arm64
+      fail-fast: true
+
+    name: Go ${{ matrix.os }} ${{ matrix.arch }} build
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Setup go
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ needs.get-go-version.outputs.go-version }}
+
+      - name: Bootstrap
+        env:
+          VERSION: ${{ needs.get-product-version.outputs.product-version }}
+        run: make bootstrap
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          VERSION: ${{ needs.get-product-version.outputs.product-version }}
+          CGO_ENABLED: "0"
+        run: |
+          make bin &&
+          ([ -d out ] || mkdir out) &&
+          zip -r -j out/${{ env.PKG_NAME }}_${{ needs.get-product-version.outputs.product-version }}_${{ matrix.os }}_${{ matrix.arch }}.zip bin/*
+
+      - name: Test that it loads with Vault
+        if: matrix.os == 'linux' && matrix.arch == 'amd64'
+        run: |
+          docker pull vault &&
+          docker run -d --name vault --mount type=bind,src=${PWD}/bin,dst=/vault/file --cap-add=IPC_LOCK -e VAULT_ADDR='http://127.0.0.1:8200' -e 'VAULT_TOKEN=myroot' -e 'VAULT_DEV_ROOT_TOKEN_ID=myroot' -e 'VAULT_DEV_LISTEN_ADDRESS=127.0.0.1:8200' vault server -dev -dev-plugin-dir /vault/file &&
+          timeout 30 sh -c 'until docker exec -t vault vault status; do sleep 1; done' &&
+          docker exec -t vault vault secrets enable ${{ env.PKG_NAME }}
+
+      - name: Upload
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.PKG_NAME }}_${{ needs.get-product-version.outputs.product-version }}_${{ matrix.os }}_${{ matrix.arch }}.zip
+          path: out/${{ env.PKG_NAME }}_${{ needs.get-product-version.outputs.product-version }}_${{ matrix.os }}_${{ matrix.arch }}.zip

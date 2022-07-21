@@ -1,4 +1,4 @@
-# Vault Plugin: Azure Secrets Backend [![Build Status](https://travis-ci.org/hashicorp/vault-plugin-secrets-azure.svg?branch=master)](https://travis-ci.org/hashicorp/vault-plugin-secrets-azure)
+# Vault Plugin: Azure Secrets Backend [![Build Status](https://travis-ci.org/hashicorp/vault-plugin-secrets-azure.svg?branch=main)](https://travis-ci.org/hashicorp/vault-plugin-secrets-azure)
 
 This is a standalone backend plugin for use with [Hashicorp Vault](https://www.github.com/hashicorp/vault).
 This plugin generates revocable, time-limited Service Principals for Microsoft Azure.

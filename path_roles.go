@@ -9,6 +9,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/go-autorest/autorest/to"
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/jsonutil"
@@ -31,6 +32,7 @@ type roleEntry struct {
 	TTL                 time.Duration `json:"ttl"`
 	MaxTTL              time.Duration `json:"max_ttl"`
 	PermanentlyDelete   bool          `json:"permanently_delete"`
+	PersistApp          bool          `json:"persist_app"`
 }
 
 // AzureRole is an Azure Role (https://docs.microsoft.com/en-us/azure/role-based-access-control/overview) applied
@@ -86,6 +88,11 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 					Description: "Indicates whether new application objects should be permanently deleted. If not set, objects will not be permanently deleted.",
 					Default:     false,
 				},
+				"persist_app": {
+					Type:        framework.TypeBool,
+					Description: "Persist the app between generated credentials. Useful if the app needs to maintain owner ship of resources it creates",
+					Default:     false,
+				},
 			},
 			Callbacks: map[logical.Operation]framework.OperationFunc{
 				logical.ReadOperation:   b.pathRoleRead,
@@ -120,13 +127,14 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 //   Given just role name, a search will be performed and if exactly one match is found,
 //   that role will be used.
 
-//   Azure groups are checked for existence. The Azure groups lookup step will allow the
-//   operator to provide a groups name or ID. ID is unambigious and will be used if provided.
-//   Given just group name, a search will be performed and if exactly one match is found,
-//   that group will be used.
+//	Azure groups are checked for existence. The Azure groups lookup step will allow the
+//	operator to provide a groups name or ID. ID is unambigious and will be used if provided.
+//	Given just group name, a search will be performed and if exactly one match is found,
+//	that group will be used.
 //
 // Static Service Principal:
-//   The provided Application Object ID is checked for existence.
+//
+//	The provided Application Object ID is checked for existence.
 func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
 	var resp *logical.Response
 
@@ -199,6 +207,11 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		if role.PermanentlyDelete {
 			return logical.ErrorResponse("permanently_delete must be false if application_object_id is provided"), nil
 		}
+	}
+
+	// update and verify Application Object ID if provided
+	if persistApp, ok := d.GetOk("persist_app"); ok {
+		role.PersistApp = persistApp.(bool)
 	}
 
 	// Parse the Azure roles
@@ -298,6 +311,16 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		return logical.ErrorResponse("either Azure role definitions, group definitions, or an Application Object ID must be provided"), nil
 	}
 
+	// If persisted create the app
+	if role.PersistApp {
+		appObjID, appID, err := b.createPersistedApp(ctx, req, role, name)
+		if err != nil {
+			return nil, fmt.Errorf("could not create persisted app: %w", err)
+		}
+		role.ApplicationObjectID = appObjID
+		role.ApplicationID = appID
+	}
+
 	// save role
 	err = saveRole(ctx, req.Storage, role, name)
 	if err != nil {
@@ -305,6 +328,61 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	}
 
 	return resp, nil
+}
+
+func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logical.Request, role *roleEntry, name string) (string, string, error) {
+	if req.Operation == logical.UpdateOperation {
+		return "", "", fmt.Errorf("can not update a persisted app yet")
+	}
+
+	logger := hclog.New(&hclog.LoggerOptions{})
+
+	logger.Info("creating new app")
+	client, err := b.getClient(ctx, req.Storage)
+	if err != nil {
+		return "", "", err
+	}
+
+	app, err := client.createAppWithName(ctx, name)
+	if err != nil {
+		return "", "", err
+	}
+	appID := to.String(app.AppID)
+	appObjID := to.String(app.ID)
+	// Write a WAL entry in case the SP create process doesn't complete
+	walID, err := framework.PutWAL(ctx, req.Storage, walAppKey, &walApp{
+		AppID:      appID,
+		AppObjID:   appObjID,
+		Expiration: time.Now().Add(maxWALAge),
+	})
+	if err != nil {
+		return appObjID, appID, fmt.Errorf("error writing WAL: %w", err)
+	}
+
+	// TODO: should we expire the PW?
+	spID, _, err := client.createSP(ctx, app, spExpiration)
+	if err != nil {
+		return appObjID, appID, err
+	}
+
+	// Assign Azure roles to the new SP
+	// TODO: we might need the rID
+	_, err = client.assignRoles(ctx, spID, role.AzureRoles)
+	if err != nil {
+		return appObjID, appID, err
+	}
+
+	// Assign Azure group memberships to the new SP
+	if err := client.addGroupMemberships(ctx, spID, role.AzureGroups); err != nil {
+		return appObjID, appID, err
+	}
+
+	// SP is fully created so delete the WAL
+	if err := framework.DeleteWAL(ctx, req.Storage, walID); err != nil {
+		return appObjID, appID, fmt.Errorf("error deleting WAL: %w", err)
+	}
+
+	return appObjID, appID, nil
 }
 
 func (b *azureSecretBackend) pathRoleRead(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
@@ -336,6 +414,7 @@ func (b *azureSecretBackend) pathRoleRead(ctx context.Context, req *logical.Requ
 			"azure_groups":          r.AzureGroups,
 			"application_object_id": r.ApplicationObjectID,
 			"permanently_delete":    r.PermanentlyDelete,
+			"persist_app":           r.PersistApp,
 		},
 	}
 	return resp, nil
@@ -352,6 +431,7 @@ func (b *azureSecretBackend) pathRoleList(ctx context.Context, req *logical.Requ
 
 func (b *azureSecretBackend) pathRoleDelete(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
 	name := d.Get("name").(string)
+	// TODO: get role and check if its persisted if so we need to delete the app.
 
 	err := req.Storage.Delete(ctx, fmt.Sprintf("%s/%s", rolesStoragePath, name))
 	if err != nil {

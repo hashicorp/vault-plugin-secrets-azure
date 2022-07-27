@@ -56,6 +56,15 @@ func (c *client) createApp(ctx context.Context) (app *api.ApplicationResult, err
 	return &result, err
 }
 
+func (c *client) createAppWithName(ctx context.Context, rolename string) (app *api.ApplicationResult, err error) {
+	intSuffix := fmt.Sprintf("%d", time.Now().Unix())
+	name := fmt.Sprintf("%s%s-%s", appNamePrefix, rolename, intSuffix)
+
+	result, err := c.provider.CreateApplication(ctx, name)
+
+	return &result, err
+}
+
 // createSP creates a new service principal.
 func (c *client) createSP(
 	ctx context.Context,
@@ -299,9 +308,9 @@ func (b *azureSecretBackend) getClientSettings(ctx context.Context, config *azur
 
 // retry will repeatedly call f until one of:
 //
-//   * f returns true
-//   * the context is cancelled
-//   * 80 seconds elapses. Vault's default request timeout is 90s; we want to expire before then.
+//   - f returns true
+//   - the context is cancelled
+//   - 80 seconds elapses. Vault's default request timeout is 90s; we want to expire before then.
 //
 // Delays are random but will average 5 seconds.
 func retry(ctx context.Context, f func() (interface{}, bool, error)) (interface{}, error) {

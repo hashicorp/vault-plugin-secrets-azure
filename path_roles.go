@@ -35,9 +35,10 @@ type roleEntry struct {
 	PersistApp          bool          `json:"persist_app"`
 
 	// Info for persisted apps
-	RaIDs   []string `json:"role_assignment_ids"`
-	GmIDs   []string `json:"group_membership_ids"`
-	SpObjID string   `json:"sp_object_id"`
+	RaIDs                      []string `json:"role_assignment_ids"`
+	GmIDs                      []string `json:"group_membership_ids"`
+	SpObjID                    string   `json:"sp_object_id"`
+	ManagedApplicationObjectID string   `json:"managed_application_object_id"`
 }
 
 // AzureRole is an Azure Role (https://docs.microsoft.com/en-us/azure/role-based-access-control/overview) applied
@@ -217,6 +218,10 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	// update and verify Application Object ID if provided
 	if persistApp, ok := d.GetOk("persist_app"); ok {
 		role.PersistApp = persistApp.(bool)
+		// set the applicationObjectID to the managedApplicationObjectID so that we can use the same SP logic as static.
+		if role.ManagedApplicationObjectID != "" {
+			role.ApplicationObjectID = role.ManagedApplicationObjectID
+		}
 	}
 
 	// Parse the Azure roles
@@ -318,12 +323,11 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 
 	// If persisted create the app
 	if role.PersistApp {
-		appObjID, appID, err := b.createPersistedApp(ctx, req, role, name)
+		err := b.createPersistedApp(ctx, req, role, name)
 		if err != nil {
 			return nil, fmt.Errorf("could not create persisted app: %w", err)
 		}
-		role.ApplicationObjectID = appObjID
-		role.ApplicationID = appID
+
 	}
 
 	// save role
@@ -335,53 +339,51 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	return resp, nil
 }
 
-func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logical.Request, role *roleEntry, name string) (string, string, error) {
+func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logical.Request, role *roleEntry, name string) error {
 
 	logger := hclog.New(&hclog.LoggerOptions{})
 
 	c, err := b.getClient(ctx, req.Storage)
 	if err != nil {
-		return "", "", err
+		return err
 	}
 
-	if req.Operation == logical.UpdateOperation && role.ApplicationObjectID != "" {
+	if role.ManagedApplicationObjectID != "" {
 		logger.Info("updating existing app")
 
 		// unassigning roles
 		// TODO: this is super fragile. . . if someone deletes an assignment manually this could break.
 		if err := c.unassignRoles(ctx, role.RaIDs); err != nil {
-			return "", "", err
+			return err
 		}
 		// removing group membership
 		// TODO: this is super fragile. . . if someone deletes an assignment manually this could break.
 		if err := c.removeGroupMemberships(ctx, role.SpObjID, role.GmIDs); err != nil {
-			return "", "", err
+			return err
 		}
 
-		appID := role.ApplicationID
-		appObjID := role.ApplicationObjectID
 		spObjID := role.SpObjID
 
 		// Assign Azure roles to the new SP
 		raIDs, err := c.assignRoles(ctx, spObjID, role.AzureRoles)
 		if err != nil {
-			return appObjID, appID, err
+			return err
 		}
 		role.RaIDs = raIDs
 
 		// Assign Azure group memberships to the new SP
 		if err := c.addGroupMemberships(ctx, spObjID, role.AzureGroups); err != nil {
-			return appObjID, appID, err
+			return err
 		}
 		role.GmIDs = groupObjectIDs(role.AzureGroups)
 
-		return appObjID, appID, nil
+		return nil
 	}
 
 	logger.Info("creating new app")
 	app, err := c.createAppWithName(ctx, name)
 	if err != nil {
-		return "", "", err
+		return err
 	}
 	appID := to.String(app.AppID)
 	appObjID := to.String(app.ID)
@@ -392,35 +394,39 @@ func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logica
 		Expiration: time.Now().Add(maxWALAge),
 	})
 	if err != nil {
-		return appObjID, appID, fmt.Errorf("error writing WAL: %w", err)
+		return fmt.Errorf("error writing WAL: %w", err)
 	}
 
 	// TODO: should we expire the PW?
 	spObjID, _, err := c.createSP(ctx, app, spExpiration)
 	if err != nil {
-		return appObjID, appID, err
+		return err
 	}
 	role.SpObjID = spObjID
 
 	// Assign Azure roles to the new SP
 	raIDs, err := c.assignRoles(ctx, spObjID, role.AzureRoles)
 	if err != nil {
-		return appObjID, appID, err
+		return err
 	}
 	role.RaIDs = raIDs
 
 	// Assign Azure group memberships to the new SP
 	if err := c.addGroupMemberships(ctx, spObjID, role.AzureGroups); err != nil {
-		return appObjID, appID, err
+		return err
 	}
 	role.GmIDs = groupObjectIDs(role.AzureGroups)
 
 	// SP is fully created so delete the WAL
 	if err := framework.DeleteWAL(ctx, req.Storage, walID); err != nil {
-		return appObjID, appID, fmt.Errorf("error deleting WAL: %w", err)
+		return fmt.Errorf("error deleting WAL: %w", err)
 	}
 
-	return appObjID, appID, nil
+	role.ManagedApplicationObjectID = appObjID
+	role.ApplicationObjectID = appObjID
+	role.ApplicationID = appID
+
+	return nil
 }
 
 func (b *azureSecretBackend) pathRoleRead(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {

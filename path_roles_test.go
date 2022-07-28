@@ -118,6 +118,33 @@ func TestRoleCreate(t *testing.T) {
 			"persist_app":           true,
 		}
 
+		spRole2 := map[string]interface{}{
+			"azure_roles": compactJSON(`[
+		{
+			"role_name": "Contributor",
+			"role_id": "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Contributor",
+			"scope":  "test_scope_3"
+		},
+		{
+			"role_name": "Contributor2",
+			"role_id": "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Contributor2",
+			"scope":  "test_scope_3"
+		}]`),
+			"azure_groups": compactJSON(`[
+		{
+			"group_name": "baz",
+			"object_id": "de55c630-8415-4bd3-b329-530688e60173FAKE_GROUP-baz"
+		},
+		{
+			"group_name": "bam",
+			"object_id": "a6a834a6-36c3-4575-8e2b-05095963d603FAKE_GROUP-bam"
+		}]`),
+			"ttl":                   int64(300),
+			"max_ttl":               int64(3000),
+			"application_object_id": "",
+			"persist_app":           true,
+		}
+
 		// Verify basic updates of the name role
 		name := generateUUID()
 		testRoleCreate(t, b, s, name, spRole1)
@@ -128,7 +155,7 @@ func TestRoleCreate(t *testing.T) {
 		convertRespTypes(resp.Data)
 		assertNotEmptyString(t, resp.Data["application_object_id"].(string))
 
-		// TODO: Get role and check all values are set
+		//Get role and check all values are set
 		fullRole, err := getRole(context.Background(), name, s)
 		assertErrorIsNil(t, err)
 
@@ -137,6 +164,24 @@ func TestRoleCreate(t *testing.T) {
 		assertStrSliceIsNotEmpty(t, fullRole.GmIDs)
 		assertStrSliceIsNotEmpty(t, fullRole.RaIDs)
 		assertNotNil(t, fullRole.SpObjID)
+
+		originalAppID := fullRole.ApplicationID
+		originalAppObjID := fullRole.ApplicationObjectID
+
+		testRoleCreate(t, b, s, name, spRole2)
+		resp, err = testRoleRead(t, b, s, name)
+		assertErrorIsNil(t, err)
+
+		convertRespTypes(resp.Data)
+		assertNotEmptyString(t, resp.Data["application_object_id"].(string))
+
+
+		fullRole, err = getRole(context.Background(), name, s)
+		assertErrorIsNil(t, err)
+
+		equal(t, fullRole.ApplicationID, originalAppID)
+		equal(t, fullRole.ApplicationObjectID, originalAppObjID)
+		
 	})
 
 	t.Run("Static SP role", func(t *testing.T) {

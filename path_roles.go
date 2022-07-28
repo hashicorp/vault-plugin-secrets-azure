@@ -486,7 +486,7 @@ func (b *azureSecretBackend) pathRoleDelete(ctx context.Context, req *logical.Re
 		// removing group membership is effectively a garbage collection operation.
 		c.removeGroupMemberships(ctx, role.SpObjID, role.GmIDs)
 
-		if err = c.deleteApp(ctx, role.ApplicationObjectID); err != nil {
+		if err = c.deleteApp(ctx, role.ApplicationObjectID, role.PermanentlyDelete); err != nil {
 			return nil, fmt.Errorf("error deleting persisted app: %w", err)
 		}
 	}

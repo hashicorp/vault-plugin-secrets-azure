@@ -90,6 +90,55 @@ func TestRoleCreate(t *testing.T) {
 		equal(t, spRole2, resp.Data)
 	})
 
+	t.Run("SP persistent role", func(t *testing.T) {
+		spRole1 := map[string]interface{}{
+			"azure_roles": compactJSON(`[
+		{
+			"role_name": "Owner",
+			"role_id": "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Owner",
+			"scope":  "test_scope_1"
+		},
+		{
+			"role_name": "Owner2",
+			"role_id": "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Owner2",
+			"scope":  "test_scope_2"
+		}]`),
+			"azure_groups": compactJSON(`[
+		{
+			"group_name": "foo",
+			"object_id": "239b11fe-6adf-409a-b231-08b918e9de23FAKE_GROUP-foo"
+		},
+		{
+			"group_name": "bar",
+			"object_id": "31c5bf7e-e1e8-42c8-882c-856f776290afFAKE_GROUP-bar"
+		}]`),
+			"ttl":                   int64(0),
+			"max_ttl":               int64(0),
+			"application_object_id": "",
+			"persist_app":           true,
+		}
+
+		// Verify basic updates of the name role
+		name := generateUUID()
+		testRoleCreate(t, b, s, name, spRole1)
+
+		resp, err := testRoleRead(t, b, s, name)
+		assertErrorIsNil(t, err)
+
+		convertRespTypes(resp.Data)
+		assertNotEmptyString(t, resp.Data["application_object_id"].(string))
+
+		// TODO: Get role and check all values are set
+		fullRole, err := getRole(context.Background(), name, s)
+		assertErrorIsNil(t, err)
+
+		assertNotNil(t, fullRole.ApplicationID)
+		assertNotNil(t, fullRole.ApplicationObjectID)
+		assertStrSliceIsNotEmpty(t, fullRole.GmIDs)
+		assertStrSliceIsNotEmpty(t, fullRole.RaIDs)
+		assertNotNil(t, fullRole.SpObjID)
+	})
+
 	t.Run("Static SP role", func(t *testing.T) {
 		spRole1 := map[string]interface{}{
 			"application_object_id": "00000000-0000-0000-0000-000000000000",

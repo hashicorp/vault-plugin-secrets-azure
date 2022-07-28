@@ -33,6 +33,11 @@ type roleEntry struct {
 	MaxTTL              time.Duration `json:"max_ttl"`
 	PermanentlyDelete   bool          `json:"permanently_delete"`
 	PersistApp          bool          `json:"persist_app"`
+
+	// Info for persisted apps
+	RaIDs   []string `json:"role_assignment_ids"`
+	GmIDs   []string `json:"group_membership_ids"`
+	SpObjID string   `json:"sp_object_id"`
 }
 
 // AzureRole is an Azure Role (https://docs.microsoft.com/en-us/azure/role-based-access-control/overview) applied
@@ -360,22 +365,24 @@ func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logica
 	}
 
 	// TODO: should we expire the PW?
-	spID, _, err := client.createSP(ctx, app, spExpiration)
+	spObjID, _, err := client.createSP(ctx, app, spExpiration)
 	if err != nil {
 		return appObjID, appID, err
 	}
+	role.SpObjID = spObjID
 
 	// Assign Azure roles to the new SP
-	// TODO: we might need the rID
-	_, err = client.assignRoles(ctx, spID, role.AzureRoles)
+	raIDs, err := client.assignRoles(ctx, spObjID, role.AzureRoles)
 	if err != nil {
 		return appObjID, appID, err
 	}
+	role.RaIDs = raIDs
 
 	// Assign Azure group memberships to the new SP
-	if err := client.addGroupMemberships(ctx, spID, role.AzureGroups); err != nil {
+	if err := client.addGroupMemberships(ctx, spObjID, role.AzureGroups); err != nil {
 		return appObjID, appID, err
 	}
+	role.GmIDs = groupObjectIDs(role.AzureGroups)
 
 	// SP is fully created so delete the WAL
 	if err := framework.DeleteWAL(ctx, req.Storage, walID); err != nil {
@@ -431,9 +438,29 @@ func (b *azureSecretBackend) pathRoleList(ctx context.Context, req *logical.Requ
 
 func (b *azureSecretBackend) pathRoleDelete(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
 	name := d.Get("name").(string)
-	// TODO: get role and check if its persisted if so we need to delete the app.
+	role, err := getRole(ctx, name, req.Storage)
+	if err != nil {
+		return nil, fmt.Errorf("error getting role: %w", err)
+	}
 
-	err := req.Storage.Delete(ctx, fmt.Sprintf("%s/%s", rolesStoragePath, name))
+	if role != nil && role.PersistApp {
+		c, err := b.getClient(ctx, req.Storage)
+		if err != nil {
+			return nil, fmt.Errorf("error during delete: %w", err)
+		}
+
+		// unassigning roles is effectively a garbage collection operation.
+		c.unassignRoles(ctx, role.RaIDs)
+
+		// removing group membership is effectively a garbage collection operation.
+		c.removeGroupMemberships(ctx, role.SpObjID, role.GmIDs)
+
+		if err = c.deleteApp(ctx, role.ApplicationObjectID); err != nil {
+			return nil, fmt.Errorf("error deleting persisted app: %w", err)
+		}
+	}
+
+	err = req.Storage.Delete(ctx, fmt.Sprintf("%s/%s", rolesStoragePath, name))
 	if err != nil {
 		return nil, fmt.Errorf("error deleting role: %w", err)
 	}

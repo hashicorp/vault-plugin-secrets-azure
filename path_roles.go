@@ -336,19 +336,50 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 }
 
 func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logical.Request, role *roleEntry, name string) (string, string, error) {
-	if req.Operation == logical.UpdateOperation {
-		return "", "", fmt.Errorf("can not update a persisted app yet")
-	}
 
 	logger := hclog.New(&hclog.LoggerOptions{})
 
-	logger.Info("creating new app")
-	client, err := b.getClient(ctx, req.Storage)
+	c, err := b.getClient(ctx, req.Storage)
 	if err != nil {
 		return "", "", err
 	}
 
-	app, err := client.createAppWithName(ctx, name)
+	if req.Operation == logical.UpdateOperation && role.ApplicationObjectID != "" {
+		logger.Info("updating existing app")
+
+		// unassigning roles
+		// TODO: this is super fragile. . . if someone deletes an assignment manually this could break.
+		if err := c.unassignRoles(ctx, role.RaIDs); err != nil {
+			return "", "", err
+		}
+		// removing group membership
+		// TODO: this is super fragile. . . if someone deletes an assignment manually this could break.
+		if err := c.removeGroupMemberships(ctx, role.SpObjID, role.GmIDs); err != nil {
+			return "", "", err
+		}
+
+		appID := role.ApplicationID
+		appObjID := role.ApplicationObjectID
+		spObjID := role.SpObjID
+
+		// Assign Azure roles to the new SP
+		raIDs, err := c.assignRoles(ctx, spObjID, role.AzureRoles)
+		if err != nil {
+			return appObjID, appID, err
+		}
+		role.RaIDs = raIDs
+
+		// Assign Azure group memberships to the new SP
+		if err := c.addGroupMemberships(ctx, spObjID, role.AzureGroups); err != nil {
+			return appObjID, appID, err
+		}
+		role.GmIDs = groupObjectIDs(role.AzureGroups)
+
+		return appObjID, appID, nil
+	}
+
+	logger.Info("creating new app")
+	app, err := c.createAppWithName(ctx, name)
 	if err != nil {
 		return "", "", err
 	}
@@ -365,21 +396,21 @@ func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logica
 	}
 
 	// TODO: should we expire the PW?
-	spObjID, _, err := client.createSP(ctx, app, spExpiration)
+	spObjID, _, err := c.createSP(ctx, app, spExpiration)
 	if err != nil {
 		return appObjID, appID, err
 	}
 	role.SpObjID = spObjID
 
 	// Assign Azure roles to the new SP
-	raIDs, err := client.assignRoles(ctx, spObjID, role.AzureRoles)
+	raIDs, err := c.assignRoles(ctx, spObjID, role.AzureRoles)
 	if err != nil {
 		return appObjID, appID, err
 	}
 	role.RaIDs = raIDs
 
 	// Assign Azure group memberships to the new SP
-	if err := client.addGroupMemberships(ctx, spObjID, role.AzureGroups); err != nil {
+	if err := c.addGroupMemberships(ctx, spObjID, role.AzureGroups); err != nil {
 		return appObjID, appID, err
 	}
 	role.GmIDs = groupObjectIDs(role.AzureGroups)

@@ -219,7 +219,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	if persistApp, ok := d.GetOk("persist_app"); ok {
 		role.PersistApp = persistApp.(bool)
 		// set the applicationObjectID to the managedApplicationObjectID so that we can use the same SP logic as static.
-		if role.ManagedApplicationObjectID != "" {
+		if role.PersistApp {
 			role.ApplicationObjectID = role.ManagedApplicationObjectID
 		}
 	}

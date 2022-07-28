@@ -84,7 +84,6 @@ var (
 		}),
 		"persist_app": true,
 	}
-
 )
 
 // TestSP_WAL_Cleanup tests that any Service Principal that gets created, but

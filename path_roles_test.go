@@ -175,13 +175,12 @@ func TestRoleCreate(t *testing.T) {
 		convertRespTypes(resp.Data)
 		assertNotEmptyString(t, resp.Data["application_object_id"].(string))
 
-
 		fullRole, err = getRole(context.Background(), name, s)
 		assertErrorIsNil(t, err)
 
 		equal(t, fullRole.ApplicationID, originalAppID)
 		equal(t, fullRole.ApplicationObjectID, originalAppObjID)
-		
+
 	})
 
 	t.Run("Static SP role", func(t *testing.T) {

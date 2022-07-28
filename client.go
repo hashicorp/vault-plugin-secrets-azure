@@ -12,6 +12,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/to"
+	"github.com/hashicorp/go-hclog"
 	multierror "github.com/hashicorp/go-multierror"
 	uuid "github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
@@ -181,10 +182,13 @@ func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRol
 // attempt is made to remove all assignments, and not return immediately if there
 // is an error.
 func (c *client) unassignRoles(ctx context.Context, roleIDs []string) error {
+	logger := hclog.New(&hclog.LoggerOptions{})
+
 	var merr *multierror.Error
 
 	for _, id := range roleIDs {
 		if _, err := c.provider.DeleteRoleAssignmentByID(ctx, id); err != nil {
+			logger.Info("error: %s", err)
 			merr = multierror.Append(merr, fmt.Errorf("error unassigning role: %w", err))
 		}
 	}

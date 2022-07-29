@@ -9,7 +9,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/go-autorest/autorest/to"
-	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/jsonutil"
@@ -340,24 +339,17 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 }
 
 func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logical.Request, role *roleEntry, name string) error {
-
-	logger := hclog.New(&hclog.LoggerOptions{})
-
 	c, err := b.getClient(ctx, req.Storage)
 	if err != nil {
 		return err
 	}
 
 	if role.ManagedApplicationObjectID != "" {
-		logger.Info("updating existing app")
-
-		// unassigning roles
-		// TODO: this is super fragile. . . if someone deletes an assignment manually this could break.
+		// Unassign roles
 		if err := c.unassignRoles(ctx, role.RaIDs); err != nil {
 			return err
 		}
-		// removing group membership
-		// TODO: this is super fragile. . . if someone deletes an assignment manually this could break.
+		// Removing group membership
 		if err := c.removeGroupMemberships(ctx, role.SpObjID, role.GmIDs); err != nil {
 			return err
 		}
@@ -380,7 +372,6 @@ func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logica
 		return nil
 	}
 
-	logger.Info("creating new app")
 	app, err := c.createAppWithName(ctx, name)
 	if err != nil {
 		return err

@@ -485,7 +485,6 @@ func TestCredentialReadProviderError(t *testing.T) {
 
 // This is an integration test against the live Azure service. It requires
 // valid, sufficiently-privileged Azure credentials in env variables.
-// The credentials provided to this must include permissions to use MS Graph and not AAD
 func TestCredentialInteg_msgraph(t *testing.T) {
 	if os.Getenv("VAULT_ACC") != "1" {
 		t.SkipNow()

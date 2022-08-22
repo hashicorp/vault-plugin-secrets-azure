@@ -172,7 +172,7 @@ func (p *provider) DeleteRoleAssignmentByID(ctx context.Context, roleAssignmentI
 }
 
 // ListRoleAssignments lists all role assignments.
-// There is no need for paging; the caller only cares about the the first match and whether
+// There is no need for paging; the caller only cares about the first match and whether
 // there are 0, 1 or >1 items. Unpacking here is a simpler interface.
 func (p *provider) ListRoleAssignments(ctx context.Context, filter string) ([]authorization.RoleAssignment, error) {
 	page, err := p.raClient.List(ctx, filter)
@@ -184,12 +184,12 @@ func (p *provider) ListRoleAssignments(ctx context.Context, filter string) ([]au
 	return page.Values(), nil
 }
 
-// AddGroupMember adds a member to a AAD Group.
+// AddGroupMember adds a member to a Group.
 func (p *provider) AddGroupMember(ctx context.Context, groupObjectID string, memberObjectID string) (err error) {
 	return p.groupsClient.AddGroupMember(ctx, groupObjectID, memberObjectID)
 }
 
-// RemoveGroupMember removes a member from a AAD Group.
+// RemoveGroupMember removes a member from a Group.
 func (p *provider) RemoveGroupMember(ctx context.Context, groupObjectID, memberObjectID string) (err error) {
 	return p.groupsClient.RemoveGroupMember(ctx, groupObjectID, memberObjectID)
 }

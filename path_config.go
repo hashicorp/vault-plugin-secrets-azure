@@ -167,24 +167,7 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 		return nil, err
 	}
 
-	resp := addAADWarning(nil, config)
-
-	return resp, nil
-}
-
-const aadWarning = "This configuration is using the Azure Active Directory API which is being " +
-	"removed soon. Please migrate to using the Microsoft Graph API using the " +
-	"use_microsoft_graph_api configuration parameter."
-
-func addAADWarning(resp *logical.Response, config *azureConfig) *logical.Response {
-	if config.UseMsGraphAPI {
-		return resp
-	}
-	if resp == nil {
-		resp = &logical.Response{}
-	}
-	resp.AddWarning(aadWarning)
-	return resp
+	return nil, err
 }
 
 func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
@@ -200,12 +183,11 @@ func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Re
 
 	resp := &logical.Response{
 		Data: map[string]interface{}{
-			"subscription_id":         config.SubscriptionID,
-			"tenant_id":               config.TenantID,
-			"environment":             config.Environment,
-			"client_id":               config.ClientID,
-			"use_microsoft_graph_api": config.UseMsGraphAPI,
-			"root_password_ttl":       int(config.RootPasswordTTL.Seconds()),
+			"subscription_id":   config.SubscriptionID,
+			"tenant_id":         config.TenantID,
+			"environment":       config.Environment,
+			"client_id":         config.ClientID,
+			"root_password_ttl": int(config.RootPasswordTTL.Seconds()),
 		},
 	}
 
@@ -213,7 +195,7 @@ func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Re
 		resp.Data["root_password_expiration_date"] = config.RootPasswordExpirationDate
 	}
 
-	return addAADWarning(resp, config), nil
+	return resp, nil
 }
 
 func (b *azureSecretBackend) pathConfigDelete(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {

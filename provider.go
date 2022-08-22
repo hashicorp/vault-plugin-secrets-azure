@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
@@ -54,36 +53,6 @@ func newAzureProvider(settings *clientSettings, useMsGraphApi bool, passwords ap
 		appClient = msGraphAppClient
 		groupsClient = msGraphAppClient
 		spClient = msGraphAppClient
-	} else {
-		graphAuthorizer, err := getAuthorizer(settings, settings.Environment.GraphEndpoint)
-		if err != nil {
-			return nil, err
-		}
-
-		aadGraphClient := graphrbac.NewApplicationsClient(settings.TenantID)
-		aadGraphClient.Authorizer = graphAuthorizer
-		aadGraphClient.AddToUserAgent(userAgent)
-
-		appClient = &api.ActiveDirectoryApplicationClient{Client: &aadGraphClient, Passwords: passwords}
-
-		aadGroupsClient := graphrbac.NewGroupsClient(settings.TenantID)
-		aadGroupsClient.Authorizer = graphAuthorizer
-		aadGroupsClient.AddToUserAgent(userAgent)
-
-		groupsClient = api.ActiveDirectoryApplicationGroupsClient{
-			BaseURI:  aadGroupsClient.BaseURI,
-			TenantID: aadGroupsClient.TenantID,
-			Client:   aadGroupsClient,
-		}
-
-		servicePrincipalClient := graphrbac.NewServicePrincipalsClient(settings.TenantID)
-		servicePrincipalClient.Authorizer = graphAuthorizer
-		servicePrincipalClient.AddToUserAgent(userAgent)
-
-		spClient = api.AADServicePrincipalsClient{
-			Client:    servicePrincipalClient,
-			Passwords: passwords,
-		}
 	}
 
 	// build clients that use the Resource Manager endpoint

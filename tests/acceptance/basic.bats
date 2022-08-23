@@ -148,7 +148,6 @@ teardown(){
 
     vault secrets enable ${ENGINE_NAME}
     vault write "${ENGINE_NAME}/config" \
-        use_microsoft_graph_api=true \
         subscription_id="${subscription_id}" \
         tenant_id="${tenant_id}" \
         client_id="${client_id}" \

@@ -27,33 +27,32 @@ type provider struct {
 }
 
 // newAzureProvider creates an azureProvider, backed by Azure client objects for underlying services.
-func newAzureProvider(settings *clientSettings, useMsGraphApi bool, passwords api.Passwords) (api.AzureProvider, error) {
+func newAzureProvider(settings *clientSettings, passwords api.Passwords) (api.AzureProvider, error) {
 	// build clients that use the GraphRBAC endpoint
 	userAgent := getUserAgent(settings)
 
 	var appClient api.ApplicationsClient
 	var groupsClient api.GroupsClient
 	var spClient api.ServicePrincipalClient
-	if useMsGraphApi {
-		graphURI, err := api.GetGraphURI(settings.Environment.Name)
-		if err != nil {
-			return nil, err
-		}
 
-		graphApiAuthorizer, err := getAuthorizer(settings, graphURI)
-		if err != nil {
-			return nil, err
-		}
-
-		msGraphAppClient, err := api.NewMSGraphApplicationClient(settings.SubscriptionID, userAgent, graphURI, graphApiAuthorizer)
-		if err != nil {
-			return nil, err
-		}
-
-		appClient = msGraphAppClient
-		groupsClient = msGraphAppClient
-		spClient = msGraphAppClient
+	graphURI, err := api.GetGraphURI(settings.Environment.Name)
+	if err != nil {
+		return nil, err
 	}
+
+	graphApiAuthorizer, err := getAuthorizer(settings, graphURI)
+	if err != nil {
+		return nil, err
+	}
+
+	msGraphAppClient, err := api.NewMSGraphApplicationClient(settings.SubscriptionID, userAgent, graphURI, graphApiAuthorizer)
+	if err != nil {
+		return nil, err
+	}
+
+	appClient = msGraphAppClient
+	groupsClient = msGraphAppClient
+	spClient = msGraphAppClient
 
 	// build clients that use the Resource Manager endpoint
 	resourceManagerAuthorizer, err := getAuthorizer(settings, settings.Environment.ResourceManagerEndpoint)

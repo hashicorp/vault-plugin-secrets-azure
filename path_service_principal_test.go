@@ -62,7 +62,7 @@ func TestSP_WAL_Cleanup(t *testing.T) {
 
 	// overwrite the normal test backend provider with the errMockProvider
 	errMockProvider := newErrMockProvider()
-	b.getProvider = func(s *clientSettings, useMsGraphApi bool, p api.Passwords) (api.AzureProvider, error) {
+	b.getProvider = func(s *clientSettings, p api.Passwords) (api.AzureProvider, error) {
 		return errMockProvider, nil
 	}
 
@@ -523,11 +523,10 @@ func TestCredentialInteg_msgraph(t *testing.T) {
 		assertErrorIsNil(t, err)
 
 		configData := map[string]interface{}{
-			"subscription_id":         subscriptionID,
-			"client_id":               clientID,
-			"client_secret":           clientSecret,
-			"tenant_id":               tenantID,
-			"use_microsoft_graph_api": true,
+			"subscription_id": subscriptionID,
+			"client_id":       clientID,
+			"client_secret":   clientSecret,
+			"tenant_id":       tenantID,
 		}
 
 		configResp, err := b.HandleRequest(context.Background(), &logical.Request{

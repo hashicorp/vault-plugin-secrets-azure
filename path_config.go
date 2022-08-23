@@ -34,7 +34,6 @@ type azureConfig struct {
 	NewClientSecretKeyID          string        `json:"new_client_secret_key_id"`
 	Environment                   string        `json:"environment"`
 	PasswordPolicy                string        `json:"password_policy"`
-	UseMsGraphAPI                 bool          `json:"use_microsoft_graph_api"`
 	RootPasswordTTL               time.Duration `json:"root_password_ttl"`
 	RootPasswordExpirationDate    time.Time     `json:"root_password_expiration_date"`
 }
@@ -142,12 +141,6 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 
 	if clientSecret, ok := data.GetOk("client_secret"); ok {
 		config.ClientSecret = clientSecret.(string)
-	}
-
-	if useMsGraphApi, ok := data.GetOk("use_microsoft_graph_api"); ok {
-		config.UseMsGraphAPI = useMsGraphApi.(bool)
-	} else if req.Operation == logical.CreateOperation {
-		config.UseMsGraphAPI = data.Get("use_microsoft_graph_api").(bool)
 	}
 
 	config.PasswordPolicy = data.Get("password_policy").(string)

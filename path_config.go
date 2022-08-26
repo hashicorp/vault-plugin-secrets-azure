@@ -71,11 +71,6 @@ func pathConfig(b *azureSecretBackend) *framework.Path {
 				Type:        framework.TypeString,
 				Description: "Name of the password policy to use to generate passwords for dynamic credentials.",
 			},
-			"use_microsoft_graph_api": &framework.FieldSchema{
-				Type:        framework.TypeBool,
-				Description: "Enable usage of the Microsoft Graph API over the deprecated Azure AD Graph API. Defaults to 'true'.",
-				Default:     true,
-			},
 			"root_password_ttl": &framework.FieldSchema{
 				Type:        framework.TypeDurationSecond,
 				Default:     defaultRootPasswordTTL,

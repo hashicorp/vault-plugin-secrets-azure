@@ -34,9 +34,9 @@ type roleEntry struct {
 	PersistApp          bool          `json:"persist_app"`
 
 	// Info for persisted apps
-	RaIDs                      []string `json:"role_assignment_ids"`
-	GmIDs                      []string `json:"group_membership_ids"`
-	SpObjID                    string   `json:"sp_object_id"`
+	RoleAssignmentIDs          []string `json:"role_assignment_ids"`
+	GroupMembershipIDs         []string `json:"group_membership_ids"`
+	ServicePrincipalObjectID   string   `json:"sp_object_id"`
 	ManagedApplicationObjectID string   `json:"managed_application_object_id"`
 }
 
@@ -346,28 +346,28 @@ func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logica
 
 	if role.ManagedApplicationObjectID != "" {
 		// Unassign roles
-		if err := c.unassignRoles(ctx, role.RaIDs); err != nil {
+		if err := c.unassignRoles(ctx, role.RoleAssignmentIDs); err != nil {
 			return err
 		}
 		// Removing group membership
-		if err := c.removeGroupMemberships(ctx, role.SpObjID, role.GmIDs); err != nil {
+		if err := c.removeGroupMemberships(ctx, role.ServicePrincipalObjectID, role.GroupMembershipIDs); err != nil {
 			return err
 		}
 
-		spObjID := role.SpObjID
+		spObjID := role.ServicePrincipalObjectID
 
 		// Assign Azure roles to the new SP
 		raIDs, err := c.assignRoles(ctx, spObjID, role.AzureRoles)
 		if err != nil {
 			return err
 		}
-		role.RaIDs = raIDs
+		role.RoleAssignmentIDs = raIDs
 
 		// Assign Azure group memberships to the new SP
 		if err := c.addGroupMemberships(ctx, spObjID, role.AzureGroups); err != nil {
 			return err
 		}
-		role.GmIDs = groupObjectIDs(role.AzureGroups)
+		role.GroupMembershipIDs = groupObjectIDs(role.AzureGroups)
 
 		return nil
 	}
@@ -393,20 +393,20 @@ func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logica
 	if err != nil {
 		return err
 	}
-	role.SpObjID = spObjID
+	role.ServicePrincipalObjectID = spObjID
 
 	// Assign Azure roles to the new SP
 	raIDs, err := c.assignRoles(ctx, spObjID, role.AzureRoles)
 	if err != nil {
 		return err
 	}
-	role.RaIDs = raIDs
+	role.RoleAssignmentIDs = raIDs
 
 	// Assign Azure group memberships to the new SP
 	if err := c.addGroupMemberships(ctx, spObjID, role.AzureGroups); err != nil {
 		return err
 	}
-	role.GmIDs = groupObjectIDs(role.AzureGroups)
+	role.GroupMembershipIDs = groupObjectIDs(role.AzureGroups)
 
 	// SP is fully created so delete the WAL
 	if err := framework.DeleteWAL(ctx, req.Storage, walID); err != nil {
@@ -478,10 +478,10 @@ func (b *azureSecretBackend) pathRoleDelete(ctx context.Context, req *logical.Re
 		}
 
 		// unassigning roles is effectively a garbage collection operation.
-		c.unassignRoles(ctx, role.RaIDs)
+		c.unassignRoles(ctx, role.RoleAssignmentIDs)
 
 		// removing group membership is effectively a garbage collection operation.
-		c.removeGroupMemberships(ctx, role.SpObjID, role.GmIDs)
+		c.removeGroupMemberships(ctx, role.ServicePrincipalObjectID, role.GroupMembershipIDs)
 
 		if err = c.deleteApp(ctx, role.ApplicationObjectID, role.PermanentlyDelete); err != nil {
 			return nil, fmt.Errorf("error deleting persisted app: %w", err)

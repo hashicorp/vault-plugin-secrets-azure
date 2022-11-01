@@ -161,9 +161,9 @@ func TestRoleCreate(t *testing.T) {
 
 		assertNotNil(t, fullRole.ApplicationID)
 		assertNotNil(t, fullRole.ApplicationObjectID)
-		assertStrSliceIsNotEmpty(t, fullRole.GmIDs)
-		assertStrSliceIsNotEmpty(t, fullRole.RaIDs)
-		assertNotNil(t, fullRole.SpObjID)
+		assertStrSliceIsNotEmpty(t, fullRole.GroupMembershipIDs)
+		assertStrSliceIsNotEmpty(t, fullRole.RoleAssignmentIDs)
+		assertNotNil(t, fullRole.ServicePrincipalObjectID)
 
 		originalAppID := fullRole.ApplicationID
 		originalAppObjID := fullRole.ApplicationObjectID

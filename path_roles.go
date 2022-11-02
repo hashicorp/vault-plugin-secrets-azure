@@ -339,20 +339,14 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 }
 
 func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logical.Request, role *roleEntry, name string) error {
+
 	c, err := b.getClient(ctx, req.Storage)
 	if err != nil {
 		return err
 	}
 
 	if role.ManagedApplicationObjectID != "" {
-		// Unassign roles
-		if err := c.unassignRoles(ctx, role.RoleAssignmentIDs); err != nil {
-			return err
-		}
-		// Removing group membership
-		if err := c.removeGroupMemberships(ctx, role.ServicePrincipalObjectID, role.GroupMembershipIDs); err != nil {
-			return err
-		}
+		removeRolesAndGroupMembership(ctx, c, role)
 
 		spObjID := role.ServicePrincipalObjectID
 
@@ -465,6 +459,8 @@ func (b *azureSecretBackend) pathRoleList(ctx context.Context, req *logical.Requ
 }
 
 func (b *azureSecretBackend) pathRoleDelete(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
+	resp := new(logical.Response)
+
 	name := d.Get("name").(string)
 	role, err := getRole(ctx, name, req.Storage)
 	if err != nil {
@@ -477,11 +473,12 @@ func (b *azureSecretBackend) pathRoleDelete(ctx context.Context, req *logical.Re
 			return nil, fmt.Errorf("error during delete: %w", err)
 		}
 
-		// unassigning roles is effectively a garbage collection operation.
-		c.unassignRoles(ctx, role.RoleAssignmentIDs)
-
-		// removing group membership is effectively a garbage collection operation.
-		c.removeGroupMemberships(ctx, role.ServicePrincipalObjectID, role.GroupMembershipIDs)
+		// unassigning roles and removing group membership is effectively a garbage collection operation.
+		// Errors will be noted but won't fail the revocation process. 
+		// Deleting the app, however, *is* required to consider the secret revoked.
+		if err := removeRolesAndGroupMembership(ctx, c, role); err != nil {
+			resp.AddWarning(err.Error())
+		}
 
 		if err = c.deleteApp(ctx, role.ApplicationObjectID, role.PermanentlyDelete); err != nil {
 			return nil, fmt.Errorf("error deleting persisted app: %w", err)
@@ -493,7 +490,7 @@ func (b *azureSecretBackend) pathRoleDelete(ctx context.Context, req *logical.Re
 		return nil, fmt.Errorf("error deleting role: %w", err)
 	}
 
-	return nil, nil
+	return resp, nil
 }
 
 func (b *azureSecretBackend) pathRoleExistenceCheck(ctx context.Context, req *logical.Request, d *framework.FieldData) (bool, error) {
@@ -505,6 +502,19 @@ func (b *azureSecretBackend) pathRoleExistenceCheck(ctx context.Context, req *lo
 	}
 
 	return role != nil, nil
+}
+
+func removeRolesAndGroupMembership(ctx context.Context, c *client, role *roleEntry) error {
+	// Unassign roles
+	if err := c.unassignRoles(ctx, role.RoleAssignmentIDs); err != nil {
+		return err
+	}
+	// Removing group membership
+	if err := c.removeGroupMemberships(ctx, role.ServicePrincipalObjectID, role.GroupMembershipIDs); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func saveRole(ctx context.Context, s logical.Storage, c *roleEntry, name string) error {

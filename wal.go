@@ -133,6 +133,9 @@ func (b *azureSecretBackend) rollbackRoleAssignWAL(ctx context.Context, req *log
 	// Assemble all App Role Assignment IDs
 	var roleAssignments []string
 	for i, assignmentID := range entry.AssignmentIDs {
+		if entry.AzureRoles[i] == nil {
+			return fmt.Errorf("azure role was nil")
+		}
 		roleAssignments = append(roleAssignments, fmt.Sprintf("%s/providers/Microsoft.Authorization/roleAssignments/%s",
 			entry.AzureRoles[i].Scope,
 			assignmentID))

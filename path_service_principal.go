@@ -162,7 +162,7 @@ func (b *azureSecretBackend) createSPSecret(ctx context.Context, s logical.Stora
 	}
 
 	if err := framework.DeleteWAL(ctx, s, rWALID); err != nil {
-		return nil, fmt.Errorf("error deleting WAL: %w", err)
+		return nil, fmt.Errorf("error deleting role assignment WAL: %w", err)
 	}
 
 	data := map[string]interface{}{

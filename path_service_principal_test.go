@@ -570,7 +570,6 @@ func TestRoleAssignmentWALRollback(t *testing.T) {
 		)
 
 		b := backend()
-		b.WALRollbackMinAge = 1 * time.Second
 		s := new(logical.InmemStorage)
 		subscriptionID := os.Getenv("AZURE_SUBSCRIPTION_ID")
 		clientID := os.Getenv("AZURE_CLIENT_ID")
@@ -676,23 +675,22 @@ func TestRoleAssignmentWALRollback(t *testing.T) {
 
 		// Remove one of the RA IDs to simulate a failure to assign a role
 		if err := client.unassignRoles(context.Background(), []string{raIDs[0]}); err != nil {
-			b.Logger().Error("error unassinging Role", "err", err)
-			t.Fatal(err)
+			t.Fatalf("error unassinging Role: %s", err.Error())
 		}
 
 		rEntry, err := s.Get(context.Background(), fmt.Sprintf("%s/%s", "roles", roleName))
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("error getting role from storage: %s", err.Error())
 		}
 
 		if rEntry == nil {
-			t.Fatal(err)
+			t.Fatalf("role entry was nil: %s", err.Error())
 		}
 
 		// Decode returned Role Entry
 		role := new(roleEntry)
 		if err := rEntry.DecodeJSON(role); err != nil {
-			t.Fatal(err)
+			t.Fatalf("unable to decode role entry: %s", err.Error())
 		}
 
 		// Manually Create Role Assignment WAL
@@ -703,13 +701,13 @@ func TestRoleAssignmentWALRollback(t *testing.T) {
 			Expiration:    time.Now().Add(maxWALAge),
 		})
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("error creating role assignment WAL: %s", err.Error())
 		}
 
 		// Retrieve WAL
 		entry, err := framework.GetWAL(context.Background(), s, rWALID)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("error retrieving role assignment WAL: %s", err.Error())
 		}
 
 		// Decode the WAL data
@@ -719,11 +717,11 @@ func TestRoleAssignmentWALRollback(t *testing.T) {
 			Result:     &appRoleAssign,
 		})
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("error decoding WAL data: %s", err.Error())
 		}
 		err = d.Decode(entry.Data)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("error decoding WAL data: %s", err.Error())
 		}
 
 		req := &logical.Request{
@@ -733,7 +731,7 @@ func TestRoleAssignmentWALRollback(t *testing.T) {
 		// Initiate Role Assignment Rollback
 		err = b.walRollback(context.Background(), req, entry.Kind, entry.Data)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("error rolling back WAL: %s", err.Error())
 		}
 
 		// Serialize and deserialize the secret to remove typing, as will really happen.

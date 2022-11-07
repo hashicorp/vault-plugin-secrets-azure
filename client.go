@@ -136,6 +136,9 @@ func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRol
 
 	for i, role := range roles {
 		resultRaw, err := retry(ctx, func() (interface{}, bool, error) {
+			if assignmentIDs[i] == "" {
+				return nil, true, fmt.Errorf("assignmentID at index %d was empty", i)
+			}
 			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentIDs[i],
 				authorization.RoleAssignmentCreateParameters{
 					RoleAssignmentProperties: &authorization.RoleAssignmentProperties{

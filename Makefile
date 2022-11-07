@@ -47,7 +47,7 @@ test: fmtcheck generate
 
 # test-acceptance runs all acceptance tests
 test-acceptance: $(if $(WITH_DEV_PLUGIN), dev-acceptance)
-	bats -f $(TESTS_FILTER) $(CURDIR)/tests/acceptance/basic.bats
+	 WITH_DEV_PLUGIN=$(WITH_DEV_PLUGIN) bats -f $(TESTS_FILTER) $(CURDIR)/tests/acceptance/basic.bats
 
 # generate runs `go generate` to build the dynamically generated
 # source files.

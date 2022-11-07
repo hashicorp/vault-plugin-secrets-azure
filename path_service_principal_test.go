@@ -674,6 +674,12 @@ func TestRoleAssignmentWALRollback(t *testing.T) {
 			assignmentIDs = append(assignmentIDs, strings.Replace(tRa, " ", "", -1))
 		}
 
+		// Remove one of the RA IDs to simulate a failure to assign a role
+		if err := client.unassignRoles(context.Background(), []string{raIDs[0]}); err != nil {
+			b.Logger().Error("error unassinging Role", "err", err)
+			t.Fatal(err)
+		}
+
 		rEntry, err := s.Get(context.Background(), fmt.Sprintf("%s/%s", "roles", roleName))
 		if err != nil {
 			t.Fatal(err)

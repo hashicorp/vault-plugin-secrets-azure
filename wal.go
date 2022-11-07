@@ -3,8 +3,10 @@ package azuresecrets
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
+	multierror "github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/vault/sdk/logical"
 	"github.com/mitchellh/mapstructure"
 )
@@ -136,12 +138,21 @@ func (b *azureSecretBackend) rollbackRoleAssignWAL(ctx context.Context, req *log
 			assignmentID))
 	}
 
+	// Check any errors to filter out expected responses. Azure will return
+	// a 204 when trying to delete a role assignment that has already been
+	// deleted, or does not exist. We may hit this case during rollback.
 	if err := client.unassignRoles(ctx, roleAssignments); err != nil {
-		b.Logger().Warn("rollback error unassinging Role", "err", err)
+		for _, e := range err.(*multierror.Error).Errors {
+			switch {
+			case strings.Contains(e.Error(), "StatusCode=204"):
+				b.Logger().Trace("role assignment already deleted or does not exist", "err", e.Error())
+			default:
+				b.Logger().Error("rollback error unassinging role", "err", e.Error())
+			}
+		}
 		if time.Now().After(entry.Expiration) {
 			return nil
 		}
-		return err
 	}
 	return nil
 }

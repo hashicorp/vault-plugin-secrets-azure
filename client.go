@@ -131,17 +131,12 @@ func (c *client) deleteServicePrincipal(ctx context.Context, spObjectID string, 
 }
 
 // assignRoles assigns Azure roles to a service principal.
-func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRole) ([]string, error) {
+func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRole, assignmentIDs []string) ([]string, error) {
 	var ids []string
 
-	for _, role := range roles {
-		assignmentID, err := uuid.GenerateUUID()
-		if err != nil {
-			return nil, err
-		}
-
+	for i, role := range roles {
 		resultRaw, err := retry(ctx, func() (interface{}, bool, error) {
-			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentID,
+			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentIDs[i],
 				authorization.RoleAssignmentCreateParameters{
 					RoleAssignmentProperties: &authorization.RoleAssignmentProperties{
 						RoleDefinitionID: &role.RoleID,
@@ -299,9 +294,9 @@ func (b *azureSecretBackend) getClientSettings(ctx context.Context, config *azur
 
 // retry will repeatedly call f until one of:
 //
-//   * f returns true
-//   * the context is cancelled
-//   * 80 seconds elapses. Vault's default request timeout is 90s; we want to expire before then.
+//   - f returns true
+//   - the context is cancelled
+//   - 80 seconds elapses. Vault's default request timeout is 90s; we want to expire before then.
 //
 // Delays are random but will average 5 seconds.
 func retry(ctx context.Context, f func() (interface{}, bool, error)) (interface{}, error) {

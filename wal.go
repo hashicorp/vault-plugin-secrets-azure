@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	walAppKey          = "appCreate"
-	walRotateRootCreds = "rotateRootCreds"
+	walAppKey            = "appCreate"
+	walRotateRootCreds   = "rotateRootCreds"
+	walAppRoleAssignment = "appRoleAssign"
 )
 
 // Eventually expire the WAL if for some reason the rollback operation consistently fails
@@ -23,6 +24,8 @@ func (b *azureSecretBackend) walRollback(ctx context.Context, req *logical.Reque
 		return b.rollbackAppWAL(ctx, req, data)
 	case walRotateRootCreds:
 		return b.rollbackRootWAL(ctx, req, data)
+	case walAppRoleAssignment:
+		return b.rollbackRoleAssignWAL(ctx, req, data)
 	default:
 		return fmt.Errorf("unknown rollback type %q", kind)
 	}
@@ -93,5 +96,52 @@ func (b *azureSecretBackend) rollbackRootWAL(ctx context.Context, req *logical.R
 
 	b.updatePassword = false
 
+	return nil
+}
+
+type walAppRoleAssign struct {
+	SpID          string
+	AssignmentIDs []string
+	AzureRoles    []*AzureRole
+	Expiration    time.Time
+}
+
+func (b *azureSecretBackend) rollbackRoleAssignWAL(ctx context.Context, req *logical.Request, data interface{}) error {
+	// Decode the WAL data
+	var entry walAppRoleAssign
+	d, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		DecodeHook: mapstructure.StringToTimeHookFunc(time.RFC3339),
+		Result:     &entry,
+	})
+	if err != nil {
+		return err
+	}
+	err = d.Decode(data)
+	if err != nil {
+		return err
+	}
+
+	client, err := b.getClient(ctx, req.Storage)
+	if err != nil {
+		return err
+	}
+
+	b.Logger().Debug("rolling back role assignments for SP", "ID", entry.SpID)
+
+	// Assemble all App Role Assignment IDs
+	var roleAssignments []string
+	for i, assignmentID := range entry.AssignmentIDs {
+		roleAssignments = append(roleAssignments, fmt.Sprintf("%s/providers/Microsoft.Authorization/roleAssignments/%s",
+			entry.AzureRoles[i].Scope,
+			assignmentID))
+	}
+
+	if err := client.unassignRoles(ctx, roleAssignments); err != nil {
+		b.Logger().Warn("rollback error unassinging Role", "err", err)
+		if time.Now().After(entry.Expiration) {
+			return nil
+		}
+		return err
+	}
 	return nil
 }

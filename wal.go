@@ -128,7 +128,12 @@ func (b *azureSecretBackend) rollbackRoleAssignWAL(ctx context.Context, req *log
 		return err
 	}
 
-	b.Logger().Debug("rolling back role assignments for SP", "ID", entry.SpID)
+	b.Logger().Debug("rolling back role assignments for service principal", "ID", entry.SpID)
+
+	// Return if there aren't any roles to unassign
+	if entry.AzureRoles == nil {
+		return fmt.Errorf("no azure roles associated with role")
+	}
 
 	// Assemble all App Role Assignment IDs
 	var roleAssignments []string

@@ -135,7 +135,7 @@ func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRol
 	var ids []string
 
 	if len(roles) != len(assignmentIDs) {
-		return nil, fmt.Errorf("number of Azure Roles and assignment IDs do not match")
+		return nil, errors.New("number of Azure Roles and assignment IDs do not match")
 	}
 
 	for i, role := range roles {

@@ -771,7 +771,10 @@ func TestRoleAssignmentWALRollback(t *testing.T) {
 			Storage: s,
 		}
 
-		b.spRevoke(context.Background(), req, nil)
+		_, err = b.spRevoke(context.Background(), req, nil)
+		if err != nil {
+			t.Fatalf("error revoking service principal: %s", err.Error())
+		}
 
 		// Verify that SP get is an error after delete. Expected there
 		// to be a delay and that this step would take some time/retries,

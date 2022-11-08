@@ -163,7 +163,6 @@ func assertEmptyWAL(t *testing.T, b *azureSecretBackend, emp api.AzureProvider, 
 				t.Fatalf("expected error getting application")
 			}
 		case walAppRoleAssignment:
-			fmt.Println(entry)
 			// Decode the WAL data
 			d, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 				DecodeHook: mapstructure.StringToTimeHookFunc(time.RFC3339),
@@ -642,7 +641,7 @@ func TestRoleAssignmentWALRollback(t *testing.T) {
 			{
 				"role_name": "Reader",
 				"scope":  "/subscriptions/%s/resourceGroups/%s"
-			}]`, subscriptionID, subscriptionID, resourceGroup, resourceGroup),
+			}]`, subscriptionID, resourceGroup, subscriptionID, resourceGroup),
 		}
 
 		roleResp, err := b.HandleRequest(context.Background(), &logical.Request{

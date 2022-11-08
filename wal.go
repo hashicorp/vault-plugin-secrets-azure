@@ -69,6 +69,7 @@ func (b *azureSecretBackend) rollbackAppWAL(ctx context.Context, req *logical.Re
 		b.Logger().Warn("rollback error deleting App", "err", err)
 
 		if time.Now().After(entry.Expiration) {
+			b.Logger().Warn("app WAL expired prior to rollback; resources may still exist")
 			return nil
 		}
 		return err
@@ -160,6 +161,7 @@ func (b *azureSecretBackend) rollbackRoleAssignWAL(ctx context.Context, req *log
 			}
 		}
 		if time.Now().After(entry.Expiration) {
+			b.Logger().Warn("role assignment WAL expired prior to rollback; resources may still exist")
 			return nil
 		}
 	}

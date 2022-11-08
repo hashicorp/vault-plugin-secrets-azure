@@ -132,7 +132,8 @@ func (b *azureSecretBackend) rollbackRoleAssignWAL(ctx context.Context, req *log
 
 	// Return if there aren't any roles to unassign
 	if entry.AzureRoles == nil {
-		return fmt.Errorf("no azure roles associated with role")
+		b.Logger().Error("no azure roles associated with role")
+		return nil
 	}
 
 	// Assemble all App Role Assignment IDs
@@ -155,7 +156,7 @@ func (b *azureSecretBackend) rollbackRoleAssignWAL(ctx context.Context, req *log
 			case strings.Contains(e.Error(), "StatusCode=204"):
 				b.Logger().Trace("role assignment already deleted or does not exist", "err", e.Error())
 			default:
-				b.Logger().Error("rollback error unassinging role", "err", e.Error())
+				return fmt.Errorf("rollback error unassinging role: %w", e)
 			}
 		}
 		if time.Now().After(entry.Expiration) {

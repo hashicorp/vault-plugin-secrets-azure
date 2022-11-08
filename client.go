@@ -134,6 +134,10 @@ func (c *client) deleteServicePrincipal(ctx context.Context, spObjectID string, 
 func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRole, assignmentIDs []string) ([]string, error) {
 	var ids []string
 
+	if len(roles) != len(assignmentIDs) {
+		return nil, fmt.Errorf("number of Azure Roles and assignment IDs do not match")
+	}
+
 	for i, role := range roles {
 		resultRaw, err := retry(ctx, func() (interface{}, bool, error) {
 			if assignmentIDs[i] == "" {

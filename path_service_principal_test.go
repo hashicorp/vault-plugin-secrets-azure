@@ -129,37 +129,64 @@ func assertEmptyWAL(t *testing.T, b *azureSecretBackend, emp api.AzureProvider, 
 			t.Fatal(err)
 		}
 
-		// Decode the WAL data
-		var app walApp
-		d, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-			DecodeHook: mapstructure.StringToTimeHookFunc(time.RFC3339),
-			Result:     &app,
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = d.Decode(entry.Data)
-		if err != nil {
-			t.Fatal(err)
+		switch entry.Kind {
+		case walAppKey:
+			// Decode the WAL data
+			var app walApp
+			d, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+				DecodeHook: mapstructure.StringToTimeHookFunc(time.RFC3339),
+				Result:     &app,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = d.Decode(entry.Data)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			_, err = emp.GetApplication(context.Background(), app.AppObjID)
+			if err != nil {
+				t.Fatalf("expected to find application (%s), but wasn't found", app.AppObjID)
+			}
+
+			err = b.walRollback(ctx, req, entry.Kind, entry.Data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := framework.DeleteWAL(ctx, s, v); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err = emp.GetApplication(context.Background(), app.AppObjID)
+			if err == nil {
+				t.Fatalf("expected error getting application")
+			}
+		case walAppRoleAssignment:
+			fmt.Println(entry)
+			// Decode the WAL data
+			d, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+				DecodeHook: mapstructure.StringToTimeHookFunc(time.RFC3339),
+				Result:     &entry,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = d.Decode(entry.Data)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			err = b.walRollback(ctx, req, entry.Kind, entry.Data)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if err := framework.DeleteWAL(ctx, s, v); err != nil {
+				t.Fatal(err)
+			}
 		}
 
-		_, err = emp.GetApplication(context.Background(), app.AppObjID)
-		if err != nil {
-			t.Fatalf("expected to find application (%s), but wasn't found", app.AppObjID)
-		}
-
-		err = b.walRollback(ctx, req, entry.Kind, entry.Data)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := framework.DeleteWAL(ctx, s, v); err != nil {
-			t.Fatal(err)
-		}
-
-		_, err = emp.GetApplication(context.Background(), app.AppObjID)
-		if err == nil {
-			t.Fatalf("expected error getting application")
-		}
 	}
 }
 
@@ -567,6 +594,7 @@ func TestRoleAssignmentWALRollback(t *testing.T) {
 			"AZURE_CLIENT_ID",
 			"AZURE_CLIENT_SECRET",
 			"AZURE_TENANT_ID",
+			"AZURE_TEST_RESOURCE_GROUP",
 		)
 
 		b := backend()
@@ -575,6 +603,7 @@ func TestRoleAssignmentWALRollback(t *testing.T) {
 		clientID := os.Getenv("AZURE_CLIENT_ID")
 		clientSecret := os.Getenv("AZURE_CLIENT_SECRET")
 		tenantID := os.Getenv("AZURE_TENANT_ID")
+		resourceGroup := os.Getenv("AZURE_TEST_RESOURCE_GROUP")
 
 		config := &logical.BackendConfig{
 			Logger: logging.NewVaultLogger(log.Trace),
@@ -608,12 +637,12 @@ func TestRoleAssignmentWALRollback(t *testing.T) {
 			"azure_roles": fmt.Sprintf(`[
 			{
 				"role_name": "Storage Blob Data Owner",
-				"scope":  "/subscriptions/%s/resourceGroups/vault-azure-secrets-test1"
+				"scope":  "/subscriptions/%s/resourceGroups/%s"
 			},
 			{
 				"role_name": "Reader",
-				"scope":  "/subscriptions/%s/resourceGroups/vault-azure-secrets-test2"
-			}]`, subscriptionID, subscriptionID),
+				"scope":  "/subscriptions/%s/resourceGroups/%s"
+			}]`, subscriptionID, subscriptionID, resourceGroup, resourceGroup),
 		}
 
 		roleResp, err := b.HandleRequest(context.Background(), &logical.Request{
@@ -675,7 +704,7 @@ func TestRoleAssignmentWALRollback(t *testing.T) {
 
 		// Remove one of the RA IDs to simulate a failure to assign a role
 		if err := client.unassignRoles(context.Background(), []string{raIDs[0]}); err != nil {
-			t.Fatalf("error unassinging Role: %s", err.Error())
+			t.Fatalf("error unassigning Role: %s", err.Error())
 		}
 
 		rEntry, err := s.Get(context.Background(), fmt.Sprintf("%s/%s", "roles", roleName))

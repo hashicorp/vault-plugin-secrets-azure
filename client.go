@@ -126,17 +126,19 @@ func (c *client) deleteApp(ctx context.Context, appObjectID string) error {
 }
 
 // assignRoles assigns Azure roles to a service principal.
-func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRole) ([]string, error) {
+func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRole, assignmentIDs []string) ([]string, error) {
 	var ids []string
 
-	for _, role := range roles {
-		assignmentID, err := uuid.GenerateUUID()
-		if err != nil {
-			return nil, err
-		}
+	if len(roles) != len(assignmentIDs) {
+		return nil, errors.New("number of Azure Roles and assignment IDs do not match")
+	}
 
+	for i, role := range roles {
 		resultRaw, err := retry(ctx, func() (interface{}, bool, error) {
-			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentID,
+			if assignmentIDs[i] == "" {
+				return nil, true, fmt.Errorf("assignmentID at index %d was empty", i)
+			}
+			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentIDs[i],
 				authorization.RoleAssignmentCreateParameters{
 					RoleAssignmentProperties: &authorization.RoleAssignmentProperties{
 						RoleDefinitionID: &role.RoleID,

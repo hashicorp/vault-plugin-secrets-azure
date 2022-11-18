@@ -459,7 +459,7 @@ func (b *azureSecretBackend) pathRoleList(ctx context.Context, req *logical.Requ
 }
 
 func (b *azureSecretBackend) pathRoleDelete(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-	resp := new(logical.Response)
+	var resp *logical.Response
 
 	name := d.Get("name").(string)
 	role, err := getRole(ctx, name, req.Storage)
@@ -474,9 +474,10 @@ func (b *azureSecretBackend) pathRoleDelete(ctx context.Context, req *logical.Re
 		}
 
 		// unassigning roles and removing group membership is effectively a garbage collection operation.
-		// Errors will be noted but won't fail the revocation process. 
+		// Errors will be noted but won't fail the revocation process.
 		// Deleting the app, however, *is* required to consider the secret revoked.
 		if err := removeRolesAndGroupMembership(ctx, c, role); err != nil {
+			resp = new(logical.Response)
 			resp.AddWarning(err.Error())
 		}
 

@@ -121,9 +121,9 @@ func (b *azureSecretBackend) createSPSecret(ctx context.Context, s logical.Stora
 		return nil, err
 	}
 
-	assignmentIDs, err := c.generateAssignmentIDsFromRole(role)
+	assignmentIDs, err := c.generateUUIDs(len(role.AzureRoles))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error generating assginment IDs; err=%w", err)
 	}
 
 	// Write a second WAL entry in case the Role assignments don't complete

@@ -142,12 +142,12 @@ func (c *client) deleteServicePrincipal(ctx context.Context, spObjectID string, 
 	return c.provider.DeleteServicePrincipal(ctx, spObjectID, permanentlyDelete)
 }
 
-// generateAssignmentIDsFromRole pre-generates UUIDs to be
-// provided to assignRoles in case we need to rollback
-func (c *client) generateAssignmentIDsFromRole(role *roleEntry) ([]string, error) {
+// generateUUIDs pre-generates a list of UUIDs of a
+// certain length.
+func (c *client) generateUUIDs(length int) ([]string, error) {
 	var assignmentIDs []string
 
-	for i := 0; i < len(role.AzureRoles); i++ {
+	for i := 0; i < length; i++ {
 		assignmentID, err := uuid.GenerateUUID()
 		if err != nil {
 			return nil, err

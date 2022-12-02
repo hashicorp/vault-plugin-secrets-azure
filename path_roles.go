@@ -345,9 +345,9 @@ func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logica
 		return err
 	}
 
-	assignmentIDs, err := c.generateAssignmentIDsFromRole(role)
+	assignmentIDs, err := c.generateUUIDs(len(role.AzureRoles))
 	if err != nil {
-		return err
+		return fmt.Errorf("error generating assginment IDs; err=%w", err)
 	}
 
 	if role.ManagedApplicationObjectID != "" {

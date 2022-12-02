@@ -14,10 +14,11 @@ import (
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/to"
-	multierror "github.com/hashicorp/go-multierror"
-	uuid "github.com/hashicorp/go-uuid"
-	"github.com/hashicorp/vault-plugin-secrets-azure/api"
+	"github.com/hashicorp/go-multierror"
+	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault/sdk/logical"
+
+	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 )
 
 const (
@@ -139,6 +140,22 @@ func (c *client) deleteApp(ctx context.Context, appObjectID string, permanentlyD
 // deleteServicePrincipal deletes an Azure service principal.
 func (c *client) deleteServicePrincipal(ctx context.Context, spObjectID string, permanentlyDelete bool) error {
 	return c.provider.DeleteServicePrincipal(ctx, spObjectID, permanentlyDelete)
+}
+
+// generateAssignmentIDsFromRole pre-generates UUIDs to be
+// provided to assignRoles in case we need to rollback
+func (c *client) generateAssignmentIDsFromRole(role *roleEntry) ([]string, error) {
+	var assignmentIDs []string
+
+	for i := 0; i < len(role.AzureRoles); i++ {
+		assignmentID, err := uuid.GenerateUUID()
+		if err != nil {
+			return nil, err
+		}
+		assignmentIDs = append(assignmentIDs, assignmentID)
+	}
+
+	return assignmentIDs, nil
 }
 
 // assignRoles assigns Azure roles to a service principal.

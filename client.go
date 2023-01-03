@@ -331,7 +331,8 @@ func (b *azureSecretBackend) getClientSettings(ctx context.Context, config *azur
 
 	pluginEnv, err := b.System().PluginEnv(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error loading plugin environment: %w", err)
+		b.Logger().Warn("failed to read plugin environment, user-agent will not be set",
+			"error", err)
 	}
 	settings.PluginEnv = pluginEnv
 

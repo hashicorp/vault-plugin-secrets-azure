@@ -1,61 +1,20 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package azuresecrets
 
 import (
 	"context"
+	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
+	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 	"github.com/hashicorp/vault/sdk/helper/useragent"
 )
 
-// AzureProvider is an interface to access underlying Azure client objects and supporting services.
-// Where practical the original function signature is preserved. client provides higher
-// level operations atop AzureProvider.
-type AzureProvider interface {
-	ApplicationsClient
-	ServicePrincipalsClient
-	ADGroupsClient
-	RoleAssignmentsClient
-	RoleDefinitionsClient
-}
-
-type ApplicationsClient interface {
-	CreateApplication(ctx context.Context, parameters graphrbac.ApplicationCreateParameters) (graphrbac.Application, error)
-	DeleteApplication(ctx context.Context, applicationObjectID string) (autorest.Response, error)
-	GetApplication(ctx context.Context, applicationObjectID string) (graphrbac.Application, error)
-	UpdateApplicationPasswordCredentials(
-		ctx context.Context,
-		applicationObjectID string,
-		parameters graphrbac.PasswordCredentialsUpdateParameters) (result autorest.Response, err error)
-	ListApplicationPasswordCredentials(ctx context.Context, applicationObjectID string) (result graphrbac.PasswordCredentialListResult, err error)
-}
-
-type ServicePrincipalsClient interface {
-	CreateServicePrincipal(ctx context.Context, parameters graphrbac.ServicePrincipalCreateParameters) (graphrbac.ServicePrincipal, error)
-}
-
-type ADGroupsClient interface {
-	AddGroupMember(ctx context.Context, groupObjectID string, parameters graphrbac.GroupAddMemberParameters) (result autorest.Response, err error)
-	RemoveGroupMember(ctx context.Context, groupObjectID, memberObjectID string) (result autorest.Response, err error)
-	GetGroup(ctx context.Context, objectID string) (result graphrbac.ADGroup, err error)
-	ListGroups(ctx context.Context, filter string) (result []graphrbac.ADGroup, err error)
-}
-
-type RoleAssignmentsClient interface {
-	CreateRoleAssignment(
-		ctx context.Context,
-		scope string,
-		roleAssignmentName string,
-		parameters authorization.RoleAssignmentCreateParameters) (authorization.RoleAssignment, error)
-	DeleteRoleAssignmentByID(ctx context.Context, roleID string) (authorization.RoleAssignment, error)
-}
-
-type RoleDefinitionsClient interface {
-	ListRoles(ctx context.Context, scope string, filter string) ([]authorization.RoleDefinition, error)
-	GetRoleByID(ctx context.Context, roleID string) (result authorization.RoleDefinition, err error)
-}
+var _ api.AzureProvider = (*provider)(nil)
 
 // provider is a concrete implementation of AzureProvider. In most cases it is a simple passthrough
 // to the appropriate client object. But if the response requires processing that is more practical
@@ -63,60 +22,61 @@ type RoleDefinitionsClient interface {
 type provider struct {
 	settings *clientSettings
 
-	appClient    *graphrbac.ApplicationsClient
-	spClient     *graphrbac.ServicePrincipalsClient
-	groupsClient *graphrbac.GroupsClient
+	appClient    api.ApplicationsClient
+	spClient     api.ServicePrincipalClient
+	groupsClient api.GroupsClient
 	raClient     *authorization.RoleAssignmentsClient
 	rdClient     *authorization.RoleDefinitionsClient
 }
 
 // newAzureProvider creates an azureProvider, backed by Azure client objects for underlying services.
-func newAzureProvider(settings *clientSettings) (AzureProvider, error) {
+func newAzureProvider(settings *clientSettings, passwords api.Passwords) (api.AzureProvider, error) {
 	// build clients that use the GraphRBAC endpoint
-	authorizer, err := getAuthorizer(settings, settings.Environment.GraphEndpoint)
+	userAgent := useragent.PluginString(settings.PluginEnv, userAgentPluginName)
+
+	var appClient api.ApplicationsClient
+	var groupsClient api.GroupsClient
+	var spClient api.ServicePrincipalClient
+
+	graphURI, err := api.GetGraphURI(settings.Environment.Name)
 	if err != nil {
 		return nil, err
 	}
 
-	var userAgent string
-	if settings.PluginEnv != nil {
-		userAgent = useragent.PluginString(settings.PluginEnv, "azure-secrets")
-	} else {
-		userAgent = useragent.String()
+	graphApiAuthorizer, err := getAuthorizer(settings, graphURI)
+	if err != nil {
+		return nil, err
 	}
 
-	appClient := graphrbac.NewApplicationsClient(settings.TenantID)
-	appClient.Authorizer = authorizer
-	appClient.AddToUserAgent(userAgent)
+	msGraphAppClient, err := api.NewMSGraphApplicationClient(settings.SubscriptionID, userAgent, graphURI, graphApiAuthorizer)
+	if err != nil {
+		return nil, err
+	}
 
-	spClient := graphrbac.NewServicePrincipalsClient(settings.TenantID)
-	spClient.Authorizer = authorizer
-	spClient.AddToUserAgent(userAgent)
-
-	groupsClient := graphrbac.NewGroupsClient(settings.TenantID)
-	groupsClient.Authorizer = authorizer
-	groupsClient.AddToUserAgent(userAgent)
+	appClient = msGraphAppClient
+	groupsClient = msGraphAppClient
+	spClient = msGraphAppClient
 
 	// build clients that use the Resource Manager endpoint
-	authorizer, err = getAuthorizer(settings, settings.Environment.ResourceManagerEndpoint)
+	resourceManagerAuthorizer, err := getAuthorizer(settings, settings.Environment.ResourceManagerEndpoint)
 	if err != nil {
 		return nil, err
 	}
 
-	raClient := authorization.NewRoleAssignmentsClient(settings.SubscriptionID)
-	raClient.Authorizer = authorizer
+	raClient := authorization.NewRoleAssignmentsClientWithBaseURI(settings.Environment.ResourceManagerEndpoint, settings.SubscriptionID)
+	raClient.Authorizer = resourceManagerAuthorizer
 	raClient.AddToUserAgent(userAgent)
 
-	rdClient := authorization.NewRoleDefinitionsClient(settings.SubscriptionID)
-	rdClient.Authorizer = authorizer
+	rdClient := authorization.NewRoleDefinitionsClientWithBaseURI(settings.Environment.ResourceManagerEndpoint, settings.SubscriptionID)
+	rdClient.Authorizer = resourceManagerAuthorizer
 	rdClient.AddToUserAgent(userAgent)
 
 	p := &provider{
 		settings: settings,
 
-		appClient:    &appClient,
-		spClient:     &spClient,
-		groupsClient: &groupsClient,
+		appClient:    appClient,
+		spClient:     spClient,
+		groupsClient: groupsClient,
 		raClient:     &raClient,
 		rdClient:     &rdClient,
 	}
@@ -126,59 +86,58 @@ func newAzureProvider(settings *clientSettings) (AzureProvider, error) {
 
 // getAuthorizer attempts to create an authorizer, preferring ClientID/Secret if present,
 // and falling back to MSI if not.
-func getAuthorizer(settings *clientSettings, resource string) (authorizer autorest.Authorizer, err error) {
-
+func getAuthorizer(settings *clientSettings, resource string) (autorest.Authorizer, error) {
 	if settings.ClientID != "" && settings.ClientSecret != "" && settings.TenantID != "" {
 		config := auth.NewClientCredentialsConfig(settings.ClientID, settings.ClientSecret, settings.TenantID)
 		config.AADEndpoint = settings.Environment.ActiveDirectoryEndpoint
 		config.Resource = resource
-		authorizer, err = config.Authorizer()
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		config := auth.NewMSIConfig()
-		config.Resource = resource
-		authorizer, err = config.Authorizer()
-		if err != nil {
-			return nil, err
-		}
+		return config.Authorizer()
 	}
 
-	return authorizer, nil
+	config := auth.NewMSIConfig()
+	config.Resource = resource
+	return config.Authorizer()
 }
 
 // CreateApplication create a new Azure application object.
-func (p *provider) CreateApplication(ctx context.Context, parameters graphrbac.ApplicationCreateParameters) (graphrbac.Application, error) {
-	return p.appClient.Create(ctx, parameters)
+func (p *provider) CreateApplication(ctx context.Context, displayName string) (result api.ApplicationResult, err error) {
+	return p.appClient.CreateApplication(ctx, displayName)
 }
 
-func (p *provider) GetApplication(ctx context.Context, applicationObjectID string) (graphrbac.Application, error) {
-	return p.appClient.Get(ctx, applicationObjectID)
+func (p *provider) GetApplication(ctx context.Context, applicationObjectID string) (result api.ApplicationResult, err error) {
+	return p.appClient.GetApplication(ctx, applicationObjectID)
+}
+
+func (p *provider) ListApplications(ctx context.Context, filter string) ([]api.ApplicationResult, error) {
+	return p.appClient.ListApplications(ctx, filter)
 }
 
 // DeleteApplication deletes an Azure application object.
 // This will in turn remove the service principal (but not the role assignments).
-func (p *provider) DeleteApplication(ctx context.Context, applicationObjectID string) (autorest.Response, error) {
-	return p.appClient.Delete(ctx, applicationObjectID)
+func (p *provider) DeleteApplication(ctx context.Context, applicationObjectID string, permanentlyDelete bool) error {
+	return p.appClient.DeleteApplication(ctx, applicationObjectID, permanentlyDelete)
 }
 
-func (p *provider) UpdateApplicationPasswordCredentials(ctx context.Context, applicationObjectID string, parameters graphrbac.PasswordCredentialsUpdateParameters) (result autorest.Response, err error) {
-	return p.appClient.UpdatePasswordCredentials(ctx, applicationObjectID, parameters)
+func (p *provider) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime time.Time) (result api.PasswordCredentialResult, err error) {
+	return p.appClient.AddApplicationPassword(ctx, applicationObjectID, displayName, endDateTime)
 }
 
-func (p *provider) ListApplicationPasswordCredentials(ctx context.Context, applicationObjectID string) (result graphrbac.PasswordCredentialListResult, err error) {
-	return p.appClient.ListPasswordCredentials(ctx, applicationObjectID)
+func (p *provider) RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) (err error) {
+	return p.appClient.RemoveApplicationPassword(ctx, applicationObjectID, keyID)
 }
 
 // CreateServicePrincipal creates a new Azure service principal.
 // An Application must be created prior to calling this and pass in parameters.
-func (p *provider) CreateServicePrincipal(ctx context.Context, parameters graphrbac.ServicePrincipalCreateParameters) (graphrbac.ServicePrincipal, error) {
-	return p.spClient.Create(ctx, parameters)
+func (p *provider) CreateServicePrincipal(ctx context.Context, appID string, startDate time.Time, endDate time.Time) (id string, password string, err error) {
+	return p.spClient.CreateServicePrincipal(ctx, appID, startDate, endDate)
+}
+
+func (p *provider) DeleteServicePrincipal(ctx context.Context, spObjectID string, permanentlyDelete bool) error {
+	return p.spClient.DeleteServicePrincipal(ctx, spObjectID, permanentlyDelete)
 }
 
 // ListRoles like all Azure roles with a scope (often subscription).
-func (p *provider) ListRoles(ctx context.Context, scope string, filter string) (result []authorization.RoleDefinition, err error) {
+func (p *provider) ListRoleDefinitions(ctx context.Context, scope string, filter string) (result []authorization.RoleDefinition, err error) {
 	page, err := p.rdClient.List(ctx, scope, filter)
 
 	if err != nil {
@@ -189,7 +148,7 @@ func (p *provider) ListRoles(ctx context.Context, scope string, filter string) (
 }
 
 // GetRoleByID fetches the full role definition given a roleID.
-func (p *provider) GetRoleByID(ctx context.Context, roleID string) (result authorization.RoleDefinition, err error) {
+func (p *provider) GetRoleDefinitionByID(ctx context.Context, roleID string) (result authorization.RoleDefinition, err error) {
 	return p.rdClient.GetByID(ctx, roleID)
 }
 
@@ -209,7 +168,7 @@ func (p *provider) DeleteRoleAssignmentByID(ctx context.Context, roleAssignmentI
 }
 
 // ListRoleAssignments lists all role assignments.
-// There is no need for paging; the caller only cares about the the first match and whether
+// There is no need for paging; the caller only cares about the first match and whether
 // there are 0, 1 or >1 items. Unpacking here is a simpler interface.
 func (p *provider) ListRoleAssignments(ctx context.Context, filter string) ([]authorization.RoleAssignment, error) {
 	page, err := p.raClient.List(ctx, filter)
@@ -221,27 +180,22 @@ func (p *provider) ListRoleAssignments(ctx context.Context, filter string) ([]au
 	return page.Values(), nil
 }
 
-// AddGroupMember adds a member to a AAD Group.
-func (p *provider) AddGroupMember(ctx context.Context, groupObjectID string, parameters graphrbac.GroupAddMemberParameters) (result autorest.Response, err error) {
-	return p.groupsClient.AddMember(ctx, groupObjectID, parameters)
+// AddGroupMember adds a member to a Group.
+func (p *provider) AddGroupMember(ctx context.Context, groupObjectID string, memberObjectID string) (err error) {
+	return p.groupsClient.AddGroupMember(ctx, groupObjectID, memberObjectID)
 }
 
-// RemoveGroupMember removes a member from a AAD Group.
-func (p *provider) RemoveGroupMember(ctx context.Context, groupObjectID, memberObjectID string) (result autorest.Response, err error) {
-	return p.groupsClient.RemoveMember(ctx, groupObjectID, memberObjectID)
+// RemoveGroupMember removes a member from a Group.
+func (p *provider) RemoveGroupMember(ctx context.Context, groupObjectID, memberObjectID string) (err error) {
+	return p.groupsClient.RemoveGroupMember(ctx, groupObjectID, memberObjectID)
 }
 
 // GetGroup gets group information from the directory.
-func (p *provider) GetGroup(ctx context.Context, objectID string) (result graphrbac.ADGroup, err error) {
-	return p.groupsClient.Get(ctx, objectID)
+func (p *provider) GetGroup(ctx context.Context, objectID string) (result api.Group, err error) {
+	return p.groupsClient.GetGroup(ctx, objectID)
 }
 
 // ListGroups gets list of groups for the current tenant.
-func (p *provider) ListGroups(ctx context.Context, filter string) (result []graphrbac.ADGroup, err error) {
-	page, err := p.groupsClient.List(ctx, filter)
-	if err != nil {
-		return nil, err
-	}
-
-	return page.Values(), nil
+func (p *provider) ListGroups(ctx context.Context, filter string) (result []api.Group, err error) {
+	return p.groupsClient.ListGroups(ctx, filter)
 }

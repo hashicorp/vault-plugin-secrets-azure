@@ -79,3 +79,8 @@ ui/libpeerconnection.log
 ui/npm-debug.log
 ui/testem.log
 tmp/
+local_environment_setup.sh
+**/.terraform/*
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*

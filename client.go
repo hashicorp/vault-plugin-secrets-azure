@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package azuresecrets
 
 import (
@@ -5,19 +8,20 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/graphrbac/1.6/graphrbac"
 	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
+	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
-	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/Azure/go-autorest/autorest/to"
-	"github.com/hashicorp/errwrap"
-	multierror "github.com/hashicorp/go-multierror"
-	uuid "github.com/hashicorp/go-uuid"
+	"github.com/hashicorp/go-multierror"
+	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault/sdk/logical"
+
+	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 )
 
 const (
@@ -30,10 +34,10 @@ const (
 // for handlers. It in turn relies on a Provider interface to access the lower level
 // Azure Client SDK methods.
 type client struct {
-	provider   AzureProvider
+	provider   api.AzureProvider
 	settings   *clientSettings
 	expiration time.Time
-	passwords  passwords
+	passwords  api.Passwords
 }
 
 // Valid returns whether the client defined and not expired.
@@ -44,7 +48,8 @@ func (c *client) Valid() bool {
 // createApp creates a new Azure application.
 // An Application is a needed to create service principals used by
 // the caller for authentication.
-func (c *client) createApp(ctx context.Context) (app *graphrbac.Application, err error) {
+func (c *client) createApp(ctx context.Context) (app *api.ApplicationResult, err error) {
+	// TODO: Make this name customizable with the same logic as username customization
 	name, err := uuid.GenerateUUID()
 	if err != nil {
 		return nil, err
@@ -52,14 +57,16 @@ func (c *client) createApp(ctx context.Context) (app *graphrbac.Application, err
 
 	name = appNamePrefix + name
 
-	appURL := fmt.Sprintf("https://%s", name)
+	result, err := c.provider.CreateApplication(ctx, name)
 
-	result, err := c.provider.CreateApplication(ctx, graphrbac.ApplicationCreateParameters{
-		AvailableToOtherTenants: to.BoolPtr(false),
-		DisplayName:             to.StringPtr(name),
-		Homepage:                to.StringPtr(appURL),
-		IdentifierUris:          to.StringSlicePtr([]string{appURL}),
-	})
+	return &result, err
+}
+
+func (c *client) createAppWithName(ctx context.Context, rolename string) (app *api.ApplicationResult, err error) {
+	intSuffix := fmt.Sprintf("%d", time.Now().Unix())
+	name := fmt.Sprintf("%s%s-%s", appNamePrefix, rolename, intSuffix)
+
+	result, err := c.provider.CreateApplication(ctx, name)
 
 	return &result, err
 }
@@ -67,165 +74,111 @@ func (c *client) createApp(ctx context.Context) (app *graphrbac.Application, err
 // createSP creates a new service principal.
 func (c *client) createSP(
 	ctx context.Context,
-	app *graphrbac.Application,
-	duration time.Duration) (svcPrinc *graphrbac.ServicePrincipal, password string, err error) {
+	app *api.ApplicationResult,
+	duration time.Duration) (spID string, password string, err error) {
 
-	// Generate a random key (which must be a UUID) and password
-	keyID, err := uuid.GenerateUUID()
-	if err != nil {
-		return nil, "", err
-	}
-
-	password, err = c.passwords.generate(ctx)
-	if err != nil {
-		return nil, "", err
+	type idPass struct {
+		ID       string
+		Password string
 	}
 
 	resultRaw, err := retry(ctx, func() (interface{}, bool, error) {
-		now := time.Now().UTC()
-		result, err := c.provider.CreateServicePrincipal(ctx, graphrbac.ServicePrincipalCreateParameters{
-			AppID:          app.AppID,
-			AccountEnabled: to.BoolPtr(true),
-			PasswordCredentials: &[]graphrbac.PasswordCredential{
-				graphrbac.PasswordCredential{
-					StartDate: &date.Time{Time: now},
-					EndDate:   &date.Time{Time: now.Add(duration)},
-					KeyID:     to.StringPtr(keyID),
-					Value:     to.StringPtr(password),
-				},
-			},
-		})
+		now := time.Now()
+		spID, password, err := c.provider.CreateServicePrincipal(ctx, *app.AppID, now, now.Add(duration))
 
 		// Propagation delays within Azure can cause this error occasionally, so don't quit on it.
 		if err != nil && strings.Contains(err.Error(), "does not reference a valid application object") {
 			return nil, false, nil
 		}
 
+		result := idPass{
+			ID:       spID,
+			Password: password,
+		}
+
 		return result, true, err
 	})
 
 	if err != nil {
-		return nil, "", errwrap.Wrapf("error creating service principal: {{err}}", err)
+		return "", "", fmt.Errorf("error creating service principal: %w", err)
 	}
 
-	result := resultRaw.(graphrbac.ServicePrincipal)
+	result := resultRaw.(idPass)
 
-	return &result, password, nil
+	return result.ID, result.Password, nil
 }
 
 // addAppPassword adds a new password to an App's credentials list.
-func (c *client) addAppPassword(ctx context.Context, appObjID string, duration time.Duration) (keyID string, password string, err error) {
-	keyID, err = uuid.GenerateUUID()
+func (c *client) addAppPassword(ctx context.Context, appObjID string, expiresIn time.Duration) (string, string, error) {
+	exp := time.Now().Add(expiresIn)
+	resp, err := c.provider.AddApplicationPassword(ctx, appObjID, "vault-plugin-secrets-azure", exp)
 	if err != nil {
-		return "", "", err
-	}
-
-	// Key IDs are not secret, and they're a convenient way for an operator to identify Vault-generated
-	// passwords. These must be UUIDs, so the three leading bytes will be used as an indicator.
-	keyID = "ffffff" + keyID[6:]
-
-	password, err = c.passwords.generate(ctx)
-	if err != nil {
-		return "", "", err
-	}
-
-	now := time.Now().UTC()
-	cred := graphrbac.PasswordCredential{
-		StartDate: &date.Time{Time: now},
-		EndDate:   &date.Time{Time: now.Add(duration)},
-		KeyID:     to.StringPtr(keyID),
-		Value:     to.StringPtr(password),
-	}
-
-	// Load current credentials
-	resp, err := c.provider.ListApplicationPasswordCredentials(ctx, appObjID)
-	if err != nil {
-		return "", "", errwrap.Wrapf("error fetching credentials: {{err}}", err)
-	}
-	curCreds := *resp.Value
-
-	// Add and save credentials
-	curCreds = append(curCreds, cred)
-
-	if _, err := c.provider.UpdateApplicationPasswordCredentials(ctx, appObjID,
-		graphrbac.PasswordCredentialsUpdateParameters{
-			Value: &curCreds,
-		},
-	); err != nil {
 		if strings.Contains(err.Error(), "size of the object has exceeded its limit") {
 			err = errors.New("maximum number of Application passwords reached")
 		}
-		return "", "", errwrap.Wrapf("error updating credentials: {{err}}", err)
+		return "", "", fmt.Errorf("error updating credentials: %w", err)
 	}
 
-	return keyID, password, nil
+	return to.String(resp.KeyID), to.String(resp.SecretText), nil
 }
 
 // deleteAppPassword removes a password, if present, from an App's credentials list.
 func (c *client) deleteAppPassword(ctx context.Context, appObjID, keyID string) error {
-	// Load current credentials
-	resp, err := c.provider.ListApplicationPasswordCredentials(ctx, appObjID)
+	err := c.provider.RemoveApplicationPassword(ctx, appObjID, keyID)
 	if err != nil {
-		return errwrap.Wrapf("error fetching credentials: {{err}}", err)
-	}
-	curCreds := *resp.Value
-
-	// Remove credential
-	found := false
-	for i := range curCreds {
-		if to.String(curCreds[i].KeyID) == keyID {
-			curCreds[i] = curCreds[len(curCreds)-1]
-			curCreds = curCreds[:len(curCreds)-1]
-			found = true
-			break
+		if strings.Contains(err.Error(), "No password credential found with keyId") {
+			return nil
 		}
-	}
-
-	// KeyID is not present, so nothing to do
-	if !found {
-		return nil
-	}
-
-	// Save new credentials list
-	if _, err := c.provider.UpdateApplicationPasswordCredentials(ctx, appObjID,
-		graphrbac.PasswordCredentialsUpdateParameters{
-			Value: &curCreds,
-		},
-	); err != nil {
-		return errwrap.Wrapf("error updating credentials: {{err}}", err)
+		return fmt.Errorf("error removing credentials: %w", err)
 	}
 
 	return nil
 }
 
 // deleteApp deletes an Azure application.
-func (c *client) deleteApp(ctx context.Context, appObjectID string) error {
-	resp, err := c.provider.DeleteApplication(ctx, appObjectID)
-
-	// Don't consider it an error if the object wasn't present
-	if err != nil && resp.Response != nil && resp.StatusCode == 404 {
-		return nil
-	}
-
-	return err
+func (c *client) deleteApp(ctx context.Context, appObjectID string, permanentlyDelete bool) error {
+	return c.provider.DeleteApplication(ctx, appObjectID, permanentlyDelete)
 }
 
-// assignRoles assigns Azure roles to a service principal.
-func (c *client) assignRoles(ctx context.Context, sp *graphrbac.ServicePrincipal, roles []*AzureRole) ([]string, error) {
-	var ids []string
+// deleteServicePrincipal deletes an Azure service principal.
+func (c *client) deleteServicePrincipal(ctx context.Context, spObjectID string, permanentlyDelete bool) error {
+	return c.provider.DeleteServicePrincipal(ctx, spObjectID, permanentlyDelete)
+}
 
-	for _, role := range roles {
+// generateUUIDs pre-generates a list of UUIDs of a
+// certain length.
+func (c *client) generateUUIDs(length int) ([]string, error) {
+	var assignmentIDs []string
+
+	for i := 0; i < length; i++ {
 		assignmentID, err := uuid.GenerateUUID()
 		if err != nil {
 			return nil, err
 		}
+		assignmentIDs = append(assignmentIDs, assignmentID)
+	}
 
+	return assignmentIDs, nil
+}
+
+// assignRoles assigns Azure roles to a service principal.
+func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRole, assignmentIDs []string) ([]string, error) {
+	var ids []string
+
+	if len(roles) != len(assignmentIDs) {
+		return nil, errors.New("number of Azure Roles and assignment IDs do not match")
+	}
+
+	for i, role := range roles {
 		resultRaw, err := retry(ctx, func() (interface{}, bool, error) {
-			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentID,
+			if assignmentIDs[i] == "" {
+				return nil, true, fmt.Errorf("assignmentID at index %d was empty", i)
+			}
+			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentIDs[i],
 				authorization.RoleAssignmentCreateParameters{
 					RoleAssignmentProperties: &authorization.RoleAssignmentProperties{
-						RoleDefinitionID: to.StringPtr(role.RoleID),
-						PrincipalID:      sp.ObjectID,
+						RoleDefinitionID: &role.RoleID,
+						PrincipalID:      &spID,
 					},
 				})
 
@@ -238,7 +191,7 @@ func (c *client) assignRoles(ctx context.Context, sp *graphrbac.ServicePrincipal
 		})
 
 		if err != nil {
-			return nil, errwrap.Wrapf("error while assigning roles: {{err}}", err)
+			return nil, fmt.Errorf("error while assigning roles: %w", err)
 		}
 
 		ids = append(ids, resultRaw.(string))
@@ -256,7 +209,13 @@ func (c *client) unassignRoles(ctx context.Context, roleIDs []string) error {
 
 	for _, id := range roleIDs {
 		if _, err := c.provider.DeleteRoleAssignmentByID(ctx, id); err != nil {
-			merr = multierror.Append(merr, errwrap.Wrapf("error unassigning role: {{err}}", err))
+			detailedErr := new(autorest.DetailedError)
+			// If a role was deleted manually then Azure returns a error and status 204
+			if errors.As(err, detailedErr) && (detailedErr.StatusCode == http.StatusNoContent || detailedErr.StatusCode == http.StatusNotFound) {
+				continue
+			}
+
+			merr = multierror.Append(merr, fmt.Errorf("error unassigning role: %w", err))
 		}
 	}
 
@@ -264,19 +223,10 @@ func (c *client) unassignRoles(ctx context.Context, roleIDs []string) error {
 }
 
 // addGroupMemberships adds the service principal to the Azure groups.
-func (c *client) addGroupMemberships(ctx context.Context, sp *graphrbac.ServicePrincipal, groups []*AzureGroup) error {
+func (c *client) addGroupMemberships(ctx context.Context, spID string, groups []*AzureGroup) error {
 	for _, group := range groups {
 		_, err := retry(ctx, func() (interface{}, bool, error) {
-			_, err := c.provider.AddGroupMember(ctx, group.ObjectID,
-				graphrbac.GroupAddMemberParameters{
-					URL: to.StringPtr(
-						fmt.Sprintf("%s%s/directoryObjects/%s",
-							c.settings.Environment.GraphEndpoint,
-							c.settings.TenantID,
-							*sp.ObjectID,
-						),
-					),
-				})
+			err := c.provider.AddGroupMember(ctx, group.ObjectID, spID)
 
 			// Propagation delays within Azure can cause this error occasionally, so don't quit on it.
 			if err != nil && strings.Contains(err.Error(), "Request_ResourceNotFound") {
@@ -287,7 +237,7 @@ func (c *client) addGroupMemberships(ctx context.Context, sp *graphrbac.ServiceP
 		})
 
 		if err != nil {
-			return errwrap.Wrapf("error while adding group membership: {{err}}", err)
+			return fmt.Errorf("error while adding group membership: %w", err)
 		}
 	}
 
@@ -302,8 +252,13 @@ func (c *client) removeGroupMemberships(ctx context.Context, servicePrincipalObj
 	var merr *multierror.Error
 
 	for _, id := range groupIDs {
-		if _, err := c.provider.RemoveGroupMember(ctx, id, servicePrincipalObjectID); err != nil {
-			merr = multierror.Append(merr, errwrap.Wrapf("error removing group membership: {{err}}", err))
+		if err := c.provider.RemoveGroupMember(ctx, id, servicePrincipalObjectID); err != nil {
+
+			// If a membership was deleted manually then Azure returns a error with a Status=404
+			if strings.Contains(err.Error(), "Status=404") {
+				continue
+			}
+			merr = multierror.Append(merr, fmt.Errorf("error removing group membership: %w", err))
 		}
 	}
 
@@ -323,12 +278,12 @@ func groupObjectIDs(groups []*AzureGroup) []string {
 
 // search for roles by name
 func (c *client) findRoles(ctx context.Context, roleName string) ([]authorization.RoleDefinition, error) {
-	return c.provider.ListRoles(ctx, fmt.Sprintf("subscriptions/%s", c.settings.SubscriptionID), fmt.Sprintf("roleName eq '%s'", roleName))
+	return c.provider.ListRoleDefinitions(ctx, fmt.Sprintf("subscriptions/%s", c.settings.SubscriptionID), fmt.Sprintf("roleName eq '%s'", roleName))
 }
 
 // findGroups is used to find a group by name. It returns all groups matching
-// the passsed name.
-func (c *client) findGroups(ctx context.Context, groupName string) ([]graphrbac.ADGroup, error) {
+// the provided name.
+func (c *client) findGroups(ctx context.Context, groupName string) ([]api.Group, error) {
 	return c.provider.ListGroups(ctx, fmt.Sprintf("displayName eq '%s'", groupName))
 }
 
@@ -379,7 +334,7 @@ func (b *azureSecretBackend) getClientSettings(ctx context.Context, config *azur
 
 	pluginEnv, err := b.System().PluginEnv(ctx)
 	if err != nil {
-		return nil, errwrap.Wrapf("error loading plugin environment: {{err}}", err)
+		return nil, fmt.Errorf("failed to read plugin environment: %w", err)
 	}
 	settings.PluginEnv = pluginEnv
 
@@ -388,9 +343,9 @@ func (b *azureSecretBackend) getClientSettings(ctx context.Context, config *azur
 
 // retry will repeatedly call f until one of:
 //
-//   * f returns true
-//   * the context is cancelled
-//   * 80 seconds elapses. Vault's default request timeout is 90s; we want to expire before then.
+//   - f returns true
+//   - the context is cancelled
+//   - 80 seconds elapses. Vault's default request timeout is 90s; we want to expire before then.
 //
 // Delays are random but will average 5 seconds.
 func retry(ctx context.Context, f func() (interface{}, bool, error)) (interface{}, error) {
@@ -402,19 +357,24 @@ func retry(ctx context.Context, f func() (interface{}, bool, error)) (interface{
 	}
 
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	var lastErr error
 	for {
-		if result, done, err := f(); done {
-			return result, err
-		}
-
-		delay := time.Duration(2000+rng.Intn(6000)) * time.Millisecond
-		delayTimer.Reset(delay)
-
 		select {
 		case <-delayTimer.C:
-			// Retry loop
+			result, done, err := f()
+			if done {
+				return result, err
+			}
+			lastErr = err
+
+			delay := time.Duration(2+rng.Intn(6)) * time.Second
+			delayTimer.Reset(delay)
 		case <-ctx.Done():
-			return nil, fmt.Errorf("retry failed: %w", ctx.Err())
+			err := lastErr
+			if err == nil {
+				err = ctx.Err()
+			}
+			return nil, fmt.Errorf("retry failed: %w", err)
 		}
 	}
 }

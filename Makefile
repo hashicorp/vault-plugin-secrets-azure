@@ -6,6 +6,16 @@ EXTERNAL_TOOLS=\
 	github.com/kardianos/govendor
 BUILD_TAGS?=${TOOL}
 GOFMT_FILES?=$$(find . -name '*.go' | grep -v vendor)
+PLUGIN_NAME := $(shell command ls cmd/)
+PLUGIN_DIR ?= $$GOPATH/vault-plugins
+PLUGIN_PATH ?= local-secrets-azure
+
+# Acceptance test variables
+WITH_DEV_PLUGIN?=1
+AZURE_TENANT_ID?=
+SKIP_TEARDOWN?=
+TESTS_OUT_FILE?=
+TESTS_FILTER?='.*'
 
 # bin generates the releaseable binaries for this plugin
 bin: fmtcheck generate
@@ -22,19 +32,32 @@ dev: fmtcheck generate
 	@CGO_ENABLED=0 BUILD_TAGS='$(BUILD_TAGS)' VAULT_DEV_BUILD=1 sh -c "'$(CURDIR)/scripts/build.sh'"
 dev-dynamic: generate
 	@CGO_ENABLED=1 BUILD_TAGS='$(BUILD_TAGS)' VAULT_DEV_BUILD=1 sh -c "'$(CURDIR)/scripts/build.sh'"
+dev-acceptance: fmtcheck generate
+	@CGO_ENABLED=0 BUILD_TAGS='$(BUILD_TAGS)' VAULT_DEV_BUILD= XC_OSARCH=linux/amd64 sh -c "'$(CURDIR)/scripts/build.sh'"
 
 testcompile: fmtcheck generate
 	@for pkg in $(TEST) ; do \
 		go test -v -c -tags='$(BUILD_TAGS)' $$pkg -parallel=4 ; \
 	done
 
-# test runs all tests
+# test runs all unit tests
 test: fmtcheck generate
 	@if [ "$(TEST)" = "./..." ]; then \
 		echo "ERROR: Set TEST to a specific package"; \
 		exit 1; \
 	fi
+	VAULT_ACC= go test -tags='$(BUILD_TAGS)' $(TEST) -v $(TESTARGS) -timeout 10m
+
+testacc: fmtcheck generate
+	@if [ "$(TEST)" = "./..." ]; then \
+		echo "ERROR: Set TEST to a specific package"; \
+		exit 1; \
+	fi
 	VAULT_ACC=1 go test -tags='$(BUILD_TAGS)' $(TEST) -v $(TESTARGS) -timeout 45m
+
+# test-acceptance runs all acceptance tests
+test-acceptance: $(if $(WITH_DEV_PLUGIN), dev-acceptance)
+	 WITH_DEV_PLUGIN=$(WITH_DEV_PLUGIN) bats -f $(TESTS_FILTER) $(CURDIR)/tests/acceptance/basic.bats
 
 # generate runs `go generate` to build the dynamically generated
 # source files.
@@ -54,4 +77,16 @@ fmtcheck:
 fmt:
 	gofmt -w $(GOFMT_FILES)
 
-.PHONY: bin default generate test vet bootstrap fmt fmtcheck
+setup-env:
+	cd bootstrap/terraform && terraform init && terraform apply -auto-approve
+
+teardown-env:
+	cd bootstrap/terraform && terraform init && terraform destroy -auto-approve
+
+configure: dev
+	@./bootstrap/configure.sh \
+	$(PLUGIN_DIR) \
+	$(PLUGIN_NAME) \
+	$(PLUGIN_PATH)
+
+.PHONY: bin default generate test vet bootstrap fmt fmtcheck setup-env teardown-env configure

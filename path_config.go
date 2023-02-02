@@ -1,8 +1,12 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package azuresecrets
 
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/Azure/go-autorest/autorest/azure"
 	multierror "github.com/hashicorp/go-multierror"
@@ -12,59 +16,84 @@ import (
 
 const (
 	configStoragePath = "config"
+	// The default password expiration duration is 6 months in
+	// the Azure UI, so we're setting it to 6 months (in hours)
+	// as the default.
+	defaultRootPasswordTTL = 4380 * time.Hour
 )
 
 // azureConfig contains values to configure Azure clients and
 // defaults for roles. The zero value is useful and results in
 // environments variable and system defaults being used.
 type azureConfig struct {
-	SubscriptionID string `json:"subscription_id"`
-	TenantID       string `json:"tenant_id"`
-	ClientID       string `json:"client_id"`
-	ClientSecret   string `json:"client_secret"`
-	Environment    string `json:"environment"`
-	PasswordPolicy string `json:"password_policy"`
+	SubscriptionID                string        `json:"subscription_id"`
+	TenantID                      string        `json:"tenant_id"`
+	ClientID                      string        `json:"client_id"`
+	ClientSecret                  string        `json:"client_secret"`
+	ClientSecretKeyID             string        `json:"client_secret_key_id"`
+	NewClientSecret               string        `json:"new_client_secret"`
+	NewClientSecretCreated        time.Time     `json:"new_client_secret_created"`
+	NewClientSecretExpirationDate time.Time     `json:"new_client_secret_expiration_date"`
+	NewClientSecretKeyID          string        `json:"new_client_secret_key_id"`
+	Environment                   string        `json:"environment"`
+	PasswordPolicy                string        `json:"password_policy"`
+	RootPasswordTTL               time.Duration `json:"root_password_ttl"`
+	RootPasswordExpirationDate    time.Time     `json:"root_password_expiration_date"`
 }
 
 func pathConfig(b *azureSecretBackend) *framework.Path {
 	return &framework.Path{
 		Pattern: "config",
 		Fields: map[string]*framework.FieldSchema{
-			"subscription_id": &framework.FieldSchema{
+			"subscription_id": {
 				Type: framework.TypeString,
 				Description: `The subscription id for the Azure Active Directory.
 				This value can also be provided with the AZURE_SUBSCRIPTION_ID environment variable.`,
 			},
-			"tenant_id": &framework.FieldSchema{
+			"tenant_id": {
 				Type: framework.TypeString,
 				Description: `The tenant id for the Azure Active Directory. This value can also
 				be provided with the AZURE_TENANT_ID environment variable.`,
 			},
-			"environment": &framework.FieldSchema{
+			"environment": {
 				Type: framework.TypeString,
 				Description: `The Azure environment name. If not provided, AzurePublicCloud is used.
 				This value can also be provided with the AZURE_ENVIRONMENT environment variable.`,
 			},
-			"client_id": &framework.FieldSchema{
+			"client_id": {
 				Type: framework.TypeString,
 				Description: `The OAuth2 client id to connect to Azure.
 				This value can also be provided with the AZURE_CLIENT_ID environment variable.`,
 			},
-			"client_secret": &framework.FieldSchema{
+			"client_secret": {
 				Type: framework.TypeString,
 				Description: `The OAuth2 client secret to connect to Azure.
 				This value can also be provided with the AZURE_CLIENT_SECRET environment variable.`,
 			},
-			"password_policy": &framework.FieldSchema{
+			"password_policy": {
 				Type:        framework.TypeString,
 				Description: "Name of the password policy to use to generate passwords for dynamic credentials.",
 			},
+			"root_password_ttl": {
+				Type:        framework.TypeDurationSecond,
+				Default:     defaultRootPasswordTTL,
+				Description: "The TTL of the root password in Azure. This can be either a number of seconds or a time formatted duration (ex: 24h, 48ds)",
+				Required:    false,
+			},
 		},
-		Callbacks: map[logical.Operation]framework.OperationFunc{
-			logical.ReadOperation:   b.pathConfigRead,
-			logical.CreateOperation: b.pathConfigWrite,
-			logical.UpdateOperation: b.pathConfigWrite,
-			logical.DeleteOperation: b.pathConfigDelete,
+		Operations: map[logical.Operation]framework.OperationHandler{
+			logical.ReadOperation: &framework.PathOperation{
+				Callback: b.pathConfigRead,
+			},
+			logical.CreateOperation: &framework.PathOperation{
+				Callback: b.pathConfigWrite,
+			},
+			logical.UpdateOperation: &framework.PathOperation{
+				Callback: b.pathConfigWrite,
+			},
+			logical.DeleteOperation: &framework.PathOperation{
+				Callback: b.pathConfigDelete,
+			},
 		},
 		ExistenceCheck:  b.pathConfigExistenceCheck,
 		HelpSynopsis:    confHelpSyn,
@@ -114,11 +143,20 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 
 	config.PasswordPolicy = data.Get("password_policy").(string)
 
+	if rootExpirationRaw, ok := data.GetOk("root_password_ttl"); ok {
+		config.RootPasswordTTL = time.Second * time.Duration(rootExpirationRaw.(int))
+	} else if req.Operation == logical.CreateOperation {
+		config.RootPasswordTTL = defaultRootPasswordTTL
+	}
+
 	if merr.ErrorOrNil() != nil {
 		return logical.ErrorResponse(merr.Error()), nil
 	}
 
 	err = b.saveConfig(ctx, config, req.Storage)
+	if err != nil {
+		return nil, err
+	}
 
 	return nil, err
 }
@@ -136,12 +174,18 @@ func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Re
 
 	resp := &logical.Response{
 		Data: map[string]interface{}{
-			"subscription_id": config.SubscriptionID,
-			"tenant_id":       config.TenantID,
-			"environment":     config.Environment,
-			"client_id":       config.ClientID,
+			"subscription_id":   config.SubscriptionID,
+			"tenant_id":         config.TenantID,
+			"environment":       config.Environment,
+			"client_id":         config.ClientID,
+			"root_password_ttl": int(config.RootPasswordTTL.Seconds()),
 		},
 	}
+
+	if !config.RootPasswordExpirationDate.IsZero() {
+		resp.Data["root_password_expiration_date"] = config.RootPasswordExpirationDate
+	}
+
 	return resp, nil
 }
 

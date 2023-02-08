@@ -5,7 +5,7 @@
 CHANGES:
 
 * Changes user-agent header value to use correct Vault version information and include
-  the plugin type and name in the comment section.
+  the plugin type and name in the comment section [[GH-123]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/123)
 
 FEATURES:
 
@@ -28,7 +28,7 @@ IMPROVEMENTS:
 
 BUG FIXES:
 
-* Adds WAL rollback mechanism for to clean up Role Assignments during partial failure [[GH-110]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/110)
+* Adds WAL rollback mechanism to clean up Role Assignments during partial failure [[GH-110]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/110)
 
 ## v0.14.0
 

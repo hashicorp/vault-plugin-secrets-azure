@@ -222,6 +222,55 @@ func (c *client) unassignRoles(ctx context.Context, roleIDs []string) error {
 	return merr.ErrorOrNil()
 }
 
+func (c *client) assignAppRoles(ctx context.Context, spnObjID string, roles []*AppRoleAssignments) ([]*api.AppRoleAssignment, error) {
+	var ids []*api.AppRoleAssignment
+
+	for _, role := range roles {
+		for _, appRole := range role.Roles {
+			resultRaw, err := retry(ctx, func() (interface{}, bool, error) {
+				ra, err := c.provider.CreateAppRoleAssignment(ctx, appRole.RoleName, spnObjID, role.AppID)
+
+				// Propagation delays within Azure can cause this error occasionally, so don't quit on it.
+				if err != nil && strings.Contains(err.Error(), "PrincipalNotFound") {
+					return nil, false, nil
+				} else if err != nil {
+					return "", true, err
+				}
+
+				return ra, true, nil
+			})
+
+			if err != nil {
+				return nil, fmt.Errorf("error while assigning app roles: %w", err)
+			}
+			ids = append(ids, resultRaw.(*api.AppRoleAssignment))
+		}
+	}
+
+	return ids, nil
+}
+
+// unassignAppRoles deletes app role assignments, if they existed.
+// This is a clean-up operation that isn't essential to revocation. As such, an
+// attempt is made to remove all assignments, and not return immediately if there
+// is an error.
+func (c *client) unassignAppRoles(ctx context.Context, roleIDs []*api.AppRoleAssignment) error {
+	var merr *multierror.Error
+
+	for _, assignment := range roleIDs {
+		if err := c.provider.DeleteAppRoleAssignmentByID(ctx, assignment.ResourceID, assignment.ID); err != nil {
+			// If a role was deleted manually then Azure returns a error and status 204
+			if strings.Contains(err.Error(), "204") || strings.Contains(err.Error(), "404") {
+				continue
+			}
+
+			merr = multierror.Append(merr, fmt.Errorf("error unassigning app role: %w", err))
+		}
+	}
+
+	return merr.ErrorOrNil()
+}
+
 // addGroupMemberships adds the service principal to the Azure groups.
 func (c *client) addGroupMemberships(ctx context.Context, spID string, groups []*AzureGroup) error {
 	for _, group := range groups {

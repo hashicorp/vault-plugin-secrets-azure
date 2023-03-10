@@ -39,6 +39,7 @@ type roleEntry struct {
 
 	// Info for persisted apps
 	RoleAssignmentIDs          []string `json:"role_assignment_ids"`
+	AppRoleAssignmentIDs       []*api.AppRoleAssignment `json:"app_role_assignment_ids"`
 	GroupMembershipIDs         []string `json:"group_membership_ids"`
 	ServicePrincipalObjectID   string   `json:"sp_object_id"`
 	ManagedApplicationObjectID string   `json:"managed_application_object_id"`
@@ -347,8 +348,8 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		groupSet[r.ObjectID] = true
 	}
 
-	if role.ApplicationObjectID == "" && len(role.AzureRoles) == 0 && len(role.AzureGroups) == 0 {
-		return logical.ErrorResponse("either Azure role definitions, group definitions, or an Application Object ID must be provided"), nil
+	if role.ApplicationObjectID == "" && len(role.AzureRoles) == 0 && len(role.AzureGroups) == 0 && len(role.AppRoles) == 0 {
+		return logical.ErrorResponse("either Azure role definitions, App Roles, group definitions, or an Application Object ID must be provided"), nil
 	}
 
 	// If persisted create the app
@@ -393,6 +394,12 @@ func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logica
 		}
 		role.RoleAssignmentIDs = raIDs
 
+		appAssignmentIDs, err := c.assignAppRoles(ctx, spObjID, role.AppRoles)
+		if err != nil {
+			return err
+		}
+		role.AppRoleAssignmentIDs = appAssignmentIDs
+
 		// Assign Azure group memberships to the new SP
 		if err := c.addGroupMemberships(ctx, spObjID, role.AzureGroups); err != nil {
 			return err
@@ -431,6 +438,14 @@ func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logica
 		return err
 	}
 	role.RoleAssignmentIDs = raIDs
+
+	// Assign App roles to the new SP
+	appAssignmentIDs, err := c.assignAppRoles(ctx, spObjID, role.AppRoles)
+	if err != nil {
+		return err
+	}
+	role.AppRoleAssignmentIDs = appAssignmentIDs
+
 
 	// Assign Azure group memberships to the new SP
 	if err := c.addGroupMemberships(ctx, spObjID, role.AzureGroups); err != nil {
@@ -519,7 +534,10 @@ func (b *azureSecretBackend) pathRoleDelete(ctx context.Context, req *logical.Re
 		}
 
 		if err = c.deleteApp(ctx, role.ApplicationObjectID, role.PermanentlyDelete); err != nil {
-			return nil, fmt.Errorf("error deleting persisted app: %w", err)
+			// If an app was deleted manually then Azure returns a error and status 404 we can ignore those
+			if !strings.Contains(err.Error(), "404") {
+				return nil, fmt.Errorf("error deleting persisted app: %w", err)
+			}
 		}
 	}
 
@@ -545,6 +563,10 @@ func (b *azureSecretBackend) pathRoleExistenceCheck(ctx context.Context, req *lo
 func removeRolesAndGroupMembership(ctx context.Context, c *client, role *roleEntry) error {
 	// Unassign roles
 	if err := c.unassignRoles(ctx, role.RoleAssignmentIDs); err != nil {
+		return err
+	}
+	// Unassign App Roles
+	if err := c.unassignAppRoles(ctx, role.AppRoleAssignmentIDs); err != nil {
 		return err
 	}
 	// Removing group membership

@@ -27,6 +27,9 @@ type AzureProvider interface {
 		parameters authorization.RoleAssignmentCreateParameters) (authorization.RoleAssignment, error)
 	DeleteRoleAssignmentByID(ctx context.Context, roleID string) (authorization.RoleAssignment, error)
 
+	CreateAppRoleAssignment(ctx context.Context, roleName string, spnObjectID string, resourceID string) (*AppRoleAssignment, error)
+	DeleteAppRoleAssignmentByID(ctx context.Context, resourceID string, roleAssignmentID string) error
+
 	ListRoleDefinitions(ctx context.Context, scope string, filter string) ([]authorization.RoleDefinition, error)
 	GetRoleDefinitionByID(ctx context.Context, roleID string) (authorization.RoleDefinition, error)
 }
@@ -60,4 +63,10 @@ type ApplicationResult struct {
 	AppID               *string               `json:"appId,omitempty"`
 	ID                  *string               `json:"id,omitempty"`
 	PasswordCredentials []*PasswordCredential `json:"passwordCredentials,omitempty"`
+}
+
+// AppRoleAssignment holds an the ID of an App Role Assignment
+type AppRoleAssignment struct {
+	ID         string `json:"id"`
+	ResourceID string `json:"resource_id"`
 }

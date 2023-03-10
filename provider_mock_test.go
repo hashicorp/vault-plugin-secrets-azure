@@ -209,6 +209,16 @@ func (m *mockProvider) DeleteRoleAssignmentByID(_ context.Context, _ string) (au
 	return authorization.RoleAssignment{}, nil
 }
 
+func (m *mockProvider) CreateAppRoleAssignment(_ context.Context, _ string, _ string, _ string) (*api.AppRoleAssignment, error) {
+	return &api.AppRoleAssignment{
+		ID: generateUUID(),
+	}, nil
+}
+
+func (m *mockProvider) DeleteAppRoleAssignmentByID(ctx context.Context, resourceID string, roleAssignmentID string) error {
+	return nil
+}
+
 // AddGroupMember adds a member to a Group.
 func (m *mockProvider) AddGroupMember(_ context.Context, _ string, _ string) error {
 	return nil

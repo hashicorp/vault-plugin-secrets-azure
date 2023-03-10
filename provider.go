@@ -5,6 +5,8 @@ package azuresecrets
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
@@ -12,6 +14,10 @@ import (
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 	"github.com/hashicorp/vault/sdk/helper/useragent"
+	hauth "github.com/manicminer/hamilton/auth"
+	"github.com/manicminer/hamilton/environments"
+	"github.com/manicminer/hamilton/msgraph"
+	"github.com/manicminer/hamilton/odata"
 )
 
 var _ api.AzureProvider = (*provider)(nil)
@@ -27,6 +33,9 @@ type provider struct {
 	groupsClient api.GroupsClient
 	raClient     *authorization.RoleAssignmentsClient
 	rdClient     *authorization.RoleDefinitionsClient
+
+	appRoleAssignmentClient *msgraph.AppRoleAssignedToClient
+	servicePrincipalClient  *msgraph.ServicePrincipalsClient
 }
 
 // newAzureProvider creates an azureProvider, backed by Azure client objects for underlying services.
@@ -71,6 +80,17 @@ func newAzureProvider(settings *clientSettings, passwords api.Passwords) (api.Az
 	rdClient.Authorizer = resourceManagerAuthorizer
 	rdClient.AddToUserAgent(userAgent)
 
+	hauth, err := getHamiltonAuthorizer(context.TODO(), settings)
+	if err != nil {
+		return nil, err
+	}
+
+	appRoleAssignmentClient := msgraph.NewAppRoleAssignedToClient(settings.TenantID)
+	appRoleAssignmentClient.BaseClient.Authorizer = hauth
+
+	servicePrincipalClient := msgraph.NewServicePrincipalsClient(settings.TenantID)
+	servicePrincipalClient.BaseClient.Authorizer = hauth
+
 	p := &provider{
 		settings: settings,
 
@@ -79,6 +99,9 @@ func newAzureProvider(settings *clientSettings, passwords api.Passwords) (api.Az
 		groupsClient: groupsClient,
 		raClient:     &raClient,
 		rdClient:     &rdClient,
+
+		appRoleAssignmentClient: appRoleAssignmentClient,
+		servicePrincipalClient:  servicePrincipalClient,
 	}
 
 	return p, nil
@@ -97,6 +120,25 @@ func getAuthorizer(settings *clientSettings, resource string) (autorest.Authoriz
 	config := auth.NewMSIConfig()
 	config.Resource = resource
 	return config.Authorizer()
+}
+
+func getHamiltonAuthorizer(ctx context.Context, settings *clientSettings) (hauth.Authorizer, error) {
+	environment := environments.Global
+
+	authConfig := &hauth.Config{
+		Environment:            environment,
+		TenantID:               settings.TenantID,
+		ClientID:               settings.ClientID,
+		ClientSecret:           settings.ClientSecret,
+		EnableClientSecretAuth: true,
+	}
+
+	authorizer, err := authConfig.NewAuthorizer(ctx, environment.MsGraph)
+	if err != nil {
+		return nil, err
+	}
+
+	return authorizer, nil
 }
 
 // CreateApplication create a new Azure application object.
@@ -167,6 +209,37 @@ func (p *provider) DeleteRoleAssignmentByID(ctx context.Context, roleAssignmentI
 	return p.raClient.DeleteByID(ctx, roleAssignmentID)
 }
 
+// CreateAppRoleAssignment assigns an AppRole to the given SPN.
+func (p *provider) CreateAppRoleAssignment(ctx context.Context, roleName string, spnObjectID string, resourceID string) (*api.AppRoleAssignment, error) {
+	appRoleID, err := p.findAppRoleID(ctx, resourceID, roleName)
+	if err != nil {
+		return nil, err
+	}
+
+	properties := msgraph.AppRoleAssignment{
+		AppRoleId:   &appRoleID,
+		PrincipalId: &spnObjectID,
+		ResourceId:  &resourceID,
+	}
+
+	appRoleAssignment, status, err := p.appRoleAssignmentClient.Assign(ctx, properties)
+	if err != nil {
+		return nil, fmt.Errorf("Assigning AppRole %s to principal %s, received %d with error: %w", roleName, spnObjectID, status, err)
+	}
+
+	return &api.AppRoleAssignment{
+		ID:         *appRoleAssignment.Id,
+		ResourceID: *appRoleAssignment.ResourceId,
+	}, nil
+}
+
+// DeleteRoleAssignmentByID deletes a role assignment.
+func (p *provider) DeleteAppRoleAssignmentByID(ctx context.Context, resourceID string, roleAssignmentID string) error {
+
+	_, err := p.appRoleAssignmentClient.Remove(ctx, resourceID, roleAssignmentID)
+	return err
+}
+
 // ListRoleAssignments lists all role assignments.
 // There is no need for paging; the caller only cares about the first match and whether
 // there are 0, 1 or >1 items. Unpacking here is a simpler interface.
@@ -198,4 +271,49 @@ func (p *provider) GetGroup(ctx context.Context, objectID string) (result api.Gr
 // ListGroups gets list of groups for the current tenant.
 func (p *provider) ListGroups(ctx context.Context, filter string) (result []api.Group, err error) {
 	return p.groupsClient.ListGroups(ctx, filter)
+}
+
+// Ripped from the TF ad provider
+func (p *provider) findAppRoleID(ctx context.Context, objectID, roleName string) (string, error) {
+	servicePrincipal, status, err := p.servicePrincipalClient.Get(ctx, objectID, odata.Query{})
+	if err != nil {
+		if status == http.StatusNotFound {
+			return "", fmt.Errorf("Service Principal with Object ID %s was not found", objectID)
+		}
+
+		return "", err
+	}
+	allRoles := flattenAppRoles(servicePrincipal.AppRoles)
+
+	roleID, ok := allRoles[roleName]
+	if !ok {
+		return "", fmt.Errorf("could not find AppRole with name %s: %v", roleName, allRoles)
+	}
+
+	return roleID, nil
+
+}
+
+func flattenAppRoles(in *[]msgraph.AppRole) map[string]string {
+	if in == nil {
+		return nil
+	}
+
+	nameToID := make(map[string]string)
+
+	for _, role := range *in {
+		roleID := ""
+		if role.ID != nil {
+			roleID = *role.ID
+		}
+
+		displayName := ""
+		if role.Value != nil {
+			displayName = *role.Value
+		}
+
+		nameToID[displayName] = roleID
+	}
+
+	return nameToID
 }

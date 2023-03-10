@@ -26,15 +26,16 @@ const (
 
 // roleEntry is a Vault role construct that maps to Azure roles or Applications
 type roleEntry struct {
-	CredentialType      int           `json:"credential_type"` // Reserved. Always SP at this time.
-	AzureRoles          []*AzureRole  `json:"azure_roles"`
-	AzureGroups         []*AzureGroup `json:"azure_groups"`
-	ApplicationID       string        `json:"application_id"`
-	ApplicationObjectID string        `json:"application_object_id"`
-	TTL                 time.Duration `json:"ttl"`
-	MaxTTL              time.Duration `json:"max_ttl"`
-	PermanentlyDelete   bool          `json:"permanently_delete"`
-	PersistApp          bool          `json:"persist_app"`
+	CredentialType      int                   `json:"credential_type"` // Reserved. Always SP at this time.
+	AzureRoles          []*AzureRole          `json:"azure_roles"`
+	AppRoles            []*AppRoleAssignments `json:"app_roles"`
+	AzureGroups         []*AzureGroup         `json:"azure_groups"`
+	ApplicationID       string                `json:"application_id"`
+	ApplicationObjectID string                `json:"application_object_id"`
+	TTL                 time.Duration         `json:"ttl"`
+	MaxTTL              time.Duration         `json:"max_ttl"`
+	PermanentlyDelete   bool                  `json:"permanently_delete"`
+	PersistApp          bool                  `json:"persist_app"`
 
 	// Info for persisted apps
 	RoleAssignmentIDs          []string `json:"role_assignment_ids"`
@@ -50,6 +51,18 @@ type AzureRole struct {
 	RoleName string `json:"role_name"` // e.g. Owner
 	RoleID   string `json:"role_id"`   // e.g. /subscriptions/e0a207b2-.../providers/Microsoft.Authorization/roleDefinitions/de139f84-...
 	Scope    string `json:"scope"`     // e.g. /subscriptions/e0a207b2-...
+}
+
+// AppRoleAssignments is a list  Azure App Roles (https://learn.microsoft.com/en-us/azure/architecture/multitenant-identity/app-roles)
+// for a given AppID to be assigned.
+type AppRoleAssignments struct {
+	AppID string    `json:"app_id"` // e.g  0000ffff-00ff-00ff-00ff-000000ffffff
+	Roles []AppRole `json:"roles"`
+}
+
+// AppRole Holds the name of the AppRole to be assigned
+type AppRole struct {
+	RoleName string `json:"role_name"` // e.g. Directory.Read.All
 }
 
 // AzureGroup is an Azure Active Directory Group
@@ -78,6 +91,10 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 				"azure_roles": {
 					Type:        framework.TypeString,
 					Description: "JSON list of Azure roles to assign.",
+				},
+				"app_roles": {
+					Type:        framework.TypeString,
+					Description: "JSON list of App roles to assign.",
 				},
 				"azure_groups": {
 					Type:        framework.TypeString,
@@ -235,6 +252,17 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 			return logical.ErrorResponse("error parsing Azure roles '%s': %s", roles.(string), err.Error()), nil
 		}
 		role.AzureRoles = parsedRoles
+	}
+
+	// Parse the App roles
+	if roles, ok := d.GetOk("app_roles"); ok {
+		parsedRoles := make([]*AppRoleAssignments, 0) // non-nil to avoid a "missing roles" error later
+
+		err := jsonutil.DecodeJSON([]byte(roles.(string)), &parsedRoles)
+		if err != nil {
+			return logical.ErrorResponse("error parsing App roles '%s': %s", roles.(string), err.Error()), nil
+		}
+		role.AppRoles = parsedRoles
 	}
 
 	// Parse the Azure groups
@@ -448,6 +476,7 @@ func (b *azureSecretBackend) pathRoleRead(ctx context.Context, req *logical.Requ
 			"ttl":                   r.TTL / time.Second,
 			"max_ttl":               r.MaxTTL / time.Second,
 			"azure_roles":           r.AzureRoles,
+			"app_roles":             r.AppRoles,
 			"azure_groups":          r.AzureGroups,
 			"application_object_id": r.ApplicationObjectID,
 			"permanently_delete":    r.PermanentlyDelete,

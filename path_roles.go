@@ -38,11 +38,11 @@ type roleEntry struct {
 	PersistApp          bool                  `json:"persist_app"`
 
 	// Info for persisted apps
-	RoleAssignmentIDs          []string `json:"role_assignment_ids"`
+	RoleAssignmentIDs          []string                 `json:"role_assignment_ids"`
 	AppRoleAssignmentIDs       []*api.AppRoleAssignment `json:"app_role_assignment_ids"`
-	GroupMembershipIDs         []string `json:"group_membership_ids"`
-	ServicePrincipalObjectID   string   `json:"sp_object_id"`
-	ManagedApplicationObjectID string   `json:"managed_application_object_id"`
+	GroupMembershipIDs         []string                 `json:"group_membership_ids"`
+	ServicePrincipalObjectID   string                   `json:"sp_object_id"`
+	ManagedApplicationObjectID string                   `json:"managed_application_object_id"`
 }
 
 // AzureRole is an Azure Role (https://docs.microsoft.com/en-us/azure/role-based-access-control/overview) applied
@@ -445,7 +445,6 @@ func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logica
 		return err
 	}
 	role.AppRoleAssignmentIDs = appAssignmentIDs
-
 
 	// Assign Azure group memberships to the new SP
 	if err := c.addGroupMemberships(ctx, spObjID, role.AzureGroups); err != nil {

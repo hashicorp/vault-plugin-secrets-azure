@@ -323,9 +323,11 @@ func (c AppClient) removePasswordResponder(resp *http.Response) (autorest.Respon
 
 func (c AppClient) createApplicationPreparer(ctx context.Context, displayName string) (*http.Request, error) {
 	parameters := struct {
-		DisplayName *string `json:"displayName"`
+		DisplayName    *string `json:"displayName"`
+		SignInAudience *string `json:"signInAudience"`
 	}{
-		DisplayName: to.StringPtr(displayName),
+		DisplayName:    to.StringPtr(displayName),
+		SignInAudience: to.StringPtr("AzureADMyOrg"),
 	}
 
 	preparer := autorest.CreatePreparer(

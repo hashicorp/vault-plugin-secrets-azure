@@ -17,7 +17,9 @@ import (
 )
 
 const (
-	userAgentPluginName  = "secrets-azure"
+	userAgentPluginName = "secrets-azure"
+
+	// operationPrefixAzure is used as a prefix for OpenAPI operation id's.
 	operationPrefixAzure = "azure"
 )
 

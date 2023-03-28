@@ -43,7 +43,7 @@ func pathServicePrincipal(b *azureSecretBackend) *framework.Path {
 	return &framework.Path{
 		Pattern: fmt.Sprintf("creds/%s", framework.GenericNameRegex("role")),
 		DisplayAttrs: &framework.DisplayAttributes{
-			OperationPrefix: "azure",
+			OperationPrefix: operationPrefixAzure,
 			OperationVerb:   "request",
 			OperationSuffix: "service-principal-credentials",
 		},

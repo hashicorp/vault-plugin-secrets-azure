@@ -45,7 +45,7 @@ func pathConfig(b *azureSecretBackend) *framework.Path {
 	return &framework.Path{
 		Pattern: "config",
 		DisplayAttrs: &framework.DisplayAttributes{
-			OperationPrefix: "azure",
+			OperationPrefix: operationPrefixAzure,
 		},
 		Fields: map[string]*framework.FieldSchema{
 			"subscription_id": {

@@ -18,9 +18,9 @@ func pathRotateRoot(b *azureSecretBackend) *framework.Path {
 	return &framework.Path{
 		Pattern: "rotate-root",
 		DisplayAttrs: &framework.DisplayAttributes{
-			OperationPrefix: "azure",
+			OperationPrefix: operationPrefixAzure,
 			OperationVerb:   "rotate",
-			OperationSuffix: "root",
+			OperationSuffix: "root-credentials",
 		},
 		Operations: map[logical.Operation]framework.OperationHandler{
 			logical.UpdateOperation: &framework.PathOperation{

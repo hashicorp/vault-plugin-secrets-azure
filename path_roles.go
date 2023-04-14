@@ -26,21 +26,23 @@ const (
 
 // roleEntry is a Vault role construct that maps to Azure roles or Applications
 type roleEntry struct {
-	CredentialType      int           `json:"credential_type"` // Reserved. Always SP at this time.
-	AzureRoles          []*AzureRole  `json:"azure_roles"`
-	AzureGroups         []*AzureGroup `json:"azure_groups"`
-	ApplicationID       string        `json:"application_id"`
-	ApplicationObjectID string        `json:"application_object_id"`
-	TTL                 time.Duration `json:"ttl"`
-	MaxTTL              time.Duration `json:"max_ttl"`
-	PermanentlyDelete   bool          `json:"permanently_delete"`
-	PersistApp          bool          `json:"persist_app"`
+	CredentialType      int                   `json:"credential_type"` // Reserved. Always SP at this time.
+	AzureRoles          []*AzureRole          `json:"azure_roles"`
+	AppRoles            []*AppRoleAssignments `json:"app_roles"`
+	AzureGroups         []*AzureGroup         `json:"azure_groups"`
+	ApplicationID       string                `json:"application_id"`
+	ApplicationObjectID string                `json:"application_object_id"`
+	TTL                 time.Duration         `json:"ttl"`
+	MaxTTL              time.Duration         `json:"max_ttl"`
+	PermanentlyDelete   bool                  `json:"permanently_delete"`
+	PersistApp          bool                  `json:"persist_app"`
 
 	// Info for persisted apps
-	RoleAssignmentIDs          []string `json:"role_assignment_ids"`
-	GroupMembershipIDs         []string `json:"group_membership_ids"`
-	ServicePrincipalObjectID   string   `json:"sp_object_id"`
-	ManagedApplicationObjectID string   `json:"managed_application_object_id"`
+	RoleAssignmentIDs          []string                 `json:"role_assignment_ids"`
+	AppRoleAssignmentIDs       []*api.AppRoleAssignment `json:"app_role_assignment_ids"`
+	GroupMembershipIDs         []string                 `json:"group_membership_ids"`
+	ServicePrincipalObjectID   string                   `json:"sp_object_id"`
+	ManagedApplicationObjectID string                   `json:"managed_application_object_id"`
 }
 
 // AzureRole is an Azure Role (https://docs.microsoft.com/en-us/azure/role-based-access-control/overview) applied
@@ -50,6 +52,18 @@ type AzureRole struct {
 	RoleName string `json:"role_name"` // e.g. Owner
 	RoleID   string `json:"role_id"`   // e.g. /subscriptions/e0a207b2-.../providers/Microsoft.Authorization/roleDefinitions/de139f84-...
 	Scope    string `json:"scope"`     // e.g. /subscriptions/e0a207b2-...
+}
+
+// AppRoleAssignments is a list  Azure App Roles (https://learn.microsoft.com/en-us/azure/architecture/multitenant-identity/app-roles)
+// for a given AppID to be assigned.
+type AppRoleAssignments struct {
+	AppID string    `json:"app_id"` // e.g  0000ffff-00ff-00ff-00ff-000000ffffff
+	Roles []AppRole `json:"roles"`
+}
+
+// AppRole Holds the name of the AppRole to be assigned
+type AppRole struct {
+	RoleName string `json:"role_name"` // e.g. Directory.Read.All
 }
 
 // AzureGroup is an Azure Active Directory Group
@@ -78,6 +92,10 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 				"azure_roles": {
 					Type:        framework.TypeString,
 					Description: "JSON list of Azure roles to assign.",
+				},
+				"app_roles": {
+					Type:        framework.TypeString,
+					Description: "JSON list of App roles to assign.",
 				},
 				"azure_groups": {
 					Type:        framework.TypeString,
@@ -237,6 +255,17 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		role.AzureRoles = parsedRoles
 	}
 
+	// Parse the App roles
+	if roles, ok := d.GetOk("app_roles"); ok {
+		parsedRoles := make([]*AppRoleAssignments, 0) // non-nil to avoid a "missing roles" error later
+
+		err := jsonutil.DecodeJSON([]byte(roles.(string)), &parsedRoles)
+		if err != nil {
+			return logical.ErrorResponse("error parsing App roles '%s': %s", roles.(string), err.Error()), nil
+		}
+		role.AppRoles = parsedRoles
+	}
+
 	// Parse the Azure groups
 	if groups, ok := d.GetOk("azure_groups"); ok {
 		parsedGroups := make([]*AzureGroup, 0) // non-nil to avoid a "missing groups" error later
@@ -319,8 +348,8 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		groupSet[r.ObjectID] = true
 	}
 
-	if role.ApplicationObjectID == "" && len(role.AzureRoles) == 0 && len(role.AzureGroups) == 0 {
-		return logical.ErrorResponse("either Azure role definitions, group definitions, or an Application Object ID must be provided"), nil
+	if role.ApplicationObjectID == "" && len(role.AzureRoles) == 0 && len(role.AzureGroups) == 0 && len(role.AppRoles) == 0 {
+		return logical.ErrorResponse("either Azure role definitions, App Roles, group definitions, or an Application Object ID must be provided"), nil
 	}
 
 	// If persisted create the app
@@ -365,6 +394,12 @@ func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logica
 		}
 		role.RoleAssignmentIDs = raIDs
 
+		appAssignmentIDs, err := c.assignAppRoles(ctx, spObjID, role.AppRoles)
+		if err != nil {
+			return err
+		}
+		role.AppRoleAssignmentIDs = appAssignmentIDs
+
 		// Assign Azure group memberships to the new SP
 		if err := c.addGroupMemberships(ctx, spObjID, role.AzureGroups); err != nil {
 			return err
@@ -403,6 +438,13 @@ func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logica
 		return err
 	}
 	role.RoleAssignmentIDs = raIDs
+
+	// Assign App roles to the new SP
+	appAssignmentIDs, err := c.assignAppRoles(ctx, spObjID, role.AppRoles)
+	if err != nil {
+		return err
+	}
+	role.AppRoleAssignmentIDs = appAssignmentIDs
 
 	// Assign Azure group memberships to the new SP
 	if err := c.addGroupMemberships(ctx, spObjID, role.AzureGroups); err != nil {
@@ -448,6 +490,7 @@ func (b *azureSecretBackend) pathRoleRead(ctx context.Context, req *logical.Requ
 			"ttl":                   r.TTL / time.Second,
 			"max_ttl":               r.MaxTTL / time.Second,
 			"azure_roles":           r.AzureRoles,
+			"app_roles":             r.AppRoles,
 			"azure_groups":          r.AzureGroups,
 			"application_object_id": r.ApplicationObjectID,
 			"permanently_delete":    r.PermanentlyDelete,
@@ -490,7 +533,10 @@ func (b *azureSecretBackend) pathRoleDelete(ctx context.Context, req *logical.Re
 		}
 
 		if err = c.deleteApp(ctx, role.ApplicationObjectID, role.PermanentlyDelete); err != nil {
-			return nil, fmt.Errorf("error deleting persisted app: %w", err)
+			// If an app was deleted manually then Azure returns a error and status 404 we can ignore those
+			if !strings.Contains(err.Error(), "404") {
+				return nil, fmt.Errorf("error deleting persisted app: %w", err)
+			}
 		}
 	}
 
@@ -516,6 +562,10 @@ func (b *azureSecretBackend) pathRoleExistenceCheck(ctx context.Context, req *lo
 func removeRolesAndGroupMembership(ctx context.Context, c *client, role *roleEntry) error {
 	// Unassign roles
 	if err := c.unassignRoles(ctx, role.RoleAssignmentIDs); err != nil {
+		return err
+	}
+	// Unassign App Roles
+	if err := c.unassignAppRoles(ctx, role.AppRoleAssignmentIDs); err != nil {
 		return err
 	}
 	// Removing group membership

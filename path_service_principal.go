@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Azure/go-autorest/autorest/to"
+	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/locksutil"
 	"github.com/hashicorp/vault/sdk/logical"
@@ -146,6 +147,12 @@ func (b *azureSecretBackend) createSPSecret(ctx context.Context, s logical.Stora
 		return nil, err
 	}
 
+	// Assign Azure roles to the new SP
+	appRoleIDs, err := c.assignAppRoles(ctx, spID, role.AppRoles)
+	if err != nil {
+		return nil, err
+	}
+
 	// Assign Azure group memberships to the new SP
 	if err := c.addGroupMemberships(ctx, spID, role.AzureGroups); err != nil {
 		return nil, err
@@ -165,12 +172,13 @@ func (b *azureSecretBackend) createSPSecret(ctx context.Context, s logical.Stora
 		"client_secret": password,
 	}
 	internalData := map[string]interface{}{
-		"app_object_id":        appObjID,
-		"sp_object_id":         spID,
-		"role_assignment_ids":  raIDs,
-		"group_membership_ids": groupObjectIDs(role.AzureGroups),
-		"role":                 roleName,
-		"permanently_delete":   role.PermanentlyDelete,
+		"app_object_id":           appObjID,
+		"sp_object_id":            spID,
+		"role_assignment_ids":     raIDs,
+		"app_role_assignment_ids": appRoleIDs,
+		"group_membership_ids":    groupObjectIDs(role.AzureGroups),
+		"role":                    roleName,
+		"permanently_delete":      role.PermanentlyDelete,
 	}
 
 	return b.Secret(SecretTypeSP).Response(data, internalData), nil
@@ -253,6 +261,16 @@ func (b *azureSecretBackend) spRevoke(ctx context.Context, req *logical.Request,
 		}
 	}
 
+	var appRoleIDs []*api.AppRoleAssignment
+	if req.Secret.InternalData["app_role_assignment_ids"] != nil {
+		for _, v := range req.Secret.InternalData["role_assignment_ids"].([]interface{}) {
+			if id, ok := v.(*api.AppRoleAssignment); ok {
+				appRoleIDs = append(appRoleIDs, id)
+			}
+
+		}
+	}
+
 	var gmIDs []string
 	if req.Secret.InternalData["group_membership_ids"] != nil {
 		for _, v := range req.Secret.InternalData["group_membership_ids"].([]interface{}) {
@@ -272,6 +290,10 @@ func (b *azureSecretBackend) spRevoke(ctx context.Context, req *logical.Request,
 	// unassigning roles is effectively a garbage collection operation. Errors will be noted but won't fail the
 	// revocation process. Deleting the app, however, *is* required to consider the secret revoked.
 	if err := c.unassignRoles(ctx, raIDs); err != nil {
+		resp.AddWarning(err.Error())
+	}
+
+	if err := c.unassignAppRoles(ctx, appRoleIDs); err != nil {
 		resp.AddWarning(err.Error())
 	}
 

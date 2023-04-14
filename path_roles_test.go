@@ -39,6 +39,16 @@ func TestRoleCreate(t *testing.T) {
 			"group_name": "bar",
 			"object_id": "31c5bf7e-e1e8-42c8-882c-856f776290afFAKE_GROUP-bar"
 		}]`),
+			"app_roles": compactJSON(`[
+				{   
+					"app_id": "someID",
+					"roles":
+						[
+							{
+								"role_name": "Directory.Read.All"
+							}
+						]
+				}]`),
 			"ttl":                   int64(0),
 			"max_ttl":               int64(0),
 			"application_object_id": "",
@@ -67,6 +77,16 @@ func TestRoleCreate(t *testing.T) {
 			"group_name": "bam",
 			"object_id": "a6a834a6-36c3-4575-8e2b-05095963d603FAKE_GROUP-bam"
 		}]`),
+			"app_roles": compactJSON(`[
+				{   
+					"app_id": "someID",
+					"roles":
+						[
+							{
+								"role_name": "Directory.Read.All"
+							}
+						]
+				}]`),
 			"ttl":                   int64(300),
 			"max_ttl":               int64(3000),
 			"application_object_id": "",
@@ -115,6 +135,16 @@ func TestRoleCreate(t *testing.T) {
 			"group_name": "bar",
 			"object_id": "31c5bf7e-e1e8-42c8-882c-856f776290afFAKE_GROUP-bar"
 		}]`),
+			"app_roles": compactJSON(`[
+				{   
+					"app_id": "someID",
+					"roles":
+						[
+							{
+								"role_name": "Directory.Read.All"
+							}
+						]
+				}]`),
 			"ttl":                   int64(0),
 			"max_ttl":               int64(0),
 			"application_object_id": "",
@@ -142,6 +172,16 @@ func TestRoleCreate(t *testing.T) {
 			"group_name": "bam",
 			"object_id": "a6a834a6-36c3-4575-8e2b-05095963d603FAKE_GROUP-bam"
 		}]`),
+			"app_roles": compactJSON(`[
+				{   
+					"app_id": "someID",
+					"roles":
+						[
+							{
+								"role_name": "Directory.Read.All"
+							}
+						]
+				}]`),
 			"ttl":                   int64(300),
 			"max_ttl":               int64(3000),
 			"application_object_id": "",
@@ -714,6 +754,9 @@ func convertRespTypes(data map[string]interface{}) {
 	}
 	if data["azure_groups"] != nil {
 		data["azure_groups"] = encodeJSON(data["azure_groups"])
+	}
+	if data["app_roles"] != nil {
+		data["app_roles"] = encodeJSON(data["app_roles"])
 	}
 	data["ttl"] = int64(data["ttl"].(time.Duration))
 	data["max_ttl"] = int64(data["max_ttl"].(time.Duration))

@@ -8,7 +8,7 @@ on:
     types: [created]
 jobs:
   sync:
-    uses: hashicorp/vault-workflows-common/.github/workflows/jira.yaml@f49ac86e61bf70e595c6b7d90b73cfb8378e0a16
+    uses: hashicorp/vault-workflows-common/.github/workflows/jira.yaml@main
     # assuming you use Vault to get secrets
     # if you use GitHub secrets, use secrets.XYZ instead of steps.secrets.outputs.XYZ
     secrets:

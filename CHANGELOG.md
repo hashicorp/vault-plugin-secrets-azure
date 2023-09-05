@@ -3,7 +3,7 @@
 ## v0.16.2
 
 IMPROVEMENTS:
-* Update dependencies [[GH-XXX]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/XXX)
+* Update dependencies [[GH-160]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/160)
   * github.com/hashicorp/vault/api v1.9.1 -> v1.10.0
   * github.com/hashicorp/vault/sdk v0.9.0 -> v0.10.0
 

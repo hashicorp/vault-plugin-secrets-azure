@@ -13,15 +13,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-01-01-preview/authorization"
+	"github.com/Azure/azure-sdk-for-go/services/authorization/mgmt/2020-10-01/authorization"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/go-uuid"
-	"github.com/hashicorp/vault/sdk/logical"
-
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
+	"github.com/hashicorp/vault/sdk/logical"
 )
 
 const (
@@ -176,7 +175,7 @@ func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRol
 			}
 			ra, err := c.provider.CreateRoleAssignment(ctx, role.Scope, assignmentIDs[i],
 				authorization.RoleAssignmentCreateParameters{
-					RoleAssignmentProperties: &authorization.RoleAssignmentProperties{
+					Properties: &authorization.RoleAssignmentProperties{
 						RoleDefinitionID: &role.RoleID,
 						PrincipalID:      &spID,
 					},

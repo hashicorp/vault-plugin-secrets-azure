@@ -777,7 +777,7 @@ func TestRoleAssignmentWALRollback(t *testing.T) {
 		roleDefs, err := provider.ListRoleDefinitions(context.Background(), fmt.Sprintf("subscriptions/%s", subscriptionID), "")
 		assertErrorIsNil(t, err)
 
-		defID := *ra.RoleAssignmentPropertiesWithScope.RoleDefinitionID
+		defID := *ra.Properties.RoleDefinitionID
 		found := false
 		for _, def := range roleDefs {
 			if *def.ID == defID && *def.RoleName == "Storage Blob Data Owner" {
@@ -992,7 +992,7 @@ func TestCredentialInteg_msgraph(t *testing.T) {
 		roleDefs, err := provider.ListRoleDefinitions(context.Background(), fmt.Sprintf("subscriptions/%s", subscriptionID), "")
 		assertErrorIsNil(t, err)
 
-		defID := *ra.RoleAssignmentPropertiesWithScope.RoleDefinitionID
+		defID := *ra.Properties.RoleDefinitionID
 		found := false
 		for _, def := range roleDefs {
 			if *def.ID == defID && *def.RoleName == "Storage Blob Data Owner" {

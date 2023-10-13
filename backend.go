@@ -47,13 +47,16 @@ func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend,
 }
 
 func backend() *azureSecretBackend {
-	var b = azureSecretBackend{
+	b := azureSecretBackend{
 		updatePassword: true,
 	}
 
 	b.Backend = &framework.Backend{
 		Help: strings.TrimSpace(backendHelp),
 		PathsSpecial: &logical.Paths{
+			LocalStorage: []string{
+				framework.WALPrefix,
+			},
 			SealWrapStorage: []string{
 				"config",
 			},

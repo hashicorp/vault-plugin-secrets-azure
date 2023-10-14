@@ -47,7 +47,7 @@ func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend,
 }
 
 func backend() *azureSecretBackend {
-	b := azureSecretBackend{
+	var b = azureSecretBackend{
 		updatePassword: true,
 	}
 

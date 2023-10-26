@@ -5,9 +5,13 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/davecgh/go-spew/spew"
+	"github.com/hashicorp/go-hclog"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/preview/authorization/mgmt/2018-09-01-preview/authorization"
@@ -494,7 +498,15 @@ func (c AppClient) ListGroups(ctx context.Context, filter string) ([]Group, erro
 func (c *AppClient) CreateServicePrincipal(ctx context.Context, appID string, startDate time.Time, endDate time.Time) (string, string, error) {
 	spID, err := c.createServicePrincipal(ctx, appID)
 	if err != nil {
-		return "", "", err
+		if !strings.Contains(err.Error(), "failed with 409 Conflict:") {
+			return "", "", fmt.Errorf("unable to create sp: %w", err)
+		}
+		// Service principal exists because of 409 error
+		sID, err := c.getServicePrincipal(ctx, appID)
+		if err != nil {
+			return "", "", fmt.Errorf("unable to get sp: %w", err)
+		}
+		spID = sID
 	}
 	password, err := c.setPasswordForServicePrincipal(ctx, spID, startDate, endDate)
 	if err != nil {
@@ -503,6 +515,35 @@ func (c *AppClient) CreateServicePrincipal(ctx context.Context, appID string, st
 		return "", "", merr.ErrorOrNil()
 	}
 	return spID, password, nil
+}
+
+func (c *AppClient) getServicePrincipal(ctx context.Context, appID string) (string, error) {
+	pathParameters := map[string]interface{}{
+		"appId": autorest.Encode("path", appID),
+	}
+
+	preparer := c.GetPreparer(
+		autorest.AsGet(),
+		autorest.WithPathParameters("/v1.0/servicePrincipals(appId='{appId}')", pathParameters),
+	)
+
+	respBody := getServicePrincipalResponse{}
+	err := c.SendRequest(ctx, preparer,
+		autorest.WithErrorUnlessStatusCode(http.StatusOK, http.StatusCreated),
+		autorest.ByUnmarshallingJSON(&respBody),
+	)
+	if err != nil {
+		var derr autorest.DetailedError
+		ok := errors.As(err, &derr)
+		if ok {
+			fmt.Println("Detailed error:", string(derr.ServiceError))
+		} else {
+			fmt.Println("unable to cast as detailed error")
+		}
+		return "", err
+	}
+	spew.Dump(respBody)
+	return respBody.ServicePrincipalNames[0], nil
 }
 
 func (c *AppClient) createServicePrincipal(ctx context.Context, appID string) (string, error) {
@@ -533,8 +574,8 @@ func (c *AppClient) setPasswordForServicePrincipal(ctx context.Context, spID str
 		"id": spID,
 	}
 	reqBody := map[string]interface{}{
-		"startDateTime": startDate.UTC().Format("2006-01-02T15:04:05Z"),
-		"endDateTime":   endDate.UTC().Format("2006-01-02T15:04:05Z"),
+		//"startDateTime": startDate.UTC().Format("2006-01-02T15:04:05Z"),
+		//"endDateTime":   endDate.UTC().Format("2006-01-02T15:04:05Z"),
 	}
 
 	preparer := c.GetPreparer(
@@ -548,14 +589,65 @@ func (c *AppClient) setPasswordForServicePrincipal(ctx context.Context, spID str
 		autorest.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent),
 		autorest.ByUnmarshallingJSON(&respBody),
 	)
+	hclog.FromContext(ctx).Trace("hello worlds")
 	if err != nil {
-		return "", err
+		var derr autorest.DetailedError
+		ok := errors.As(err, &derr)
+		if ok {
+			return "", fmt.Errorf("Detailed error: %v %v", string(derr.ServiceError), spID)
+		} else {
+			return "", fmt.Errorf("unable to cast as detailed error")
+		}
+		//return "", err
 	}
+	//if err != nil {
+	//	return "", err
+	//}
 	return *respBody.SecretText, nil
 }
 
 type createServicePrincipalResponse struct {
 	ID string `json:"id"`
+}
+
+type getServicePrincipalResponse struct {
+	AccountEnabled            bool          `json:"accountEnabled"`
+	AddIns                    []interface{} `json:"addIns"`
+	AlternativeNames          []string      `json:"alternativeNames"`
+	AppDisplayName            string        `json:"appDisplayName"`
+	AppId                     string        `json:"appId"`
+	AppOwnerOrganizationId    string        `json:"appOwnerOrganizationId"`
+	AppRoleAssignmentRequired bool          `json:"appRoleAssignmentRequired"`
+	AppRoles                  []interface{} `json:"appRoles"`
+	DisabledByMicrosoftStatus interface{}   `json:"disabledByMicrosoftStatus"`
+	DisplayName               string        `json:"displayName"`
+	Endpoints                 []interface{} `json:"endpoints"`
+	Homepage                  interface{}   `json:"homepage"`
+	Id                        string        `json:"id"`
+	VerifiedPublisher         struct {
+		DisplayName         string    `json:"displayName"`
+		VerifiedPublisherId string    `json:"verifiedPublisherId"`
+		AddedDateTime       time.Time `json:"addedDateTime"`
+	} `json:"verifiedPublisher"`
+	Info struct {
+		TermsOfServiceUrl   interface{} `json:"termsOfServiceUrl"`
+		SupportUrl          interface{} `json:"supportUrl"`
+		PrivacyStatementUrl interface{} `json:"privacyStatementUrl"`
+		MarketingUrl        interface{} `json:"marketingUrl"`
+		LogoUrl             interface{} `json:"logoUrl"`
+	} `json:"info"`
+	KeyCredentials                         []interface{} `json:"keyCredentials"`
+	LogoutUrl                              interface{}   `json:"logoutUrl"`
+	Oauth2PermissionScopes                 []interface{} `json:"oauth2PermissionScopes"`
+	PasswordCredentials                    []interface{} `json:"passwordCredentials"`
+	PublisherName                          interface{}   `json:"publisherName"`
+	ReplyUrls                              []interface{} `json:"replyUrls"`
+	ResourceSpecificApplicationPermissions []interface{} `json:"resourceSpecificApplicationPermissions"`
+	ServicePrincipalNames                  []string      `json:"servicePrincipalNames"`
+	ServicePrincipalType                   interface{}   `json:"servicePrincipalType"`
+	SignInAudience                         string        `json:"signInAudience"`
+	Tags                                   []interface{} `json:"tags"`
+	TokenEncryptionKeyId                   interface{}   `json:"tokenEncryptionKeyId"`
 }
 
 func (c *AppClient) DeleteServicePrincipal(ctx context.Context, spObjectID string, permanentlyDelete bool) error {

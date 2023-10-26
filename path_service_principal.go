@@ -187,18 +187,27 @@ func (b *azureSecretBackend) createStaticSPSecret(ctx context.Context, c *client
 	lock.Lock()
 	defer lock.Unlock()
 
-	keyID, password, err := c.addAppPassword(ctx, role.ApplicationObjectID, spExpiration)
+	//_, password, err := c.addAppPassword(ctx, role.ApplicationObjectID, spExpiration)
+	//if err != nil {
+	//	return nil, err
+	//}
+
+	app, err := c.provider.GetApplication(ctx, role.ApplicationObjectID)
+	if err != nil {
+		return nil, err
+	}
+	serviceP, password, err := c.createSP(ctx, &app, spExpiration)
 	if err != nil {
 		return nil, err
 	}
 
 	data := map[string]interface{}{
-		"client_id":     role.ApplicationID,
+		"client_id":     serviceP,
 		"client_secret": password,
 	}
 	internalData := map[string]interface{}{
 		"app_object_id": role.ApplicationObjectID,
-		"key_id":        keyID,
+		"key_id":        serviceP,
 		"role":          roleName,
 	}
 

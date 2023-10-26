@@ -5,10 +5,7 @@ package api
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
-	"github.com/hashicorp/go-hclog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -533,17 +530,10 @@ func (c *AppClient) getServicePrincipal(ctx context.Context, appID string) (stri
 		autorest.ByUnmarshallingJSON(&respBody),
 	)
 	if err != nil {
-		var derr autorest.DetailedError
-		ok := errors.As(err, &derr)
-		if ok {
-			fmt.Println("Detailed error:", string(derr.ServiceError))
-		} else {
-			fmt.Println("unable to cast as detailed error")
-		}
 		return "", err
 	}
-	spew.Dump(respBody)
-	return respBody.ServicePrincipalNames[0], nil
+
+	return respBody.Id, nil
 }
 
 func (c *AppClient) createServicePrincipal(ctx context.Context, appID string) (string, error) {
@@ -574,8 +564,8 @@ func (c *AppClient) setPasswordForServicePrincipal(ctx context.Context, spID str
 		"id": spID,
 	}
 	reqBody := map[string]interface{}{
-		//"startDateTime": startDate.UTC().Format("2006-01-02T15:04:05Z"),
-		//"endDateTime":   endDate.UTC().Format("2006-01-02T15:04:05Z"),
+		"startDateTime": startDate.UTC().Format("2006-01-02T15:04:05Z"),
+		"endDateTime":   endDate.UTC().Format("2006-01-02T15:04:05Z"),
 	}
 
 	preparer := c.GetPreparer(
@@ -589,20 +579,9 @@ func (c *AppClient) setPasswordForServicePrincipal(ctx context.Context, spID str
 		autorest.WithErrorUnlessStatusCode(http.StatusOK, http.StatusNoContent),
 		autorest.ByUnmarshallingJSON(&respBody),
 	)
-	hclog.FromContext(ctx).Trace("hello worlds")
 	if err != nil {
-		var derr autorest.DetailedError
-		ok := errors.As(err, &derr)
-		if ok {
-			return "", fmt.Errorf("Detailed error: %v %v", string(derr.ServiceError), spID)
-		} else {
-			return "", fmt.Errorf("unable to cast as detailed error")
-		}
-		//return "", err
+		return "", err
 	}
-	//if err != nil {
-	//	return "", err
-	//}
 	return *respBody.SecretText, nil
 }
 
@@ -611,43 +590,7 @@ type createServicePrincipalResponse struct {
 }
 
 type getServicePrincipalResponse struct {
-	AccountEnabled            bool          `json:"accountEnabled"`
-	AddIns                    []interface{} `json:"addIns"`
-	AlternativeNames          []string      `json:"alternativeNames"`
-	AppDisplayName            string        `json:"appDisplayName"`
-	AppId                     string        `json:"appId"`
-	AppOwnerOrganizationId    string        `json:"appOwnerOrganizationId"`
-	AppRoleAssignmentRequired bool          `json:"appRoleAssignmentRequired"`
-	AppRoles                  []interface{} `json:"appRoles"`
-	DisabledByMicrosoftStatus interface{}   `json:"disabledByMicrosoftStatus"`
-	DisplayName               string        `json:"displayName"`
-	Endpoints                 []interface{} `json:"endpoints"`
-	Homepage                  interface{}   `json:"homepage"`
-	Id                        string        `json:"id"`
-	VerifiedPublisher         struct {
-		DisplayName         string    `json:"displayName"`
-		VerifiedPublisherId string    `json:"verifiedPublisherId"`
-		AddedDateTime       time.Time `json:"addedDateTime"`
-	} `json:"verifiedPublisher"`
-	Info struct {
-		TermsOfServiceUrl   interface{} `json:"termsOfServiceUrl"`
-		SupportUrl          interface{} `json:"supportUrl"`
-		PrivacyStatementUrl interface{} `json:"privacyStatementUrl"`
-		MarketingUrl        interface{} `json:"marketingUrl"`
-		LogoUrl             interface{} `json:"logoUrl"`
-	} `json:"info"`
-	KeyCredentials                         []interface{} `json:"keyCredentials"`
-	LogoutUrl                              interface{}   `json:"logoutUrl"`
-	Oauth2PermissionScopes                 []interface{} `json:"oauth2PermissionScopes"`
-	PasswordCredentials                    []interface{} `json:"passwordCredentials"`
-	PublisherName                          interface{}   `json:"publisherName"`
-	ReplyUrls                              []interface{} `json:"replyUrls"`
-	ResourceSpecificApplicationPermissions []interface{} `json:"resourceSpecificApplicationPermissions"`
-	ServicePrincipalNames                  []string      `json:"servicePrincipalNames"`
-	ServicePrincipalType                   interface{}   `json:"servicePrincipalType"`
-	SignInAudience                         string        `json:"signInAudience"`
-	Tags                                   []interface{} `json:"tags"`
-	TokenEncryptionKeyId                   interface{}   `json:"tokenEncryptionKeyId"`
+	Id string `json:"id"`
 }
 
 func (c *AppClient) DeleteServicePrincipal(ctx context.Context, spObjectID string, permanentlyDelete bool) error {

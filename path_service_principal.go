@@ -87,7 +87,7 @@ func (b *azureSecretBackend) pathSPRead(ctx context.Context, req *logical.Reques
 	var resp *logical.Response
 
 	if role.ApplicationObjectID != "" {
-		resp, err = b.createStaticSPSecret(ctx, client, roleName, role)
+		resp, err = b.createStaticSPSecret(ctx, req.Storage, client, roleName, role)
 	} else {
 		resp, err = b.createSPSecret(ctx, req.Storage, client, roleName, role)
 	}
@@ -182,7 +182,7 @@ func (b *azureSecretBackend) createSPSecret(ctx context.Context, s logical.Stora
 }
 
 // createStaticSPSecret adds a new password to the App associated with the role.
-func (b *azureSecretBackend) createStaticSPSecret(ctx context.Context, c *client, roleName string, role *roleEntry) (*logical.Response, error) {
+func (b *azureSecretBackend) createStaticSPSecret(ctx context.Context, s logical.Storage, c *client, roleName string, role *roleEntry) (*logical.Response, error) {
 	lock := locksutil.LockForKey(b.appLocks, role.ApplicationObjectID)
 	lock.Lock()
 	defer lock.Unlock()
@@ -196,19 +196,67 @@ func (b *azureSecretBackend) createStaticSPSecret(ctx context.Context, c *client
 	if err != nil {
 		return nil, err
 	}
-	serviceP, password, err := c.createSP(ctx, &app, spExpiration)
+
+	// Write a WAL entry in case the SP create process doesn't complete
+	walID, err := framework.PutWAL(ctx, s, walAppKey, &walApp{
+		AppID:      *app.AppID,
+		AppObjID:   *app.ID,
+		Expiration: time.Now().Add(maxWALAge),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error writing WAL: %w", err)
+	}
+
+	spID, password, err := c.createSP(ctx, &app, spExpiration)
 	if err != nil {
 		return nil, err
 	}
 
+	assignmentIDs, err := c.generateUUIDs(len(role.AzureRoles))
+	if err != nil {
+		return nil, fmt.Errorf("error generating assginment IDs; err=%w", err)
+	}
+
+	// Write a second WAL entry in case the Role assignments don't complete
+	rWALID, err := framework.PutWAL(ctx, s, walAppRoleAssignment, &walAppRoleAssign{
+		SpID:          spID,
+		AssignmentIDs: assignmentIDs,
+		AzureRoles:    role.AzureRoles,
+		Expiration:    time.Now().Add(maxWALAge),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error writing WAL: %w", err)
+	}
+
+	// Assign Azure roles to the new SP
+	raIDs, err := c.assignRoles(ctx, spID, role.AzureRoles, assignmentIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Assign Azure group memberships to the new SP
+	if err := c.addGroupMemberships(ctx, spID, role.AzureGroups); err != nil {
+		return nil, err
+	}
+
+	// SP is fully created so delete the WALs
+	if err := framework.DeleteWAL(ctx, s, walID); err != nil {
+		return nil, fmt.Errorf("error deleting WAL: %w", err)
+	}
+
+	if err := framework.DeleteWAL(ctx, s, rWALID); err != nil {
+		return nil, fmt.Errorf("error deleting role assignment WAL: %w", err)
+	}
+
 	data := map[string]interface{}{
-		"client_id":     serviceP,
+		"client_id":     role.ApplicationID,
 		"client_secret": password,
 	}
 	internalData := map[string]interface{}{
-		"app_object_id": role.ApplicationObjectID,
-		"key_id":        serviceP,
-		"role":          roleName,
+		"app_object_id":       role.ApplicationObjectID,
+		"role_assignment_ids": raIDs,
+		"key_id":              spID,
+		"role":                roleName,
 	}
 
 	return b.Secret(SecretTypeStaticSP).Response(data, internalData), nil

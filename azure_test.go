@@ -95,7 +95,7 @@ func TestSPCredentials(t *testing.T) {
 }
 
 func helper(ctx context.Context, rgClient *armresources.ResourceGroupsClient) (armresources.ResourceGroupsClientCreateOrUpdateResponse, error) {
-	resp, err := rgClient.CreateOrUpdate(ctx, fmt.Sprintf("%v-%v", "vault-test-{UUID}", uuid.New().String()), armresources.ResourceGroup{
+	resp, err := rgClient.CreateOrUpdate(ctx, fmt.Sprintf("%v-%v", "vault-test", uuid.New().String()), armresources.ResourceGroup{
 		Location: to.StringPtr("West US"),
 		Tags:     map[string]*string{"created_by": to.StringPtr("vault-test-{UUID}")},
 	}, nil)

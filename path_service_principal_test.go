@@ -6,21 +6,20 @@ package azuresecrets
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/Azure/go-autorest/autorest"
 	log "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-uuid"
-	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/logging"
 	"github.com/hashicorp/vault/sdk/logical"
 	"github.com/mitchellh/mapstructure"
+
+	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 )
 
 var (
@@ -97,7 +96,7 @@ func TestSP_WAL_Cleanup(t *testing.T) {
 
 	// overwrite the normal test backend provider with the errMockProvider
 	errMockProvider := newErrMockProvider()
-	b.getProvider = func(s *clientSettings, p api.Passwords) (api.AzureProvider, error) {
+	b.getProvider = func(s *clientSettings, p api.Passwords) (AzureProvider, error) {
 		return errMockProvider, nil
 	}
 
@@ -128,7 +127,7 @@ func TestSP_WAL_Cleanup(t *testing.T) {
 	})
 }
 
-func assertEmptyWAL(t *testing.T, b *azureSecretBackend, emp api.AzureProvider, s logical.Storage) {
+func assertEmptyWAL(t *testing.T, b *azureSecretBackend, emp AzureProvider, s logical.Storage) {
 	t.Helper()
 
 	wal, err := framework.ListWAL(context.Background(), s)
@@ -764,23 +763,23 @@ func TestRoleAssignmentWALRollback(t *testing.T) {
 		provider := client.provider.(*provider)
 		spObjID := findServicePrincipalID(t, provider.spClient, appID)
 
-		assertServicePrincipalExists(t, provider.spClient, spObjID)
+		assertServicePrincipalExists(t, provider.spClient, spObjID, true)
 
 		// Verify that the role assignments were created. Get the assignment
 		// info from Azure and verify it matches the Reader role.
 		raIDs := credsResp.Secret.InternalData["role_assignment_ids"].([]string)
 		equal(t, 2, len(raIDs))
 
-		ra, err := provider.raClient.GetByID(context.Background(), raIDs[0])
+		ra, err := provider.raClient.GetByID(context.Background(), raIDs[0], nil)
 		assertErrorIsNil(t, err)
 
-		roleDefs, err := provider.ListRoleDefinitions(context.Background(), fmt.Sprintf("subscriptions/%s", subscriptionID), "")
+		roleDefs, err := provider.ListRoleDefinitions(nil, fmt.Sprintf("subscriptions/%s", subscriptionID), "")
 		assertErrorIsNil(t, err)
 
-		defID := *ra.RoleAssignmentPropertiesWithScope.RoleDefinitionID
+		defID := *ra.Properties.RoleDefinitionID
 		found := false
 		for _, def := range roleDefs {
-			if *def.ID == defID && *def.RoleName == "Storage Blob Data Owner" {
+			if *def.ID == defID && *def.Name == "Storage Blob Data Owner" {
 				found = true
 				break
 			}
@@ -876,7 +875,7 @@ func TestRoleAssignmentWALRollback(t *testing.T) {
 		// Verify that SP get is an error after delete. Expected there
 		// to be a delay and that this step would take some time/retries,
 		// but that seems not to be the case.
-		assertServicePrincipalDoesNotExist(t, provider.spClient, spObjID)
+		assertServicePrincipalExists(t, provider.spClient, spObjID, false)
 	})
 }
 
@@ -979,23 +978,23 @@ func TestCredentialInteg_msgraph(t *testing.T) {
 		provider := client.provider.(*provider)
 		spObjID := findServicePrincipalID(t, provider.spClient, appID)
 
-		assertServicePrincipalExists(t, provider.spClient, spObjID)
+		assertServicePrincipalExists(t, provider.spClient, spObjID, true)
 
 		// Verify that the role assignments were created. Get the assignment
 		// info from Azure and verify it matches the Reader role.
 		raIDs := credsResp.Secret.InternalData["role_assignment_ids"].([]string)
 		equal(t, 2, len(raIDs))
 
-		ra, err := provider.raClient.GetByID(context.Background(), raIDs[0])
+		ra, err := provider.raClient.GetByID(context.Background(), raIDs[0], nil)
 		assertErrorIsNil(t, err)
 
-		roleDefs, err := provider.ListRoleDefinitions(context.Background(), fmt.Sprintf("subscriptions/%s", subscriptionID), "")
+		roleDefs, err := provider.ListRoleDefinitions(nil, fmt.Sprintf("subscriptions/%s", subscriptionID), "")
 		assertErrorIsNil(t, err)
 
-		defID := *ra.RoleAssignmentPropertiesWithScope.RoleDefinitionID
+		defID := *ra.Properties.RoleDefinitionID
 		found := false
 		for _, def := range roleDefs {
-			if *def.ID == defID && *def.RoleName == "Storage Blob Data Owner" {
+			if *def.ID == defID && *def.Name == "Storage Blob Data Owner" {
 				found = true
 				break
 			}
@@ -1019,7 +1018,7 @@ func TestCredentialInteg_msgraph(t *testing.T) {
 		// Verify that SP get is an error after delete. Expected there
 		// to be a delay and that this step would take some time/retries,
 		// but that seems not to be the case.
-		assertServicePrincipalDoesNotExist(t, provider.spClient, spObjID)
+		assertServicePrincipalExists(t, provider.spClient, spObjID, false)
 	})
 }
 
@@ -1056,30 +1055,16 @@ func findServicePrincipalID(t *testing.T, client api.ServicePrincipalClient, app
 		pathVals := &url.Values{}
 		pathVals.Set("$filter", fmt.Sprintf("appId eq '%s'", appID))
 
-		prep := spClient.GetPreparer(
-			autorest.AsGet(),
-			autorest.WithPath(fmt.Sprintf("/v1.0/servicePrincipals?%s", pathVals.Encode())),
-		)
-
-		type listSPsResponse struct {
-			ServicePrincipals []servicePrincipalResp `json:"value"`
-		}
-
-		respBody := listSPsResponse{}
-
-		err := spClient.SendRequest(context.Background(), prep,
-			autorest.WithErrorUnlessStatusCode(http.StatusOK),
-			autorest.ByUnmarshallingJSON(&respBody),
-		)
+		spList, err := spClient.ListServicePrincipals(context.Background(), appID)
 		assertErrorIsNil(t, err)
 
-		if len(respBody.ServicePrincipals) == 0 {
+		if len(spList) == 0 {
 			t.Fatalf("Failed to find service principals from application ID")
 		}
 
-		for _, sp := range respBody.ServicePrincipals {
-			if sp.AppID == appID {
-				return sp.ID
+		for _, sp := range spList {
+			if *sp.GetAppId() == appID {
+				return *sp.GetId()
 			}
 		}
 	default:
@@ -1090,60 +1075,22 @@ func findServicePrincipalID(t *testing.T, client api.ServicePrincipalClient, app
 	return "" // Because compilers
 }
 
-func assertServicePrincipalExists(t *testing.T, client api.ServicePrincipalClient, spID string) {
+func assertServicePrincipalExists(t *testing.T, client api.ServicePrincipalClient, spID string, exists bool) {
 	t.Helper()
 
 	switch spClient := client.(type) {
 	case *api.AppClient:
-		pathParams := map[string]interface{}{
-			"id": spID,
-		}
-
-		prep := spClient.GetPreparer(
-			autorest.AsGet(),
-			autorest.WithPathParameters("/v1.0/servicePrincipals/{id}", pathParams),
-		)
-
-		respBody := servicePrincipalResp{}
-
-		err := spClient.SendRequest(context.Background(), prep,
-			autorest.WithErrorUnlessStatusCode(http.StatusOK),
-			autorest.ByUnmarshallingJSON(&respBody),
-		)
+		sp, err := spClient.GetServicePrincipalByID(context.Background(), spID)
 		assertErrorIsNil(t, err)
 
-		if respBody.ID == "" {
-			t.Fatalf("Failed to find service principal")
-		}
-	default:
-		t.Fatalf("Unrecognized service principal client type: %T", spClient)
-	}
-}
-
-func assertServicePrincipalDoesNotExist(t *testing.T, client api.ServicePrincipalClient, spID string) {
-	t.Helper()
-
-	switch spClient := client.(type) {
-	case *api.AppClient:
-		pathParams := map[string]interface{}{
-			"id": spID,
-		}
-
-		prep := spClient.GetPreparer(
-			autorest.AsGet(),
-			autorest.WithPathParameters("/v1.0/servicePrincipals/{id}", pathParams),
-		)
-
-		respBody := servicePrincipalResp{}
-
-		err := spClient.SendRequest(context.Background(), prep,
-			autorest.WithErrorUnlessStatusCode(http.StatusNotFound),
-			autorest.ByUnmarshallingJSON(&respBody),
-		)
-		assertErrorIsNil(t, err)
-
-		if respBody.ID != "" {
-			t.Fatalf("Found service principal when it shouldn't exist")
+		if exists {
+			if *sp.GetId() == "" {
+				t.Fatalf("Failed to find service principal")
+			}
+		} else {
+			if *sp.GetId() != "" {
+				t.Fatalf("Found service principal when it shouldn't exist")
+			}
 		}
 	default:
 		t.Fatalf("Unrecognized service principal client type: %T", spClient)

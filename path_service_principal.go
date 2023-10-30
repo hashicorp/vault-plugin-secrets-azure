@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Azure/go-autorest/autorest/to"
+	"github.com/google/uuid"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/locksutil"
 	"github.com/hashicorp/vault/sdk/logical"
@@ -110,8 +110,8 @@ func (b *azureSecretBackend) createSPSecret(ctx context.Context, s logical.Stora
 	if err != nil {
 		return nil, err
 	}
-	appID := to.String(app.AppID)
-	appObjID := to.String(app.ID)
+	appID := *app.GetAppId()
+	appObjID := *app.GetId()
 
 	// Write a WAL entry in case the SP create process doesn't complete
 	walID, err := framework.PutWAL(ctx, s, walAppKey, &walApp{
@@ -131,7 +131,7 @@ func (b *azureSecretBackend) createSPSecret(ctx context.Context, s logical.Stora
 
 	assignmentIDs, err := c.generateUUIDs(len(role.AzureRoles))
 	if err != nil {
-		return nil, fmt.Errorf("error generating assginment IDs; err=%w", err)
+		return nil, fmt.Errorf("error generating assignment IDs; err=%w", err)
 	}
 
 	// Write a second WAL entry in case the Role assignments don't complete
@@ -320,7 +320,11 @@ func (b *azureSecretBackend) staticSPRevoke(ctx context.Context, req *logical.Re
 	lock.Lock()
 	defer lock.Unlock()
 
-	return nil, c.deleteAppPassword(ctx, appObjectID, keyIDRaw.(string))
+	keyUUID, err := uuid.Parse(keyIDRaw.(string))
+	if err != nil {
+		return nil, err
+	}
+	return nil, c.deleteAppPassword(ctx, appObjectID, &keyUUID)
 }
 
 const pathServicePrincipalHelpSyn = `

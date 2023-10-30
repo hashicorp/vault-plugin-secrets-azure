@@ -8,11 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
 	"github.com/google/uuid"
 	"github.com/hashicorp/go-multierror"
@@ -208,13 +210,13 @@ func (c *client) unassignRoles(ctx context.Context, roleIDs []string) error {
 	var merr *multierror.Error
 
 	for _, id := range roleIDs {
-		if _, err := c.provider.DeleteRoleAssignmentByID(ctx, id); err != nil {
+		var rawResponse *http.Response
+		ctxWithResp := policy.WithCaptureResponse(ctx, &rawResponse)
+		if _, err := c.provider.DeleteRoleAssignmentByID(ctxWithResp, id); err != nil {
 			// If a role was deleted manually then Azure returns a error and status 204
-			// @TODO figure out how to get the status code from MSGraph SDK errors; removing autorest for now
-			//detailedErr := new(autorest.DetailedError)
-			//if errors.As(err, detailedErr) && (detailedErr.StatusCode == http.StatusNoContent || detailedErr.StatusCode == http.StatusNotFound) {
-			//	continue
-			//}
+			if rawResponse.StatusCode == http.StatusNoContent || rawResponse.StatusCode == http.StatusNotFound {
+				continue
+			}
 
 			merr = multierror.Append(merr, fmt.Errorf("error unassigning role: %w", err))
 		}

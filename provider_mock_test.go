@@ -31,7 +31,12 @@ type mockProvider struct {
 
 func newMockProvider() AzureProvider {
 	return &mockProvider{
-		applications:      make(map[string]string),
+		applications: map[string]string{
+			// pre-populate applications map with Static obj ID
+			// for TestStaticSPRead. In this test, CreateApplication is
+			// not called and the test expects an app to exist.
+			testStaticSPAppObjID: testStaticSPAppObjID,
+		},
 		servicePrincipals: make(map[string]bool),
 		deletedObjects:    make(map[string]bool),
 		passwords:         make(map[string]string),
@@ -296,6 +301,16 @@ func (m *mockProvider) ListGroups(_ context.Context, filter string) ([]models.Gr
 
 }
 
+// CreateRoleAssignment for the errMockProvider intentionally fails
+func (e *errMockProvider) CreateRoleAssignment(_ context.Context, _ string, _ string, _ armauthorization.RoleAssignmentCreateParameters) (armauthorization.RoleAssignmentsClientCreateResponse, error) {
+	return armauthorization.RoleAssignmentsClientCreateResponse{}, errors.New("PrincipalNotFound")
+}
+
+// ListRoleAssignments for the errMockProvider intentionally fails
+func (e *errMockProvider) ListRoleAssignments(_ context.Context, _ string) ([]*armauthorization.RoleAssignment, error) {
+	return []*armauthorization.RoleAssignment{}, errors.New("PrincipalNotFound")
+}
+
 // errMockProvider simulates a normal provider which fails to associate a role,
 // returning an error
 type errMockProvider struct {
@@ -311,27 +326,4 @@ func newErrMockProvider() AzureProvider {
 			passwords:         make(map[string]string),
 		},
 	}
-}
-
-// CreateRoleAssignment for the errMockProvider intentionally fails
-func (e *errMockProvider) CreateRoleAssignment(_ context.Context, _ string, _ string, _ armauthorization.RoleAssignmentCreateParameters) (armauthorization.RoleAssignmentsClientCreateResponse, error) {
-	return armauthorization.RoleAssignmentsClientCreateResponse{}, errors.New("PrincipalNotFound")
-}
-
-// ListRoleAssignments for the errMockProvider intentionally fails
-func (e *errMockProvider) ListRoleAssignments(_ context.Context, _ string) ([]*armauthorization.RoleAssignment, error) {
-	return []*armauthorization.RoleAssignment{}, errors.New("PrincipalNotFound")
-}
-
-// GetApplication for the errMockProvider only returns an application if that
-// key is found, unlike mockProvider which returns the same application object
-// id each time. Existing tests depend on the mockProvider behavior, which is
-// why errMockProvider has it's own version.
-func (e *errMockProvider) GetApplication(_ context.Context, applicationObjectID string) (models.Applicationable, error) {
-	for s := range e.applications {
-		if s == applicationObjectID {
-			return nil, nil
-		}
-	}
-	return nil, errors.New("not found")
 }

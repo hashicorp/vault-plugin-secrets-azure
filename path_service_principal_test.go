@@ -67,8 +67,10 @@ var (
 		}),
 	}
 
+	testStaticSPAppObjID = "00000000-0000-0000-0000-000000000000"
+
 	testStaticSPRole = map[string]interface{}{
-		"application_object_id": "00000000-0000-0000-0000-000000000000",
+		"application_object_id": testStaticSPAppObjID,
 	}
 
 	testPersistentRole = map[string]interface{}{

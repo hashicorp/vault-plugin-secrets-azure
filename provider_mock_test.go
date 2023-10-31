@@ -26,6 +26,7 @@ type mockProvider struct {
 	deletedObjects            map[string]bool
 	passwords                 map[string]string
 	failNextCreateApplication bool
+	ctxTimeout                int
 	lock                      sync.Mutex
 }
 
@@ -116,6 +117,11 @@ func (m *mockProvider) CreateServicePrincipal(_ context.Context, _ string, _ tim
 }
 
 func (m *mockProvider) CreateApplication(_ context.Context, _ string) (models.Applicationable, error) {
+	if m.ctxTimeout != 0 {
+		// simulate a context deadline error by sleeping for timeout period
+		time.Sleep(time.Duration(m.ctxTimeout) * time.Second)
+	}
+
 	if m.failNextCreateApplication {
 		m.failNextCreateApplication = false
 		return nil, errors.New("Mock: fail to create application")
@@ -136,16 +142,16 @@ func (m *mockProvider) CreateApplication(_ context.Context, _ string) (models.Ap
 	return &a, nil
 }
 
-func (m *mockProvider) GetApplication(_ context.Context, objectID string) (models.Applicationable, error) {
+func (m *mockProvider) GetApplication(_ context.Context, clientID string) (models.Applicationable, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	appID := m.applications[objectID]
+	appID := m.applications[clientID]
 
 	a := mocks.Applicationable{}
 
 	a.On("GetAppId").Return(&appID)
-	a.On("GetId").Return(&objectID)
+	a.On("GetId").Return(&clientID)
 
 	return &a, nil
 }
@@ -299,31 +305,4 @@ func (m *mockProvider) ListGroups(_ context.Context, filter string) ([]models.Gr
 
 	return []models.Groupable{}, nil
 
-}
-
-// CreateRoleAssignment for the errMockProvider intentionally fails
-func (e *errMockProvider) CreateRoleAssignment(_ context.Context, _ string, _ string, _ armauthorization.RoleAssignmentCreateParameters) (armauthorization.RoleAssignmentsClientCreateResponse, error) {
-	return armauthorization.RoleAssignmentsClientCreateResponse{}, errors.New("PrincipalNotFound")
-}
-
-// ListRoleAssignments for the errMockProvider intentionally fails
-func (e *errMockProvider) ListRoleAssignments(_ context.Context, _ string) ([]*armauthorization.RoleAssignment, error) {
-	return []*armauthorization.RoleAssignment{}, errors.New("PrincipalNotFound")
-}
-
-// errMockProvider simulates a normal provider which fails to associate a role,
-// returning an error
-type errMockProvider struct {
-	*mockProvider
-}
-
-func newErrMockProvider() AzureProvider {
-	return &errMockProvider{
-		mockProvider: &mockProvider{
-			applications:      make(map[string]string),
-			servicePrincipals: make(map[string]bool),
-			deletedObjects:    make(map[string]bool),
-			passwords:         make(map[string]string),
-		},
-	}
 }

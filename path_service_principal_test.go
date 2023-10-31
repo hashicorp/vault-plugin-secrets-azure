@@ -96,10 +96,10 @@ var (
 func TestSP_WAL_Cleanup(t *testing.T) {
 	b, s := getTestBackendMocked(t, true)
 
-	// overwrite the normal test backend provider with the errMockProvider
-	errMockProvider := newErrMockProvider()
+	mp := newMockProvider()
+	mp.(*mockProvider).ctxTimeout = 5
 	b.getProvider = func(s *clientSettings, p api.Passwords) (AzureProvider, error) {
-		return errMockProvider, nil
+		return mp, nil
 	}
 
 	// verify basic cred issuance
@@ -125,7 +125,7 @@ func TestSP_WAL_Cleanup(t *testing.T) {
 			t.Fatalf("expected no response error, actual:%#v", resp.Error())
 		}
 
-		assertEmptyWAL(t, b, errMockProvider, s)
+		assertEmptyWAL(t, b, mp, s)
 	})
 }
 

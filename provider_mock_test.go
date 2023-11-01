@@ -14,9 +14,8 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
 	"github.com/google/uuid"
-	"github.com/microsoftgraph/msgraph-sdk-go/models"
 
-	"github.com/hashicorp/vault-plugin-secrets-azure/mocks"
+	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 )
 
 // mockProvider is a Provider that provides stubs and simple, deterministic responses.
@@ -116,7 +115,7 @@ func (m *mockProvider) CreateServicePrincipal(_ context.Context, _ string, _ tim
 	return id, pass, nil
 }
 
-func (m *mockProvider) CreateApplication(_ context.Context, _ string) (models.Applicationable, error) {
+func (m *mockProvider) CreateApplication(_ context.Context, _ string) (api.Application, error) {
 	if m.ctxTimeout != 0 {
 		// simulate a context deadline error by sleeping for timeout period
 		time.Sleep(time.Duration(m.ctxTimeout) * time.Second)
@@ -124,39 +123,35 @@ func (m *mockProvider) CreateApplication(_ context.Context, _ string) (models.Ap
 
 	if m.failNextCreateApplication {
 		m.failNextCreateApplication = false
-		return nil, errors.New("Mock: fail to create application")
+		return api.Application{}, errors.New("Mock: fail to create application")
 	}
 	appObjID := generateUUID()
 	appID := generateUUID()
-
-	a := mocks.Applicationable{}
-
-	a.On("GetAppId").Return(&appID)
-	a.On("GetId").Return(&appObjID)
 
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
 	m.applications[appObjID] = appID
 
-	return &a, nil
+	return api.Application{
+		AppID:       appID,
+		AppObjectID: appObjID,
+	}, nil
 }
 
-func (m *mockProvider) GetApplication(_ context.Context, clientID string) (models.Applicationable, error) {
+func (m *mockProvider) GetApplication(_ context.Context, clientID string) (api.Application, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
 	appID := m.applications[clientID]
 
-	a := mocks.Applicationable{}
-
-	a.On("GetAppId").Return(&appID)
-	a.On("GetId").Return(&clientID)
-
-	return &a, nil
+	return api.Application{
+		AppID:       appID,
+		AppObjectID: clientID,
+	}, nil
 }
 
-func (m *mockProvider) ListApplications(_ context.Context, _ string) ([]models.Applicationable, error) {
+func (m *mockProvider) ListApplications(_ context.Context, _ string) ([]api.Application, error) {
 	return nil, nil
 }
 
@@ -180,26 +175,25 @@ func (m *mockProvider) DeleteServicePrincipal(_ context.Context, spObjectID stri
 	return nil
 }
 
-func (m *mockProvider) AddApplicationPassword(_ context.Context, _ string, displayName string, endDateTime time.Time) (result models.PasswordCredentialable, err error) {
-	keyID := uuid.New()
+func (m *mockProvider) AddApplicationPassword(_ context.Context, _ string, _ string, _ time.Time) (result api.PasswordCredential, err error) {
+	keyID := uuid.New().String()
 	pass := uuid.New().String()
 
-	p := mocks.PasswordCredentialable{}
-	p.On("GetKeyId").Return(&keyID)
-	p.On("GetSecretText").Return(&pass)
-
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	m.passwords[keyID.String()] = pass
+	m.passwords[keyID] = pass
 
-	return &p, nil
+	return api.PasswordCredential{
+		KeyID:      keyID,
+		SecretText: pass,
+	}, nil
 }
 
-func (m *mockProvider) RemoveApplicationPassword(_ context.Context, _ string, keyID *uuid.UUID) (err error) {
+func (m *mockProvider) RemoveApplicationPassword(_ context.Context, _ string, keyID string) (err error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	delete(m.passwords, keyID.String())
+	delete(m.passwords, keyID)
 
 	return nil
 }
@@ -248,61 +242,48 @@ func (m *mockProvider) RemoveGroupMember(_ context.Context, _ string, _ string) 
 }
 
 // GetGroup gets group information from the directory.
-func (m *mockProvider) GetGroup(_ context.Context, objectID string) (models.Groupable, error) {
+func (m *mockProvider) GetGroup(_ context.Context, objectID string) (api.Group, error) {
 	var groupName string
 	s := strings.Split(objectID, "FAKE_GROUP-")
 	if len(s) > 1 {
 		groupName = s[1]
 	}
-	g := mocks.Groupable{}
-	g.On("GetId").Return(
-		&objectID)
 
-	g.On("GetDisplayName").Return(
-		&groupName)
-
-	return &g, nil
+	return api.Group{
+		ID:          objectID,
+		DisplayName: groupName,
+	}, nil
 }
 
 // ListGroups gets list of groups for the current tenant.
-func (m *mockProvider) ListGroups(_ context.Context, filter string) ([]models.Groupable, error) {
+func (m *mockProvider) ListGroups(_ context.Context, filter string) ([]api.Group, error) {
 	reGroupName := regexp.MustCompile("displayName eq '(.*)'")
 
 	match := reGroupName.FindAllStringSubmatch(filter, -1)
 	if len(match) > 0 {
 		name := match[0][1]
 		if name == "multiple" {
-			id1 := fmt.Sprintf("00000000-1111-2222-3333-444444444444FAKE_GROUP-%s-1", name)
-			id2 := fmt.Sprintf("00000000-1111-2222-3333-444444444444FAKE_GROUP-%s-2", name)
-			g1 := mocks.Groupable{}
-			g1.On("GetId").Return(
-				&id1,
-			)
-			g1.On("GetDisplayName").Return(&name)
 
-			g2 := mocks.Groupable{}
-			g2.On("GetId").Return(
-				&id2,
-			)
-			g2.On("GetDisplayName").Return(&name)
-
-			return []models.Groupable{
-				&g1, &g2,
+			return []api.Group{
+				{
+					ID:          fmt.Sprintf("00000000-1111-2222-3333-444444444444FAKE_GROUP-%s-1", name),
+					DisplayName: name,
+				},
+				{
+					ID:          fmt.Sprintf("00000000-1111-2222-3333-444444444444FAKE_GROUP-%s-2", name),
+					DisplayName: name,
+				},
 			}, nil
 		}
 
-		id := fmt.Sprintf("00000000-1111-2222-3333-444444444444FAKE_GROUP-%s", name)
-		g := mocks.Groupable{}
-		g.On("GetId").Return(
-			&id,
-		)
-		g.On("GetDisplayName").Return(&name)
-
-		return []models.Groupable{
-			&g,
+		return []api.Group{
+			{
+				ID:          fmt.Sprintf("00000000-1111-2222-3333-444444444444FAKE_GROUP-%s", name),
+				DisplayName: name,
+			},
 		}, nil
 	}
 
-	return []models.Groupable{}, nil
+	return []api.Group{}, nil
 
 }

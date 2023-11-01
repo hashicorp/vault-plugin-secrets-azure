@@ -6,7 +6,6 @@ package api
 import (
 	"context"
 
-	abstractions "github.com/microsoft/kiota-abstractions-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/groups"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 )
@@ -14,8 +13,8 @@ import (
 type GroupsClient interface {
 	AddGroupMember(ctx context.Context, groupObjectID string, memberObjectID string) error
 	RemoveGroupMember(ctx context.Context, groupObjectID, memberObjectID string) error
-	GetGroup(ctx context.Context, objectID string) (result models.Groupable, err error)
-	ListGroups(ctx context.Context, filter string) (result []models.Groupable, err error)
+	GetGroup(ctx context.Context, objectID string) (result Group, err error)
+	ListGroups(ctx context.Context, filter string) (result []Group, err error)
 }
 
 type Group struct {
@@ -35,19 +34,23 @@ func (c *AppClient) RemoveGroupMember(ctx context.Context, groupObjectID, member
 	return c.client.Groups().ByGroupId(groupObjectID).Members().ByDirectoryObjectId(memberObjectID).Ref().Delete(ctx, nil)
 }
 
-func (c *AppClient) GetGroup(ctx context.Context, groupID string) (models.Groupable, error) {
-	return c.client.Groups().ByGroupId(groupID).Get(ctx, nil)
+func (c *AppClient) GetGroup(ctx context.Context, groupID string) (Group, error) {
+	resp, err := c.client.Groups().ByGroupId(groupID).Get(ctx, nil)
+	if err != nil {
+		return Group{}, err
+	}
+
+	return Group{
+		ID:          *resp.GetId(),
+		DisplayName: *resp.GetDisplayName(),
+	}, nil
 }
 
-func (c *AppClient) ListGroups(ctx context.Context, filter string) ([]models.Groupable, error) {
-	headers := abstractions.NewRequestHeaders()
-	headers.Add("ConsistencyLevel", "eventual")
-
+func (c *AppClient) ListGroups(ctx context.Context, filter string) ([]Group, error) {
 	req := &groups.GroupsRequestBuilderGetQueryParameters{
 		Filter: &filter,
 	}
 	configuration := &groups.GroupsRequestBuilderGetRequestConfiguration{
-		Headers:         headers,
 		QueryParameters: req,
 	}
 
@@ -56,5 +59,13 @@ func (c *AppClient) ListGroups(ctx context.Context, filter string) ([]models.Gro
 		return nil, err
 	}
 
-	return groupList.GetValue(), nil
+	var g []Group
+	for _, group := range groupList.GetValue() {
+		g = append(g, Group{
+			ID:          *group.GetId(),
+			DisplayName: *group.GetDisplayName(),
+		})
+	}
+
+	return g, nil
 }

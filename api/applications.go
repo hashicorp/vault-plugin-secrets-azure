@@ -11,7 +11,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/google/uuid"
 	"github.com/hashicorp/go-multierror"
-	abstractions "github.com/microsoft/kiota-abstractions-go"
 	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
 	auth "github.com/microsoftgraph/msgraph-sdk-go-core/authentication"
 	"github.com/microsoftgraph/msgraph-sdk-go/applications"
@@ -19,12 +18,12 @@ import (
 )
 
 type ApplicationsClient interface {
-	GetApplication(ctx context.Context, clientID string) (models.Applicationable, error)
-	CreateApplication(ctx context.Context, displayName string) (models.Applicationable, error)
+	GetApplication(ctx context.Context, clientID string) (Application, error)
+	CreateApplication(ctx context.Context, displayName string) (Application, error)
 	DeleteApplication(ctx context.Context, applicationObjectID string, permanentlyDelete bool) error
-	ListApplications(ctx context.Context, filter string) ([]models.Applicationable, error)
-	AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime time.Time) (models.PasswordCredentialable, error)
-	RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID *uuid.UUID) error
+	ListApplications(ctx context.Context, filter string) ([]Application, error)
+	AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime time.Time) (PasswordCredential, error)
+	RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) error
 }
 
 var _ ApplicationsClient = (*AppClient)(nil)
@@ -35,20 +34,20 @@ type AppClient struct {
 	client *msgraphsdkgo.GraphServiceClient
 }
 
-// Reference: https://docs.microsoft.com/en-us/graph/deployments#microsoft-graph-and-graph-explorer-service-root-endpoints
-func GetGraphURI(env string) (string, error) {
-	switch env {
-	case "AzurePublicCloud", "":
-		return "https://graph.microsoft.com", nil
-	case "AzureUSGovernmentCloud":
-		return "https://graph.microsoft.us", nil
-	case "AzureGermanCloud":
-		return "https://graph.microsoft.de", nil
-	case "AzureChinaCloud":
-		return "https://microsoftgraph.chinacloudapi.cn", nil
-	default:
-		return "", fmt.Errorf("environment '%s' unknown", env)
-	}
+type Application struct {
+	ID                  string
+	AppID               string
+	AppObjectID         string
+	Description         string
+	DisplayName         string
+	PasswordCredentials []PasswordCredential
+}
+
+type PasswordCredential struct {
+	DisplayName string
+	EndDate     time.Time
+	KeyID       string
+	SecretText  string
 }
 
 // NewMSGraphApplicationClient returns a new AppClient configured to interact with
@@ -79,7 +78,7 @@ func NewMSGraphApplicationClient(graphURI string, creds azcore.TokenCredential) 
 	return ac, nil
 }
 
-func (c *AppClient) GetApplication(ctx context.Context, clientID string) (models.Applicationable, error) {
+func (c *AppClient) GetApplication(ctx context.Context, clientID string) (Application, error) {
 	filter := fmt.Sprintf("appId eq '%s'", clientID)
 	req := applications.ApplicationsRequestBuilderGetRequestConfiguration{
 		QueryParameters: &applications.ApplicationsRequestBuilderGetQueryParameters{
@@ -89,55 +88,86 @@ func (c *AppClient) GetApplication(ctx context.Context, clientID string) (models
 
 	resp, err := c.client.Applications().Get(ctx, &req)
 	if err != nil {
-		return nil, err
+		return Application{}, err
 	}
 
 	apps := resp.GetValue()
 	if len(apps) == 0 {
-		return nil, fmt.Errorf("no application found")
+		return Application{}, fmt.Errorf("no application found")
 	}
 	if len(apps) > 1 {
-		return nil, fmt.Errorf("multiple applications found - double check your client_id")
+		return Application{}, fmt.Errorf("multiple applications found - double check your client_id")
 	}
 
-	return apps[0], nil
+	app := apps[0]
+
+	application := Application{
+		ID:                  *app.GetId(),
+		AppID:               *app.GetAppId(),
+		AppObjectID:         *app.GetId(),
+		Description:         *app.GetDescription(),
+		DisplayName:         *app.GetDisplayName(),
+		PasswordCredentials: getPasswordCredentialsForApplication(app),
+	}
+
+	return application, nil
 }
 
-func (c *AppClient) ListApplications(ctx context.Context, filter string) ([]models.Applicationable, error) {
-	headers := abstractions.NewRequestHeaders()
-	headers.Add("ConsistencyLevel", "eventual")
+func (c *AppClient) ListApplications(ctx context.Context, filter string) ([]Application, error) {
 
 	req := &applications.ApplicationsRequestBuilderGetQueryParameters{
 		Filter: &filter,
 	}
 	configuration := &applications.ApplicationsRequestBuilderGetRequestConfiguration{
-		Headers:         headers,
 		QueryParameters: req,
 	}
-	applications, err := c.client.Applications().Get(ctx, configuration)
-
+	resp, err := c.client.Applications().Get(ctx, configuration)
 	if err != nil {
 		return nil, err
 	}
 
-	return applications.GetValue(), nil
+	var apps []Application
+	for _, app := range resp.GetValue() {
+		apps = append(apps, Application{
+			ID:                  *app.GetId(),
+			AppID:               *app.GetAppId(),
+			AppObjectID:         *app.GetId(),
+			Description:         *app.GetDescription(),
+			DisplayName:         *app.GetDisplayName(),
+			PasswordCredentials: getPasswordCredentialsForApplication(app),
+		})
+	}
+
+	return apps, nil
 }
 
 // CreateApplication create a new Azure application object.
-func (c *AppClient) CreateApplication(ctx context.Context, displayName string) (models.Applicationable, error) {
+func (c *AppClient) CreateApplication(ctx context.Context, displayName string) (Application, error) {
 	requestBody := models.NewApplication()
 	requestBody.SetDisplayName(&displayName)
 
-	return c.client.Applications().Post(ctx, requestBody, nil)
+	resp, err := c.client.Applications().Post(ctx, requestBody, nil)
+	if err != nil {
+		return Application{}, err
+	}
+
+	return Application{
+		ID:                  *resp.GetId(),
+		AppID:               *resp.GetAppId(),
+		AppObjectID:         *resp.GetId(),
+		Description:         *resp.GetDescription(),
+		DisplayName:         *resp.GetDisplayName(),
+		PasswordCredentials: getPasswordCredentialsForApplication(resp),
+	}, nil
 }
 
 // DeleteApplication deletes an Azure application object.
 // This will in turn remove the service principal (but not the role assignments).
 func (c *AppClient) DeleteApplication(ctx context.Context, applicationObjectID string, permanentlyDelete bool) error {
-	err := c.client.Applications().ByApplicationId(applicationObjectID).Delete(context.Background(), nil)
+	err := c.client.Applications().ByApplicationId(applicationObjectID).Delete(ctx, nil)
 
 	if permanentlyDelete {
-		e := c.client.Directory().DeletedItems().ByDirectoryObjectId(applicationObjectID).Delete(context.Background(), nil)
+		e := c.client.Directory().DeletedItems().ByDirectoryObjectId(applicationObjectID).Delete(ctx, nil)
 		merr := multierror.Append(err, e)
 		return merr.ErrorOrNil()
 	}
@@ -145,7 +175,7 @@ func (c *AppClient) DeleteApplication(ctx context.Context, applicationObjectID s
 	return err
 }
 
-func (c *AppClient) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime time.Time) (models.PasswordCredentialable, error) {
+func (c *AppClient) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime time.Time) (PasswordCredential, error) {
 	requestBody := applications.NewItemAddPasswordPostRequestBody()
 	passwordCredential := models.NewPasswordCredential()
 	passwordCredential.SetDisplayName(&displayName)
@@ -154,15 +184,38 @@ func (c *AppClient) AddApplicationPassword(ctx context.Context, applicationObjec
 
 	resp, err := c.client.Applications().ByApplicationId(applicationObjectID).AddPassword().Post(ctx, requestBody, nil)
 	if err != nil {
-		return nil, err
+		return PasswordCredential{}, err
 	}
 
-	return resp, nil
+	return PasswordCredential{
+		SecretText:  *resp.GetSecretText(),
+		EndDate:     *resp.GetEndDateTime(),
+		KeyID:       resp.GetKeyId().String(),
+		DisplayName: *resp.GetDisplayName(),
+	}, nil
 }
 
-func (c *AppClient) RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID *uuid.UUID) error {
+func (c *AppClient) RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) error {
 	requestBody := applications.NewItemRemovePasswordPostRequestBody()
-	requestBody.SetKeyId(keyID)
+	kid, err := uuid.Parse(keyID)
+	if err != nil {
+		return err
+	}
+
+	requestBody.SetKeyId(&kid)
 
 	return c.client.Applications().ByApplicationId(applicationObjectID).RemovePassword().Post(ctx, requestBody, nil)
+}
+
+func getPasswordCredentialsForApplication(app models.Applicationable) []PasswordCredential {
+	var appCredentials []PasswordCredential
+	for _, cred := range app.GetPasswordCredentials() {
+		appCredentials = append(appCredentials, PasswordCredential{
+			SecretText:  *cred.GetSecretText(),
+			EndDate:     *cred.GetEndDateTime(),
+			KeyID:       cred.GetKeyId().String(),
+			DisplayName: *cred.GetDisplayName(),
+		})
+	}
+	return appCredentials
 }

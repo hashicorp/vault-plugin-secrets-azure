@@ -14,7 +14,8 @@ import (
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/jsonutil"
 	"github.com/hashicorp/vault/sdk/logical"
-	"github.com/microsoftgraph/msgraph-sdk-go/models"
+
+	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 )
 
 const (
@@ -217,7 +218,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		if err != nil {
 			return nil, fmt.Errorf("error loading Application: %w", err)
 		}
-		role.ApplicationID = *app.GetAppId()
+		role.ApplicationID = app.AppID
 
 		if role.PermanentlyDelete {
 			return logical.ErrorResponse("permanently_delete must be false if application_object_id is provided"), nil
@@ -296,7 +297,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	// update and verify Azure groups, including looking up each group by ID or name.
 	groupSet := make(map[string]bool)
 	for _, r := range role.AzureGroups {
-		var groupDef models.Groupable
+		var groupDef api.Group
 		if r.ObjectID != "" {
 			groupDef, err = client.provider.GetGroup(ctx, r.ObjectID)
 			if err != nil {
@@ -318,12 +319,12 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 			groupDef = defs[0]
 		}
 
-		if groupDef == nil {
+		if groupDef == (api.Group{}) {
 			return logical.ErrorResponse("could not find a group with that ID", r.GroupName), nil
 		}
 
-		r.ObjectID = *groupDef.GetId()
-		r.GroupName = *groupDef.GetDisplayName()
+		r.ObjectID = groupDef.ID
+		r.GroupName = groupDef.DisplayName
 
 		if groupSet[r.ObjectID] {
 			return logical.ErrorResponse("duplicate object_id '%s'", r.ObjectID), nil
@@ -390,8 +391,8 @@ func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logica
 	if err != nil {
 		return err
 	}
-	appID := *app.GetAppId()
-	appObjID := *app.GetId()
+	appID := app.AppID
+	appObjID := app.AppObjectID
 	// Write a WAL entry in case the SP create process doesn't complete
 	walID, err := framework.PutWAL(ctx, req.Storage, walAppKey, &walApp{
 		AppID:      appID,

@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/consts"
 	"github.com/hashicorp/vault/sdk/helper/locksutil"
@@ -142,16 +141,16 @@ func (b *azureSecretBackend) periodicFunc(ctx context.Context, sys *logical.Requ
 
 		app := apps[0]
 
-		credsToDelete := []*uuid.UUID{}
-		for _, cred := range app.GetPasswordCredentials() {
-			if cred.GetKeyId().String() != config.NewClientSecretKeyID {
-				credsToDelete = append(credsToDelete, cred.GetKeyId())
+		credsToDelete := []string{}
+		for _, cred := range app.PasswordCredentials {
+			if cred.KeyID != config.NewClientSecretKeyID {
+				credsToDelete = append(credsToDelete, cred.KeyID)
 			}
 		}
 
 		if len(credsToDelete) != 0 {
 			b.Logger().Debug("periodic func", "rotate-root", "removing old passwords from Azure")
-			err = removeApplicationPasswords(ctx, client.provider, *app.GetId(), credsToDelete...)
+			err = removeApplicationPasswords(ctx, client.provider, app.AppID, credsToDelete...)
 			if err != nil {
 				return err
 			}

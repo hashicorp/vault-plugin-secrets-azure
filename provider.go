@@ -13,14 +13,12 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
-	"github.com/google/uuid"
 	"github.com/hashicorp/go-cleanhttp"
 	"github.com/hashicorp/vault/sdk/logical"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
 
 	"github.com/hashicorp/vault/sdk/helper/useragent"
-	"github.com/microsoftgraph/msgraph-sdk-go/models"
 
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 )
@@ -69,10 +67,6 @@ func newAzureProvider(settings *clientSettings, passwords api.Passwords) (AzureP
 	//userAgent := useragent.PluginString(settings.PluginEnv, userAgentPluginName)
 	httpClient := cleanhttp.DefaultClient()
 
-	var appClient api.ApplicationsClient
-	var groupsClient api.GroupsClient
-	var spClient api.ServicePrincipalClient
-
 	cred, err := getTokenCredential(settings)
 	if err != nil {
 		return nil, err
@@ -82,10 +76,6 @@ func newAzureProvider(settings *clientSettings, passwords api.Passwords) (AzureP
 	if err != nil {
 		return nil, fmt.Errorf("failed to create MS graph client: %w", err)
 	}
-
-	appClient = msGraphAppClient
-	groupsClient = msGraphAppClient
-	spClient = msGraphAppClient
 
 	opts := getClientOptions(settings, httpClient)
 
@@ -103,9 +93,9 @@ func newAzureProvider(settings *clientSettings, passwords api.Passwords) (AzureP
 		settings:   settings,
 		httpClient: httpClient,
 
-		appClient:    appClient,
-		spClient:     spClient,
-		groupsClient: groupsClient,
+		appClient:    msGraphAppClient,
+		spClient:     msGraphAppClient,
+		groupsClient: msGraphAppClient,
 		raClient:     raClient,
 		rdClient:     rdClient,
 	}
@@ -179,15 +169,15 @@ func getClientOptions(s *clientSettings, httpClient *http.Client) *arm.ClientOpt
 }
 
 // CreateApplication create a new Azure application object.
-func (p *provider) CreateApplication(ctx context.Context, displayName string) (result models.Applicationable, err error) {
+func (p *provider) CreateApplication(ctx context.Context, displayName string) (result api.Application, err error) {
 	return p.appClient.CreateApplication(ctx, displayName)
 }
 
-func (p *provider) GetApplication(ctx context.Context, applicationObjectID string) (result models.Applicationable, err error) {
+func (p *provider) GetApplication(ctx context.Context, applicationObjectID string) (result api.Application, err error) {
 	return p.appClient.GetApplication(ctx, applicationObjectID)
 }
 
-func (p *provider) ListApplications(ctx context.Context, filter string) ([]models.Applicationable, error) {
+func (p *provider) ListApplications(ctx context.Context, filter string) ([]api.Application, error) {
 	return p.appClient.ListApplications(ctx, filter)
 }
 
@@ -197,11 +187,11 @@ func (p *provider) DeleteApplication(ctx context.Context, applicationObjectID st
 	return p.appClient.DeleteApplication(ctx, applicationObjectID, permanentlyDelete)
 }
 
-func (p *provider) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime time.Time) (result models.PasswordCredentialable, err error) {
+func (p *provider) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime time.Time) (result api.PasswordCredential, err error) {
 	return p.appClient.AddApplicationPassword(ctx, applicationObjectID, displayName, endDateTime)
 }
 
-func (p *provider) RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID *uuid.UUID) (err error) {
+func (p *provider) RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) (err error) {
 	return p.appClient.RemoveApplicationPassword(ctx, applicationObjectID, keyID)
 }
 
@@ -275,11 +265,11 @@ func (p *provider) RemoveGroupMember(ctx context.Context, groupObjectID, memberO
 }
 
 // GetGroup gets group information from the directory.
-func (p *provider) GetGroup(ctx context.Context, objectID string) (result models.Groupable, err error) {
+func (p *provider) GetGroup(ctx context.Context, objectID string) (result api.Group, err error) {
 	return p.groupsClient.GetGroup(ctx, objectID)
 }
 
 // ListGroups gets list of groups for the current tenant.
-func (p *provider) ListGroups(ctx context.Context, filter string) (result []models.Groupable, err error) {
+func (p *provider) ListGroups(ctx context.Context, filter string) (result []api.Group, err error) {
 	return p.groupsClient.ListGroups(ctx, filter)
 }

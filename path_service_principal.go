@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/locksutil"
 	"github.com/hashicorp/vault/sdk/logical"
@@ -110,8 +109,8 @@ func (b *azureSecretBackend) createSPSecret(ctx context.Context, s logical.Stora
 	if err != nil {
 		return nil, err
 	}
-	appID := *app.GetAppId()
-	appObjID := *app.GetId()
+	appID := app.AppID
+	appObjID := app.AppObjectID
 
 	// Write a WAL entry in case the SP create process doesn't complete
 	walID, err := framework.PutWAL(ctx, s, walAppKey, &walApp{
@@ -320,11 +319,7 @@ func (b *azureSecretBackend) staticSPRevoke(ctx context.Context, req *logical.Re
 	lock.Lock()
 	defer lock.Unlock()
 
-	keyUUID, err := uuid.Parse(keyIDRaw.(string))
-	if err != nil {
-		return nil, err
-	}
-	return nil, c.deleteAppPassword(ctx, appObjectID, &keyUUID)
+	return nil, c.deleteAppPassword(ctx, appObjectID, keyIDRaw.(string))
 }
 
 const pathServicePrincipalHelpSyn = `

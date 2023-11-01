@@ -19,7 +19,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/vault/sdk/logical"
-	"github.com/microsoftgraph/msgraph-sdk-go/models"
 
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 )
@@ -57,7 +56,7 @@ func (c *client) Valid() bool {
 // createApp creates a new Azure application.
 // An Application is a needed to create service principals used by
 // the caller for authentication.
-func (c *client) createApp(ctx context.Context) (app models.Applicationable, err error) {
+func (c *client) createApp(ctx context.Context) (app api.Application, err error) {
 	// TODO: Make this name customizable with the same logic as username customization
 	name := uuid.New().String()
 
@@ -68,7 +67,7 @@ func (c *client) createApp(ctx context.Context) (app models.Applicationable, err
 	return result, err
 }
 
-func (c *client) createAppWithName(ctx context.Context, rolename string) (app models.Applicationable, err error) {
+func (c *client) createAppWithName(ctx context.Context, rolename string) (app api.Application, err error) {
 	intSuffix := fmt.Sprintf("%d", time.Now().Unix())
 	name := fmt.Sprintf("%s%s-%s", appNamePrefix, rolename, intSuffix)
 
@@ -80,7 +79,7 @@ func (c *client) createAppWithName(ctx context.Context, rolename string) (app mo
 // createSP creates a new service principal.
 func (c *client) createSP(
 	ctx context.Context,
-	app models.Applicationable,
+	app api.Application,
 	duration time.Duration) (spID string, password string, err error) {
 
 	type idPass struct {
@@ -90,7 +89,7 @@ func (c *client) createSP(
 
 	resultRaw, err := retry(ctx, func() (interface{}, bool, error) {
 		now := time.Now()
-		spID, password, err := c.provider.CreateServicePrincipal(ctx, *app.GetAppId(), now, now.Add(duration))
+		spID, password, err := c.provider.CreateServicePrincipal(ctx, app.AppID, now, now.Add(duration))
 
 		// Propagation delays within Azure can cause this error occasionally, so don't quit on it.
 		if err != nil && (strings.Contains(err.Error(), errInvalidApplicationObject)) {
@@ -125,11 +124,11 @@ func (c *client) addAppPassword(ctx context.Context, appObjID string, expiresIn 
 		return "", "", fmt.Errorf("error updating credentials: %w", err)
 	}
 
-	return resp.GetKeyId().String(), *resp.GetSecretText(), nil
+	return resp.KeyID, resp.SecretText, nil
 }
 
 // deleteAppPassword removes a password, if present, from an App's credentials list.
-func (c *client) deleteAppPassword(ctx context.Context, appObjID string, keyID *uuid.UUID) error {
+func (c *client) deleteAppPassword(ctx context.Context, appObjID string, keyID string) error {
 	err := c.provider.RemoveApplicationPassword(ctx, appObjID, keyID)
 	if err != nil {
 		if strings.Contains(err.Error(), "No password credential found with keyId") {
@@ -286,7 +285,7 @@ func (c *client) findRoles(ctx context.Context, roleName string) ([]*armauthoriz
 
 // findGroups is used to find a group by name. It returns all groups matching
 // the provided name.
-func (c *client) findGroups(ctx context.Context, groupName string) ([]models.Groupable, error) {
+func (c *client) findGroups(ctx context.Context, groupName string) ([]api.Group, error) {
 	return c.provider.ListGroups(ctx, fmt.Sprintf("displayName eq '%s'", groupName))
 }
 
@@ -299,8 +298,7 @@ type clientSettings struct {
 	ClientSecret   string
 	GraphURI       string
 	CloudConfig    cloud.Configuration
-	//Environment    azure.Environment
-	PluginEnv *logical.PluginEnvironment
+	PluginEnv      *logical.PluginEnvironment
 }
 
 // getClientSettings creates a new clientSettings object.

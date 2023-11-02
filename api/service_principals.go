@@ -20,7 +20,7 @@ type ServicePrincipalClient interface {
 	DeleteServicePrincipal(ctx context.Context, spObjectID string, permanentlyDelete bool) error
 }
 
-func (c *AppClient) CreateServicePrincipal(ctx context.Context, appID string, startDate time.Time, endDate time.Time) (string, string, error) {
+func (c *MSGraphClient) CreateServicePrincipal(ctx context.Context, appID string, startDate time.Time, endDate time.Time) (string, string, error) {
 	spReq := models.NewServicePrincipal()
 	spReq.SetAppId(&appID)
 
@@ -38,7 +38,7 @@ func (c *AppClient) CreateServicePrincipal(ctx context.Context, appID string, st
 
 	passwordReq.SetPasswordCredential(passwordCredential)
 
-	password, err := c.client.ServicePrincipals().ByServicePrincipalId(*spID).AddPassword().Post(context.Background(), passwordReq, nil)
+	password, err := c.client.ServicePrincipals().ByServicePrincipalId(*spID).AddPassword().Post(ctx, passwordReq, nil)
 
 	if err != nil {
 		e := c.DeleteServicePrincipal(ctx, *spID, false)
@@ -48,7 +48,7 @@ func (c *AppClient) CreateServicePrincipal(ctx context.Context, appID string, st
 	return *spID, *password.GetSecretText(), nil
 }
 
-func (c *AppClient) DeleteServicePrincipal(ctx context.Context, spObjectID string, permanentlyDelete bool) error {
+func (c *MSGraphClient) DeleteServicePrincipal(ctx context.Context, spObjectID string, permanentlyDelete bool) error {
 	err := c.client.ServicePrincipals().ByServicePrincipalId(spObjectID).Delete(ctx, nil)
 
 	if permanentlyDelete {
@@ -60,7 +60,7 @@ func (c *AppClient) DeleteServicePrincipal(ctx context.Context, spObjectID strin
 	return err
 }
 
-func (c *AppClient) ListServicePrincipals(ctx context.Context, spObjectID string) ([]models.ServicePrincipalable, error) {
+func (c *MSGraphClient) ListServicePrincipals(ctx context.Context, spObjectID string) ([]models.ServicePrincipalable, error) {
 	filter := fmt.Sprintf("appId eq '%s'", spObjectID)
 	requestParameters := &serviceprincipals.ServicePrincipalsRequestBuilderGetQueryParameters{
 		Filter: &filter,
@@ -81,6 +81,6 @@ func (c *AppClient) ListServicePrincipals(ctx context.Context, spObjectID string
 	return spList.GetValue(), nil
 }
 
-func (c *AppClient) GetServicePrincipalByID(ctx context.Context, spObjectID string) (models.ServicePrincipalable, error) {
+func (c *MSGraphClient) GetServicePrincipalByID(ctx context.Context, spObjectID string) (models.ServicePrincipalable, error) {
 	return c.client.ServicePrincipals().ByServicePrincipalId(spObjectID).Get(ctx, nil)
 }

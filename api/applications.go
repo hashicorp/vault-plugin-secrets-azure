@@ -26,11 +26,11 @@ type ApplicationsClient interface {
 	RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) error
 }
 
-var _ ApplicationsClient = (*AppClient)(nil)
-var _ GroupsClient = (*AppClient)(nil)
-var _ ServicePrincipalClient = (*AppClient)(nil)
+var _ ApplicationsClient = (*MSGraphClient)(nil)
+var _ GroupsClient = (*MSGraphClient)(nil)
+var _ ServicePrincipalClient = (*MSGraphClient)(nil)
 
-type AppClient struct {
+type MSGraphClient struct {
 	client *msgraphsdkgo.GraphServiceClient
 }
 
@@ -50,11 +50,11 @@ type PasswordCredential struct {
 	SecretText  string
 }
 
-// NewMSGraphApplicationClient returns a new AppClient configured to interact with
+// NewMSGraphApplicationClient returns a new MSGraphClient configured to interact with
 // the Microsoft Graph API. It can be configured to target alternative national cloud
 // deployments via graphURI. For details on the client configuration see
 // https://learn.microsoft.com/en-us/graph/sdks/national-clouds
-func NewMSGraphApplicationClient(graphURI string, creds azcore.TokenCredential) (*AppClient, error) {
+func NewMSGraphApplicationClient(graphURI string, creds azcore.TokenCredential) (*MSGraphClient, error) {
 	scopes := []string{
 		fmt.Sprintf("%s/.default", graphURI),
 	}
@@ -72,13 +72,13 @@ func NewMSGraphApplicationClient(graphURI string, creds azcore.TokenCredential) 
 	adapter.SetBaseUrl(fmt.Sprintf("%s/v1.0", graphURI))
 	client := msgraphsdkgo.NewGraphServiceClient(adapter)
 
-	ac := &AppClient{
+	ac := &MSGraphClient{
 		client: client,
 	}
 	return ac, nil
 }
 
-func (c *AppClient) GetApplication(ctx context.Context, clientID string) (Application, error) {
+func (c *MSGraphClient) GetApplication(ctx context.Context, clientID string) (Application, error) {
 	filter := fmt.Sprintf("appId eq '%s'", clientID)
 	req := applications.ApplicationsRequestBuilderGetRequestConfiguration{
 		QueryParameters: &applications.ApplicationsRequestBuilderGetQueryParameters{
@@ -113,7 +113,7 @@ func (c *AppClient) GetApplication(ctx context.Context, clientID string) (Applic
 	return application, nil
 }
 
-func (c *AppClient) ListApplications(ctx context.Context, filter string) ([]Application, error) {
+func (c *MSGraphClient) ListApplications(ctx context.Context, filter string) ([]Application, error) {
 
 	req := &applications.ApplicationsRequestBuilderGetQueryParameters{
 		Filter: &filter,
@@ -142,7 +142,7 @@ func (c *AppClient) ListApplications(ctx context.Context, filter string) ([]Appl
 }
 
 // CreateApplication create a new Azure application object.
-func (c *AppClient) CreateApplication(ctx context.Context, displayName string) (Application, error) {
+func (c *MSGraphClient) CreateApplication(ctx context.Context, displayName string) (Application, error) {
 	requestBody := models.NewApplication()
 	requestBody.SetDisplayName(&displayName)
 
@@ -163,7 +163,7 @@ func (c *AppClient) CreateApplication(ctx context.Context, displayName string) (
 
 // DeleteApplication deletes an Azure application object.
 // This will in turn remove the service principal (but not the role assignments).
-func (c *AppClient) DeleteApplication(ctx context.Context, applicationObjectID string, permanentlyDelete bool) error {
+func (c *MSGraphClient) DeleteApplication(ctx context.Context, applicationObjectID string, permanentlyDelete bool) error {
 	err := c.client.Applications().ByApplicationId(applicationObjectID).Delete(ctx, nil)
 
 	if permanentlyDelete {
@@ -175,7 +175,7 @@ func (c *AppClient) DeleteApplication(ctx context.Context, applicationObjectID s
 	return err
 }
 
-func (c *AppClient) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime time.Time) (PasswordCredential, error) {
+func (c *MSGraphClient) AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime time.Time) (PasswordCredential, error) {
 	requestBody := applications.NewItemAddPasswordPostRequestBody()
 	passwordCredential := models.NewPasswordCredential()
 	passwordCredential.SetDisplayName(&displayName)
@@ -195,7 +195,7 @@ func (c *AppClient) AddApplicationPassword(ctx context.Context, applicationObjec
 	}, nil
 }
 
-func (c *AppClient) RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) error {
+func (c *MSGraphClient) RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) error {
 	requestBody := applications.NewItemRemovePasswordPostRequestBody()
 	kid, err := uuid.Parse(keyID)
 	if err != nil {

@@ -97,7 +97,7 @@ func TestSP_WAL_Cleanup(t *testing.T) {
 	b, s := getTestBackendMocked(t, true)
 
 	mp := newMockProvider()
-	mp.(*mockProvider).ctxTimeout = 5
+	mp.(*mockProvider).ctxTimeout = 5 * time.Second
 	b.getProvider = func(s *clientSettings, p api.Passwords) (AzureProvider, error) {
 		return mp, nil
 	}
@@ -1044,16 +1044,11 @@ func assertClientSecret(tb testing.TB, data map[string]interface{}) {
 	}
 }
 
-type servicePrincipalResp struct {
-	AppID string `json:"appId"`
-	ID    string `json:"id"`
-}
-
 func findServicePrincipalID(t *testing.T, client api.ServicePrincipalClient, appID string) (spID string) {
 	t.Helper()
 
 	switch spClient := client.(type) {
-	case *api.AppClient:
+	case *api.MSGraphClient:
 		pathVals := &url.Values{}
 		pathVals.Set("$filter", fmt.Sprintf("appId eq '%s'", appID))
 
@@ -1081,7 +1076,7 @@ func assertServicePrincipalExists(t *testing.T, client api.ServicePrincipalClien
 	t.Helper()
 
 	switch spClient := client.(type) {
-	case *api.AppClient:
+	case *api.MSGraphClient:
 		sp, err := spClient.GetServicePrincipalByID(context.Background(), spID)
 		assertErrorIsNil(t, err)
 

@@ -25,7 +25,7 @@ type mockProvider struct {
 	deletedObjects            map[string]bool
 	passwords                 map[string]string
 	failNextCreateApplication bool
-	ctxTimeout                int
+	ctxTimeout                time.Duration
 	lock                      sync.Mutex
 }
 
@@ -118,7 +118,7 @@ func (m *mockProvider) CreateServicePrincipal(_ context.Context, _ string, _ tim
 func (m *mockProvider) CreateApplication(_ context.Context, _ string) (api.Application, error) {
 	if m.ctxTimeout != 0 {
 		// simulate a context deadline error by sleeping for timeout period
-		time.Sleep(time.Duration(m.ctxTimeout) * time.Second)
+		time.Sleep(m.ctxTimeout)
 	}
 
 	if m.failNextCreateApplication {

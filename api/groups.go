@@ -5,6 +5,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/microsoftgraph/msgraph-sdk-go/groups"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
@@ -22,19 +23,19 @@ type Group struct {
 	DisplayName string
 }
 
-func (c *AppClient) AddGroupMember(ctx context.Context, groupObjectID string, memberObjectID string) error {
+func (c *MSGraphClient) AddGroupMember(ctx context.Context, groupObjectID string, memberObjectID string) error {
 	req := models.NewReferenceCreate()
-	odataId := "https://graph.microsoft.com/v1.0/directoryObjects/{id}"
+	odataId := fmt.Sprintf("https://graph.microsoft.com/v1.0/directoryObjects/%s", memberObjectID)
 	req.SetOdataId(&odataId)
 
 	return c.client.Groups().ByGroupId(groupObjectID).Members().Ref().Post(ctx, req, nil)
 }
 
-func (c *AppClient) RemoveGroupMember(ctx context.Context, groupObjectID, memberObjectID string) error {
+func (c *MSGraphClient) RemoveGroupMember(ctx context.Context, groupObjectID, memberObjectID string) error {
 	return c.client.Groups().ByGroupId(groupObjectID).Members().ByDirectoryObjectId(memberObjectID).Ref().Delete(ctx, nil)
 }
 
-func (c *AppClient) GetGroup(ctx context.Context, groupID string) (Group, error) {
+func (c *MSGraphClient) GetGroup(ctx context.Context, groupID string) (Group, error) {
 	resp, err := c.client.Groups().ByGroupId(groupID).Get(ctx, nil)
 	if err != nil {
 		return Group{}, err
@@ -46,7 +47,7 @@ func (c *AppClient) GetGroup(ctx context.Context, groupID string) (Group, error)
 	}, nil
 }
 
-func (c *AppClient) ListGroups(ctx context.Context, filter string) ([]Group, error) {
+func (c *MSGraphClient) ListGroups(ctx context.Context, filter string) ([]Group, error) {
 	req := &groups.GroupsRequestBuilderGetQueryParameters{
 		Filter: &filter,
 	}

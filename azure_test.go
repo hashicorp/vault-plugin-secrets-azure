@@ -16,7 +16,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/Azure/go-autorest/autorest/to"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/sync/errgroup"
 )
@@ -76,7 +75,7 @@ func TestSPCredentials(t *testing.T) {
 
 	// use dynamic credentials from Vault instead of hardcoding them.
 	// Use a regular HTTP client to make the request
-	req, err := http.NewRequest(http.MethodGet, "http://localhost:8200/v1/azure/creds/test-role", nil)
+	req, err := http.NewRequest(http.MethodGet, "http://localhost:8200/v1/azure/creds/azure-role", nil)
 	assert.NoError(t, err)
 	req.Header.Add("X-Vault-Token", "root")
 
@@ -94,7 +93,7 @@ func TestSPCredentials(t *testing.T) {
 	// Introduce a delay between generating creds and using them
 	// time.Sleep(5 * time.Second)
 
-	newUUID := uuid.New().String()
+	newUUID := generateUUID()
 	var successes uint64
 	var wg sync.WaitGroup
 	creds, err := azidentity.NewClientSecretCredential(
@@ -132,7 +131,7 @@ func TestSPCredentials(t *testing.T) {
 }
 
 func createResourceGroup(ctx context.Context, rgClient *armresources.ResourceGroupsClient, newUUID string) (armresources.ResourceGroupsClientCreateOrUpdateResponse, error) {
-	resp, err := rgClient.CreateOrUpdate(ctx, fmt.Sprintf("%v-%v", "vault-test", uuid.New().String()), armresources.ResourceGroup{
+	resp, err := rgClient.CreateOrUpdate(ctx, fmt.Sprintf("%v-%v", "vault-test", generateUUID()), armresources.ResourceGroup{
 		Location: to.StringPtr("West US"),
 		Tags:     map[string]*string{"created_by": to.StringPtr(fmt.Sprintf("vault-test-%s", newUUID))},
 	}, nil)

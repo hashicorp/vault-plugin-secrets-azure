@@ -56,7 +56,6 @@ import (
 //          }
 //        ]
 //      EOF
-
 type VaultCredResponse struct {
 	Data struct {
 		ClientId     string `json:"client_id"`
@@ -75,7 +74,7 @@ func TestSPCredentials(t *testing.T) {
 
 	// use dynamic credentials from Vault instead of hardcoding them.
 	// Use a regular HTTP client to make the request
-	req, err := http.NewRequest(http.MethodGet, "http://localhost:8200/v1/local-azure/creds/test-role", nil)
+	req, err := http.NewRequest(http.MethodGet, "http://localhost:8200/v1/azure/creds/test-role", nil)
 	assert.NoError(t, err)
 	req.Header.Add("X-Vault-Token", "root")
 
@@ -89,12 +88,11 @@ func TestSPCredentials(t *testing.T) {
 
 	clientID := response.Data.ClientId
 	clientSecret := response.Data.ClientSecret
-	fmt.Println("client_id: ", clientID)
-	fmt.Println("clientSecret: ", clientSecret)
 
 	// Introduce a delay between generating creds and using them
 	// time.Sleep(5 * time.Second)
 
+	newUUID := uuid.New().String()
 	var successes uint64
 	var wg sync.WaitGroup
 	creds, err := azidentity.NewClientSecretCredential(
@@ -109,7 +107,7 @@ func TestSPCredentials(t *testing.T) {
 	for i := 0; i < n; i++ {
 		go func() {
 			defer wg.Done()
-			count, err := helper(ctx, resourceGroupClient)
+			count, err := createResourceGroup(ctx, resourceGroupClient, newUUID)
 			if err == nil {
 				atomic.AddUint64(&successes, 1)
 				_ = count
@@ -127,14 +125,14 @@ func TestSPCredentials(t *testing.T) {
 	fmt.Println("Num Auth failures", authFailures)
 	assert.EqualValues(t, n, successes, successes)
 
-	err = cleanup(ctx, resourceGroupClient)
+	err = cleanupResourceGroups(ctx, resourceGroupClient, newUUID)
 	assert.NoError(t, err)
 }
 
-func helper(ctx context.Context, rgClient *armresources.ResourceGroupsClient) (armresources.ResourceGroupsClientCreateOrUpdateResponse, error) {
+func createResourceGroup(ctx context.Context, rgClient *armresources.ResourceGroupsClient, newUUID string) (armresources.ResourceGroupsClientCreateOrUpdateResponse, error) {
 	resp, err := rgClient.CreateOrUpdate(ctx, fmt.Sprintf("%v-%v", "vault-test", uuid.New().String()), armresources.ResourceGroup{
 		Location: to.StringPtr("West US"),
-		Tags:     map[string]*string{"created_by": to.StringPtr("vault-test-{UUID}")},
+		Tags:     map[string]*string{"created_by": to.StringPtr(fmt.Sprintf("vault-test-%s", newUUID))},
 	}, nil)
 	if err != nil {
 		return armresources.ResourceGroupsClientCreateOrUpdateResponse{}, err
@@ -142,9 +140,9 @@ func helper(ctx context.Context, rgClient *armresources.ResourceGroupsClient) (a
 	return resp, nil
 }
 
-func cleanup(ctx context.Context, rgClient *armresources.ResourceGroupsClient) error {
+func cleanupResourceGroups(ctx context.Context, rgClient *armresources.ResourceGroupsClient, newUUID string) error {
 	pager := rgClient.NewListPager(&armresources.ResourceGroupsClientListOptions{
-		Filter: to.StringPtr("tagName eq 'created_by' and tagValue eq 'vault-test-{UUID}'"),
+		Filter: to.StringPtr(fmt.Sprintf("tagName eq 'created_by' and tagValue eq 'vault-test-%s'", newUUID)),
 		Top:    nil,
 	})
 	var counter uint64

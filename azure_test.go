@@ -33,11 +33,11 @@ import (
 //        client_secret=$AZURE_CLIENT_SECRET
 //
 // 3. To run this test with an app id, you need to register an application in the Azure portal.
-//	  App registrations → New registration → Register
-//	  You will need to add following API permissions to your application:
+//        App registrations → New registration → Register
+//        You will need to add following API permissions to your application:
 //       - Application.ReadWrite.All
-//  	 - GroupMember.ReadWrite.All
-//	  Make sure to Grant admin consent for Default Directory.
+//       - GroupMember.ReadWrite.All
+//        Make sure to Grant admin consent for Default Directory.
 //    Go to Team Vault Subscription → Access control (IAM) → Add role assignment → Privileged administrator roles →
 //    Select Owner → Go to Members → Select Members → Add the application you just registered →
 //    Not constrained Delegation type → Review and assign

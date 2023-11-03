@@ -22,6 +22,7 @@ import (
 )
 
 // Steps to reproduce the error for Azure eventual consistency issue:
+//
 //  1. Enable the Azure secrets engine
 //     $ vault secrets enable azure
 //

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -116,14 +117,14 @@ func TestSPCredentials(t *testing.T) {
 				if strings.Contains(err.Error(), "unauthorized_client") {
 					atomic.AddUint64(&authFailures, 1)
 				} else {
-					fmt.Println(err)
+					t.Logf("%v", err)
 				}
 			}
 		}()
 	}
 	wg.Wait()
-	fmt.Println("Num failures", n-int(successes))
-	fmt.Println("Num Auth failures", authFailures)
+	t.Logf("Num failures: %d", n-int(successes))
+	t.Logf("Num Auth failures: %d", authFailures)
 	assert.EqualValues(t, n, successes, successes)
 
 	err = cleanupResourceGroups(ctx, resourceGroupClient, newUUID)
@@ -171,6 +172,6 @@ func cleanupResourceGroups(ctx context.Context, rgClient *armresources.ResourceG
 			return err
 		}
 	}
-	fmt.Println("items marked for deletion", counter)
+	log.Printf("Items marked for deletion: %d", counter)
 	return nil
 }

@@ -5,6 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
@@ -12,50 +19,44 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/sync/errgroup"
-	"net/http"
-	"os"
-	"strings"
-	"sync"
-	"sync/atomic"
-	"testing"
 )
 
 // Steps to reproduce the error for Azure eventual consistency issue:
-// 1. Enable the Azure secrets engine
-//    $ vault secrets enable azure
+//  1. Enable the Azure secrets engine
+//     $ vault secrets enable azure
 //
-// 2. Configure the secrets engine with account creds (these creds can be found by
-//    logging in to Azure portal (1password) and searching for Team Vault subscription.
-//    $ vault write azure/config \
-//        subscription_id=$AZURE_SUBSCRIPTION_ID \
-//        tenant_id=$AZURE_TENANT_ID \
-//        client_id=$AZURE_CLIENT_ID \
-//        client_secret=$AZURE_CLIENT_SECRET
+//  2. Configure the secrets engine with account creds (these creds can be found by
+//     logging in to Azure portal (1password) and searching for Team Vault subscription.
+//     $ vault write azure/config \
+//     subscription_id=$AZURE_SUBSCRIPTION_ID \
+//     tenant_id=$AZURE_TENANT_ID \
+//     client_id=$AZURE_CLIENT_ID \
+//     client_secret=$AZURE_CLIENT_SECRET
 //
-// 3. To run this test with an app id, you need to register an application in the Azure portal.
-//        App registrations → New registration → Register
-//        You will need to add following API permissions to your application:
-//       - Application.ReadWrite.All
-//       - GroupMember.ReadWrite.All
-//        Make sure to Grant admin consent for Default Directory.
-//    Go to Team Vault Subscription → Access control (IAM) → Add role assignment → Privileged administrator roles →
-//    Select Owner → Go to Members → Select Members → Add the application you just registered →
-//    Not constrained Delegation type → Review and assign
+//  3. To run this test with an app id, you need to register an application in the Azure portal.
+//     App registrations → New registration → Register
+//     You will need to add following API permissions to your application:
+//     - Application.ReadWrite.All
+//     - GroupMember.ReadWrite.All
+//     Make sure to Grant admin consent for Default Directory.
+//     Go to Team Vault Subscription → Access control (IAM) → Add role assignment → Privileged administrator roles →
+//     Select Owner → Go to Members → Select Members → Add the application you just registered →
+//     Not constrained Delegation type → Review and assign
 //
-//    Create a role with an already existing application id
-//    $ vault write azure/roles/test-role \
-//        application_object_id=<existing_app_obj_id> \
-//        ttl=10h
+//     Create a role with an already existing application id
+//     $ vault write azure/roles/test-role \
+//     application_object_id=<existing_app_obj_id> \
+//     ttl=10h
 //
-// 4. To configure a role to create a new sp with Azure roles:
-//    $ vault write azure/roles/test-role ttl=10h azure_roles=-<<EOF
-//        [
-//          {
-//              "role_name": "Contributor",
-//              "scope":  "/subscriptions/<uuid>"
-//          }
-//        ]
-//      EOF
+//  4. To configure a role to create a new sp with Azure roles:
+//     $ vault write azure/roles/test-role ttl=10h azure_roles=-<<EOF
+//     [
+//     {
+//     "role_name": "Contributor",
+//     "scope":  "/subscriptions/<uuid>"
+//     }
+//     ]
+//     EOF
 type VaultCredResponse struct {
 	Data struct {
 		ClientId     string `json:"client_id"`

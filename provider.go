@@ -16,7 +16,7 @@ import (
 	"github.com/hashicorp/go-cleanhttp"
 	"github.com/hashicorp/vault/sdk/logical"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
 
 	"github.com/hashicorp/vault/sdk/helper/useragent"
 
@@ -37,7 +37,6 @@ type AzureProvider interface {
 		roleAssignmentName string,
 		parameters armauthorization.RoleAssignmentCreateParameters) (armauthorization.RoleAssignmentsClientCreateResponse, error)
 	DeleteRoleAssignmentByID(ctx context.Context, roleID string) (armauthorization.RoleAssignmentsClientDeleteByIDResponse, error)
-	ListRoleAssignments(ctx context.Context, filter string) ([]*armauthorization.RoleAssignment, error)
 	ListRoleDefinitions(ctx context.Context, scope string, filter string) (result []*armauthorization.RoleDefinition, err error)
 	GetRoleDefinitionByID(ctx context.Context, roleID string) (result armauthorization.RoleDefinitionsClientGetByIDResponse, err error)
 }
@@ -237,21 +236,6 @@ func (p *provider) GetRoleAssignmentByID(ctx context.Context, roleAssignmentID s
 // DeleteRoleAssignmentByID deletes a role assignment.
 func (p *provider) DeleteRoleAssignmentByID(ctx context.Context, roleAssignmentID string) (armauthorization.RoleAssignmentsClientDeleteByIDResponse, error) {
 	return p.raClient.DeleteByID(ctx, roleAssignmentID, nil)
-}
-
-// ListRoleAssignments lists all role assignments.
-// There is no need for paging; the caller only cares about the first match and whether
-// there are 0, 1 or >1 items. Unpacking here is a simpler interface.
-func (p *provider) ListRoleAssignments(ctx context.Context, filter string) ([]*armauthorization.RoleAssignment, error) {
-	options := armauthorization.RoleAssignmentsClientListOptions{
-		Filter: &filter,
-	}
-	page := p.raClient.NewListPager(&options)
-	listResp, err := page.NextPage(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return listResp.Value, nil
 }
 
 // AddGroupMember adds a member to a Group.

@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
 	"github.com/google/uuid"
 
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
@@ -83,10 +83,6 @@ func (m *mockProvider) ListRoleDefinitions(_ context.Context, _ string, filter s
 	}
 
 	return []*armauthorization.RoleDefinition{}, nil
-}
-
-func (m *mockProvider) ListRoleAssignments(_ context.Context, _ string) ([]*armauthorization.RoleAssignment, error) {
-	return []*armauthorization.RoleAssignment{}, nil
 }
 
 // GetRoleByID will return a fake role definition from the provided ID
@@ -218,7 +214,7 @@ func (m *mockProvider) passwordExists(s string) bool {
 func (m *mockProvider) CreateRoleAssignment(_ context.Context, scope string, name string, params armauthorization.RoleAssignmentCreateParameters) (armauthorization.RoleAssignmentsClientCreateResponse, error) {
 	return armauthorization.RoleAssignmentsClientCreateResponse{
 		RoleAssignment: armauthorization.RoleAssignment{
-			Properties: &armauthorization.RoleAssignmentPropertiesWithScope{
+			Properties: &armauthorization.RoleAssignmentProperties{
 				Scope: &scope,
 			},
 			Name: &name,

@@ -188,6 +188,11 @@ func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRol
 			if err != nil && strings.Contains(err.Error(), "PrincipalNotFound") {
 				return nil, false, nil
 			}
+			// check if ra is an empty response
+			// if so, return empty string
+			if ra == (armauthorization.RoleAssignmentsClientCreateResponse{}) {
+				return "", true, err
+			}
 			return *ra.ID, true, err
 		})
 

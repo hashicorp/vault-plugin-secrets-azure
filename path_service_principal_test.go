@@ -1060,8 +1060,8 @@ func findServicePrincipalID(t *testing.T, client api.ServicePrincipalClient, app
 		}
 
 		for _, sp := range spList {
-			if *sp.GetAppId() == appID {
-				return *sp.GetId()
+			if sp.AppID == appID {
+				return sp.ID
 			}
 		}
 	default:
@@ -1081,11 +1081,11 @@ func assertServicePrincipalExists(t *testing.T, client api.ServicePrincipalClien
 		assertErrorIsNil(t, err)
 
 		if exists {
-			if *sp.GetId() == "" {
+			if sp.ID == "" {
 				t.Fatalf("Failed to find service principal")
 			}
 		} else {
-			if *sp.GetId() != "" {
+			if sp.ID != "" {
 				t.Fatalf("Found service principal when it shouldn't exist")
 			}
 		}

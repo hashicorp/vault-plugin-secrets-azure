@@ -20,6 +20,11 @@ type ServicePrincipalClient interface {
 	DeleteServicePrincipal(ctx context.Context, spObjectID string, permanentlyDelete bool) error
 }
 
+type ServicePrincipal struct {
+	ID    string
+	AppID string
+}
+
 func (c *MSGraphClient) CreateServicePrincipal(ctx context.Context, appID string, startDate time.Time, endDate time.Time) (string, string, error) {
 	spReq := models.NewServicePrincipal()
 	spReq.SetAppId(&appID)
@@ -60,7 +65,7 @@ func (c *MSGraphClient) DeleteServicePrincipal(ctx context.Context, spObjectID s
 	return err
 }
 
-func (c *MSGraphClient) ListServicePrincipals(ctx context.Context, spObjectID string) ([]models.ServicePrincipalable, error) {
+func (c *MSGraphClient) ListServicePrincipals(ctx context.Context, spObjectID string) ([]ServicePrincipal, error) {
 	filter := fmt.Sprintf("appId eq '%s'", spObjectID)
 	requestParameters := &serviceprincipals.ServicePrincipalsRequestBuilderGetQueryParameters{
 		Filter: &filter,
@@ -78,9 +83,25 @@ func (c *MSGraphClient) ListServicePrincipals(ctx context.Context, spObjectID st
 	if err != nil {
 		return nil, err
 	}
-	return spList.GetValue(), nil
+
+	var result []ServicePrincipal
+	for _, sp := range spList.GetValue() {
+		result = append(result, ServicePrincipal{
+			ID:    *sp.GetId(),
+			AppID: *sp.GetAppId(),
+		})
+	}
+	return result, nil
 }
 
-func (c *MSGraphClient) GetServicePrincipalByID(ctx context.Context, spObjectID string) (models.ServicePrincipalable, error) {
-	return c.client.ServicePrincipals().ByServicePrincipalId(spObjectID).Get(ctx, nil)
+func (c *MSGraphClient) GetServicePrincipalByID(ctx context.Context, spObjectID string) (ServicePrincipal, error) {
+	sp, err := c.client.ServicePrincipals().ByServicePrincipalId(spObjectID).Get(ctx, nil)
+	if err != nil {
+		return ServicePrincipal{}, err
+	}
+
+	return ServicePrincipal{
+		ID:    *sp.GetId(),
+		AppID: *sp.GetAppId(),
+	}, nil
 }

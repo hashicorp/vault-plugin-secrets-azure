@@ -23,7 +23,8 @@ import (
 )
 
 var (
-	testRole = map[string]interface{}{
+	errDoesNotExist = "does not exist"
+	testRole        = map[string]interface{}{
 		"azure_roles": encodeJSON([]AzureRole{
 			{
 				RoleName: "Owner",
@@ -765,7 +766,7 @@ func TestRoleAssignmentWALRollback(t *testing.T) {
 		provider := client.provider.(*provider)
 		spObjID := findServicePrincipalID(t, provider.spClient, appID)
 
-		assertServicePrincipalExists(t, provider.spClient, spObjID, true)
+		assertServicePrincipalExistence(t, provider.spClient, spObjID, true)
 
 		// Verify that the role assignments were created. Get the assignment
 		// info from Azure and verify it matches the Reader role.
@@ -877,7 +878,7 @@ func TestRoleAssignmentWALRollback(t *testing.T) {
 		// Verify that SP get is an error after delete. Expected there
 		// to be a delay and that this step would take some time/retries,
 		// but that seems not to be the case.
-		assertServicePrincipalExists(t, provider.spClient, spObjID, false)
+		assertServicePrincipalExistence(t, provider.spClient, spObjID, false)
 	})
 }
 
@@ -980,7 +981,7 @@ func TestCredentialInteg_msgraph(t *testing.T) {
 		provider := client.provider.(*provider)
 		spObjID := findServicePrincipalID(t, provider.spClient, appID)
 
-		assertServicePrincipalExists(t, provider.spClient, spObjID, true)
+		assertServicePrincipalExistence(t, provider.spClient, spObjID, true)
 
 		// Verify that the role assignments were created. Get the assignment
 		// info from Azure and verify it matches the Reader role.
@@ -990,13 +991,13 @@ func TestCredentialInteg_msgraph(t *testing.T) {
 		ra, err := provider.raClient.GetByID(context.Background(), raIDs[0], nil)
 		assertErrorIsNil(t, err)
 
-		roleDefs, err := provider.ListRoleDefinitions(nil, fmt.Sprintf("subscriptions/%s", subscriptionID), "")
+		roleDefs, err := provider.ListRoleDefinitions(context.Background(), fmt.Sprintf("subscriptions/%s", subscriptionID), "")
 		assertErrorIsNil(t, err)
 
 		defID := *ra.Properties.RoleDefinitionID
 		found := false
 		for _, def := range roleDefs {
-			if *def.ID == defID && *def.Name == "Storage Blob Data Owner" {
+			if *def.ID == defID && *def.Properties.RoleName == "Storage Blob Data Owner" {
 				found = true
 				break
 			}
@@ -1020,7 +1021,7 @@ func TestCredentialInteg_msgraph(t *testing.T) {
 		// Verify that SP get is an error after delete. Expected there
 		// to be a delay and that this step would take some time/retries,
 		// but that seems not to be the case.
-		assertServicePrincipalExists(t, provider.spClient, spObjID, false)
+		assertServicePrincipalExistence(t, provider.spClient, spObjID, false)
 	})
 }
 
@@ -1072,20 +1073,20 @@ func findServicePrincipalID(t *testing.T, client api.ServicePrincipalClient, app
 	return "" // Because compilers
 }
 
-func assertServicePrincipalExists(t *testing.T, client api.ServicePrincipalClient, spID string, exists bool) {
+func assertServicePrincipalExistence(t *testing.T, client api.ServicePrincipalClient, spID string, exists bool) {
 	t.Helper()
 
 	switch spClient := client.(type) {
 	case *api.MSGraphClient:
 		sp, err := spClient.GetServicePrincipalByID(context.Background(), spID)
-		assertErrorIsNil(t, err)
-
 		if exists {
+			assertErrorIsNil(t, err)
+
 			if sp.ID == "" {
 				t.Fatalf("Failed to find service principal")
 			}
 		} else {
-			if sp.ID != "" {
+			if !strings.Contains(err.Error(), errDoesNotExist) || sp.ID != "" {
 				t.Fatalf("Found service principal when it shouldn't exist")
 			}
 		}

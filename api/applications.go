@@ -177,39 +177,57 @@ func (c *MSGraphClient) RemoveApplicationPassword(ctx context.Context, applicati
 
 func getPasswordCredentialsForApplication(app models.Applicationable) []PasswordCredential {
 	var appCredentials []PasswordCredential
-	for _, cred := range app.GetPasswordCredentials() {
-		appCredentials = append(appCredentials, getPasswordCredentialResponse(cred))
+	creds := app.GetPasswordCredentials()
+	if creds != nil {
+		for _, cred := range creds {
+			appCredentials = append(appCredentials, getPasswordCredentialResponse(cred))
+		}
 	}
+
 	return appCredentials
 }
 
 func getApplicationResponse(app models.Applicationable) Application {
-	if app == nil {
-		return Application{
-			AppID:               "",
-			AppObjectID:         "",
-			PasswordCredentials: []PasswordCredential{},
-		}
+	if app != nil {
+		appID := app.GetAppId()
+		appObjectID := app.GetId()
 
+		if appID != nil && appObjectID != nil {
+			return Application{
+				AppID:               *appID,
+				AppObjectID:         *appObjectID,
+				PasswordCredentials: getPasswordCredentialsForApplication(app),
+			}
+		}
 	}
+
+	// return zero-value result if app in nil
+	// or fields can't be dereferenced
 	return Application{
-		AppID:               *app.GetAppId(),
-		AppObjectID:         *app.GetId(),
-		PasswordCredentials: getPasswordCredentialsForApplication(app),
+		AppID:               "",
+		AppObjectID:         "",
+		PasswordCredentials: []PasswordCredential{},
 	}
 }
 
 func getPasswordCredentialResponse(cred models.PasswordCredentialable) PasswordCredential {
-	if cred == nil {
-		return PasswordCredential{
-			SecretText: "",
-			EndDate:    time.Time{},
-			KeyID:      "",
+	if cred != nil {
+		secretText := cred.GetSecretText()
+		endDate := cred.GetEndDateTime()
+		keyID := cred.GetKeyId()
+
+		if secretText != nil && endDate != nil && keyID != nil {
+			return PasswordCredential{
+				SecretText: *secretText,
+				EndDate:    *endDate,
+				KeyID:      keyID.String(),
+			}
 		}
+
 	}
 	return PasswordCredential{
-		SecretText: *cred.GetSecretText(),
-		EndDate:    *cred.GetEndDateTime(),
-		KeyID:      cred.GetKeyId().String(),
+		SecretText: "",
+		EndDate:    time.Time{},
+		KeyID:      "",
 	}
 }

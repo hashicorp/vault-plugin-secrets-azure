@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-multierror"
-	abstractions "github.com/microsoft/kiota-abstractions-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/serviceprincipals"
 )
@@ -71,11 +70,7 @@ func (c *MSGraphClient) ListServicePrincipals(ctx context.Context, spObjectID st
 		Filter: &filter,
 	}
 
-	headers := abstractions.NewRequestHeaders()
-	headers.Add("ConsistencyLevel", "eventual")
-
 	configuration := &serviceprincipals.ServicePrincipalsRequestBuilderGetRequestConfiguration{
-		Headers:         headers,
 		QueryParameters: requestParameters,
 	}
 
@@ -86,10 +81,7 @@ func (c *MSGraphClient) ListServicePrincipals(ctx context.Context, spObjectID st
 
 	var result []ServicePrincipal
 	for _, sp := range spList.GetValue() {
-		result = append(result, ServicePrincipal{
-			ID:    *sp.GetId(),
-			AppID: *sp.GetAppId(),
-		})
+		result = append(result, getServicePrincipalResponse(sp))
 	}
 	return result, nil
 }
@@ -100,8 +92,18 @@ func (c *MSGraphClient) GetServicePrincipalByID(ctx context.Context, spObjectID 
 		return ServicePrincipal{}, err
 	}
 
+	return getServicePrincipalResponse(sp), nil
+}
+
+func getServicePrincipalResponse(sp models.ServicePrincipalable) ServicePrincipal {
+	if sp == nil {
+		return ServicePrincipal{
+			ID:    "",
+			AppID: "",
+		}
+	}
 	return ServicePrincipal{
 		ID:    *sp.GetId(),
 		AppID: *sp.GetAppId(),
-	}, nil
+	}
 }

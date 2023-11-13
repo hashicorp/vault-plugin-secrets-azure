@@ -35,19 +35,15 @@ type MSGraphClient struct {
 }
 
 type Application struct {
-	ID                  string
 	AppID               string
 	AppObjectID         string
-	Description         string
-	DisplayName         string
 	PasswordCredentials []PasswordCredential
 }
 
 type PasswordCredential struct {
-	DisplayName string
-	EndDate     time.Time
-	KeyID       string
-	SecretText  string
+	EndDate    time.Time
+	KeyID      string
+	SecretText string
 }
 
 // NewMSGraphApplicationClient returns a new MSGraphClient configured to interact with
@@ -101,16 +97,7 @@ func (c *MSGraphClient) GetApplication(ctx context.Context, clientID string) (Ap
 
 	app := apps[0]
 
-	application := Application{
-		ID:                  *app.GetId(),
-		AppID:               *app.GetAppId(),
-		AppObjectID:         *app.GetId(),
-		Description:         *app.GetDescription(),
-		DisplayName:         *app.GetDisplayName(),
-		PasswordCredentials: getPasswordCredentialsForApplication(app),
-	}
-
-	return application, nil
+	return getApplicationResponse(app), nil
 }
 
 func (c *MSGraphClient) ListApplications(ctx context.Context, filter string) ([]Application, error) {
@@ -128,14 +115,7 @@ func (c *MSGraphClient) ListApplications(ctx context.Context, filter string) ([]
 
 	var apps []Application
 	for _, app := range resp.GetValue() {
-		apps = append(apps, Application{
-			ID:                  *app.GetId(),
-			AppID:               *app.GetAppId(),
-			AppObjectID:         *app.GetId(),
-			Description:         *app.GetDescription(),
-			DisplayName:         *app.GetDisplayName(),
-			PasswordCredentials: getPasswordCredentialsForApplication(app),
-		})
+		apps = append(apps, getApplicationResponse(app))
 	}
 
 	return apps, nil
@@ -151,14 +131,7 @@ func (c *MSGraphClient) CreateApplication(ctx context.Context, displayName strin
 		return Application{}, err
 	}
 
-	return Application{
-		ID:                  *resp.GetId(),
-		AppID:               *resp.GetAppId(),
-		AppObjectID:         *resp.GetId(),
-		Description:         *resp.GetDescription(),
-		DisplayName:         *resp.GetDisplayName(),
-		PasswordCredentials: getPasswordCredentialsForApplication(resp),
-	}, nil
+	return getApplicationResponse(resp), nil
 }
 
 // DeleteApplication deletes an Azure application object.
@@ -187,12 +160,7 @@ func (c *MSGraphClient) AddApplicationPassword(ctx context.Context, applicationO
 		return PasswordCredential{}, err
 	}
 
-	return PasswordCredential{
-		SecretText:  *resp.GetSecretText(),
-		EndDate:     *resp.GetEndDateTime(),
-		KeyID:       resp.GetKeyId().String(),
-		DisplayName: *resp.GetDisplayName(),
-	}, nil
+	return getPasswordCredentialResponse(resp), nil
 }
 
 func (c *MSGraphClient) RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) error {
@@ -210,12 +178,38 @@ func (c *MSGraphClient) RemoveApplicationPassword(ctx context.Context, applicati
 func getPasswordCredentialsForApplication(app models.Applicationable) []PasswordCredential {
 	var appCredentials []PasswordCredential
 	for _, cred := range app.GetPasswordCredentials() {
-		appCredentials = append(appCredentials, PasswordCredential{
-			SecretText:  *cred.GetSecretText(),
-			EndDate:     *cred.GetEndDateTime(),
-			KeyID:       cred.GetKeyId().String(),
-			DisplayName: *cred.GetDisplayName(),
-		})
+		appCredentials = append(appCredentials, getPasswordCredentialResponse(cred))
 	}
 	return appCredentials
+}
+
+func getApplicationResponse(app models.Applicationable) Application {
+	if app == nil {
+		return Application{
+			AppID:               "",
+			AppObjectID:         "",
+			PasswordCredentials: []PasswordCredential{},
+		}
+
+	}
+	return Application{
+		AppID:               *app.GetAppId(),
+		AppObjectID:         *app.GetId(),
+		PasswordCredentials: getPasswordCredentialsForApplication(app),
+	}
+}
+
+func getPasswordCredentialResponse(cred models.PasswordCredentialable) PasswordCredential {
+	if cred == nil {
+		return PasswordCredential{
+			SecretText: "",
+			EndDate:    time.Time{},
+			KeyID:      "",
+		}
+	}
+	return PasswordCredential{
+		SecretText: *cred.GetSecretText(),
+		EndDate:    *cred.GetEndDateTime(),
+		KeyID:      cred.GetKeyId().String(),
+	}
 }

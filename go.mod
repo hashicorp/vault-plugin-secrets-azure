@@ -15,7 +15,6 @@ require (
 	github.com/hashicorp/go-uuid v1.0.3
 	github.com/hashicorp/vault/api v1.10.0
 	github.com/hashicorp/vault/sdk v0.10.0
-	github.com/microsoft/kiota-abstractions-go v1.3.0
 	github.com/microsoftgraph/msgraph-sdk-go v1.22.0
 	github.com/microsoftgraph/msgraph-sdk-go-core v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
@@ -62,6 +61,7 @@ require (
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.17 // indirect
+	github.com/microsoft/kiota-abstractions-go v1.3.0 // indirect
 	github.com/microsoft/kiota-authentication-azure-go v1.0.0 // indirect
 	github.com/microsoft/kiota-http-go v1.1.0 // indirect
 	github.com/microsoft/kiota-serialization-form-go v1.0.0 // indirect

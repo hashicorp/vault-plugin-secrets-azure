@@ -45,7 +45,6 @@ func getTestBackendMocked(t *testing.T, initConfig bool) (*azureSecretBackend, l
 
 	b.settings = new(clientSettings)
 	mockProvider := newMockProvider()
-	//setupMockMSGraphClient(mockProvider)
 	b.getProvider = func(s *clientSettings, p api.Passwords) (AzureProvider, error) {
 		return mockProvider, nil
 	}

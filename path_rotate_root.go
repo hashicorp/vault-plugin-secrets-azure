@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/hashicorp/go-multierror"
+	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/logical"
 )
@@ -73,7 +73,10 @@ func (b *azureSecretBackend) pathRotateRoot(ctx context.Context, req *logical.Re
 
 	app := apps[0]
 
-	uniqueID := uuid.New()
+	uniqueID, err := uuid.GenerateUUID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate UUID: %w", err)
+	}
 
 	// This could have the same username customization logic put on it if we really wanted it here
 	passwordDisplayName := fmt.Sprintf("vault-%s", uniqueID)

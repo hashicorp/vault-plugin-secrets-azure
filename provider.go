@@ -48,9 +48,6 @@ var _ AzureProvider = (*provider)(nil)
 // at this layer, the response signature may different from the Azure signature.
 type provider struct {
 	settings *clientSettings
-	// HTTP Client used to make role assignment and definition requests
-	// using new arm libraries
-	httpClient *http.Client
 
 	appClient    api.ApplicationsClient
 	spClient     api.ServicePrincipalClient
@@ -61,9 +58,6 @@ type provider struct {
 
 // newAzureProvider creates an azureProvider, backed by Azure client objects for underlying services.
 func newAzureProvider(settings *clientSettings, passwords api.Passwords) (AzureProvider, error) {
-	// @TODO see if this is still needed
-	// build clients that use the GraphRBAC endpoint
-	//userAgent := useragent.PluginString(settings.PluginEnv, userAgentPluginName)
 	httpClient := cleanhttp.DefaultClient()
 
 	cred, err := getTokenCredential(settings)
@@ -89,8 +83,7 @@ func newAzureProvider(settings *clientSettings, passwords api.Passwords) (AzureP
 	}
 
 	p := &provider{
-		settings:   settings,
-		httpClient: httpClient,
+		settings: settings,
 
 		appClient:    msGraphAppClient,
 		spClient:     msGraphAppClient,
@@ -218,7 +211,7 @@ func (p *provider) ListRoleDefinitions(ctx context.Context, scope string, filter
 	return listResp.Value, err
 }
 
-// GetRoleByID fetches the full role definition given a roleID.
+// GetRoleDefinitionByID fetches the full role definition given a roleID.
 func (p *provider) GetRoleDefinitionByID(ctx context.Context, roleID string) (result armauthorization.RoleDefinitionsClientGetByIDResponse, err error) {
 	return p.rdClient.GetByID(ctx, roleID, nil)
 }

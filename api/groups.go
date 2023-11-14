@@ -67,14 +67,9 @@ func (c *MSGraphClient) ListGroups(ctx context.Context, filter string) ([]Group,
 
 func getGroupResponse(group models.Groupable) Group {
 	if group != nil {
-		groupID := group.GetId()
-		name := group.GetDisplayName()
-
-		if groupID != nil && name != nil {
-			return Group{
-				ID:          *groupID,
-				DisplayName: *name,
-			}
+		return Group{
+			ID:          ptrToString(group.GetId()),
+			DisplayName: ptrToString(group.GetDisplayName()),
 		}
 	}
 

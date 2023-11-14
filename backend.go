@@ -150,7 +150,7 @@ func (b *azureSecretBackend) periodicFunc(ctx context.Context, sys *logical.Requ
 
 		if len(credsToDelete) != 0 {
 			b.Logger().Debug("periodic func", "rotate-root", "removing old passwords from Azure")
-			err = removeApplicationPasswords(ctx, client.provider, app.AppID, credsToDelete...)
+			err = removeApplicationPasswords(ctx, client.provider, app.AppObjectID, credsToDelete...)
 			if err != nil {
 				return err
 			}

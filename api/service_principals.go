@@ -97,15 +97,10 @@ func (c *MSGraphClient) GetServicePrincipalByID(ctx context.Context, spObjectID 
 
 func getServicePrincipalResponse(sp models.ServicePrincipalable) ServicePrincipal {
 	if sp != nil {
-		spID := sp.GetId()
-		spAppID := sp.GetAppId()
-		if spID != nil && spAppID != nil {
-			return ServicePrincipal{
-				ID:    *spID,
-				AppID: *spAppID,
-			}
+		return ServicePrincipal{
+			ID:    ptrToString(sp.GetId()),
+			AppID: ptrToString(sp.GetAppId()),
 		}
-
 	}
 	return ServicePrincipal{
 		ID:    "",

@@ -777,13 +777,13 @@ func TestRoleAssignmentWALRollback(t *testing.T) {
 		ra, err := provider.raClient.GetByID(context.Background(), raIDs[0], nil)
 		assertErrorIsNil(t, err)
 
-		roleDefs, err := provider.ListRoleDefinitions(nil, fmt.Sprintf("subscriptions/%s", subscriptionID), "")
+		roleDefs, err := provider.ListRoleDefinitions(context.Background(), fmt.Sprintf("subscriptions/%s", subscriptionID), "")
 		assertErrorIsNil(t, err)
 
 		defID := *ra.Properties.RoleDefinitionID
 		found := false
 		for _, def := range roleDefs {
-			if *def.ID == defID && *def.Name == "Storage Blob Data Owner" {
+			if *def.ID == defID && *def.Properties.RoleName == "Storage Blob Data Owner" {
 				found = true
 				break
 			}

@@ -187,18 +187,21 @@ func getPasswordCredentialsForApplication(app models.Applicationable) []Password
 	return appCredentials
 }
 
+func ptrToString(s *string) string {
+	if s != nil {
+		return *s
+	}
+	return ""
+}
+
 func getApplicationResponse(app models.Applicationable) Application {
 	if app != nil {
-		appID := app.GetAppId()
-		appObjectID := app.GetId()
-
-		if appID != nil && appObjectID != nil {
-			return Application{
-				AppID:               *appID,
-				AppObjectID:         *appObjectID,
-				PasswordCredentials: getPasswordCredentialsForApplication(app),
-			}
+		return Application{
+			AppID:               ptrToString(app.GetAppId()),
+			AppObjectID:         ptrToString(app.GetId()),
+			PasswordCredentials: getPasswordCredentialsForApplication(app),
 		}
+
 	}
 
 	// return zero-value result if app in nil
@@ -212,18 +215,11 @@ func getApplicationResponse(app models.Applicationable) Application {
 
 func getPasswordCredentialResponse(cred models.PasswordCredentialable) PasswordCredential {
 	if cred != nil {
-		secretText := cred.GetSecretText()
-		endDate := cred.GetEndDateTime()
-		keyID := cred.GetKeyId()
-
-		if secretText != nil && endDate != nil && keyID != nil {
-			return PasswordCredential{
-				SecretText: *secretText,
-				EndDate:    *endDate,
-				KeyID:      keyID.String(),
-			}
+		return PasswordCredential{
+			SecretText: ptrToString(cred.GetSecretText()),
+			EndDate:    *cred.GetEndDateTime(),
+			KeyID:      cred.GetKeyId().String(),
 		}
-
 	}
 	return PasswordCredential{
 		SecretText: "",

@@ -98,7 +98,8 @@ func TestSP_WAL_Cleanup(t *testing.T) {
 	b, s := getTestBackendMocked(t, true)
 
 	mp := newMockProvider()
-	mp.(*mockProvider).ctxTimeout = 5 * time.Second
+	// ensure timeout is exceeds the context deadline setup below
+	mp.(*mockProvider).ctxTimeout = 6 * time.Second
 	b.getProvider = func(s *clientSettings, p api.Passwords) (AzureProvider, error) {
 		return mp, nil
 	}

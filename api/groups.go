@@ -41,10 +41,7 @@ func (c *MSGraphClient) GetGroup(ctx context.Context, groupID string) (Group, er
 		return Group{}, err
 	}
 
-	return Group{
-		ID:          *resp.GetId(),
-		DisplayName: *resp.GetDisplayName(),
-	}, nil
+	return getGroupResponse(resp), nil
 }
 
 func (c *MSGraphClient) ListGroups(ctx context.Context, filter string) ([]Group, error) {
@@ -62,11 +59,29 @@ func (c *MSGraphClient) ListGroups(ctx context.Context, filter string) ([]Group,
 
 	var g []Group
 	for _, group := range groupList.GetValue() {
-		g = append(g, Group{
-			ID:          *group.GetId(),
-			DisplayName: *group.GetDisplayName(),
-		})
+		g = append(g, getGroupResponse(group))
 	}
 
 	return g, nil
+}
+
+func getGroupResponse(group models.Groupable) Group {
+	if group != nil {
+		groupID := group.GetId()
+		name := group.GetDisplayName()
+
+		if groupID != nil && name != nil {
+			return Group{
+				ID:          *groupID,
+				DisplayName: *name,
+			}
+		}
+	}
+
+	// return zero-value result if app in nil
+	// or fields can't be dereferenced
+	return Group{
+		ID:          "",
+		DisplayName: "",
+	}
 }

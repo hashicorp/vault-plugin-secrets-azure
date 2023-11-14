@@ -10,7 +10,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/google/uuid"
-	"github.com/hashicorp/go-multierror"
 	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
 	auth "github.com/microsoftgraph/msgraph-sdk-go-core/authentication"
 	"github.com/microsoftgraph/msgraph-sdk-go/applications"
@@ -46,11 +45,11 @@ type PasswordCredential struct {
 	SecretText string
 }
 
-// NewMSGraphApplicationClient returns a new MSGraphClient configured to interact with
+// NewMSGraphClient returns a new MSGraphClient configured to interact with
 // the Microsoft Graph API. It can be configured to target alternative national cloud
 // deployments via graphURI. For details on the client configuration see
 // https://learn.microsoft.com/en-us/graph/sdks/national-clouds
-func NewMSGraphApplicationClient(graphURI string, creds azcore.TokenCredential) (*MSGraphClient, error) {
+func NewMSGraphClient(graphURI string, creds azcore.TokenCredential) (*MSGraphClient, error) {
 	scopes := []string{
 		fmt.Sprintf("%s/.default", graphURI),
 	}
@@ -138,11 +137,15 @@ func (c *MSGraphClient) CreateApplication(ctx context.Context, displayName strin
 // This will in turn remove the service principal (but not the role assignments).
 func (c *MSGraphClient) DeleteApplication(ctx context.Context, applicationObjectID string, permanentlyDelete bool) error {
 	err := c.client.Applications().ByApplicationId(applicationObjectID).Delete(ctx, nil)
+	if err != nil {
+		return err
+	}
 
 	if permanentlyDelete {
-		e := c.client.Directory().DeletedItems().ByDirectoryObjectId(applicationObjectID).Delete(ctx, nil)
-		merr := multierror.Append(err, e)
-		return merr.ErrorOrNil()
+		err = c.client.Directory().DeletedItems().ByDirectoryObjectId(applicationObjectID).Delete(ctx, nil)
+		if err != nil {
+			return err
+		}
 	}
 
 	return err

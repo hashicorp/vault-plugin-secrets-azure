@@ -65,7 +65,7 @@ func newAzureProvider(settings *clientSettings, passwords api.Passwords) (AzureP
 		return nil, err
 	}
 
-	msGraphAppClient, err := api.NewMSGraphApplicationClient(settings.GraphURI, cred)
+	msGraphAppClient, err := api.NewMSGraphClient(settings.GraphURI, cred)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create MS graph client: %w", err)
 	}
@@ -83,8 +83,6 @@ func newAzureProvider(settings *clientSettings, passwords api.Passwords) (AzureP
 	}
 
 	p := &provider{
-		settings: settings,
-
 		appClient:    msGraphAppClient,
 		spClient:     msGraphAppClient,
 		groupsClient: msGraphAppClient,

@@ -95,7 +95,7 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 				},
 				"tags": {
 					Type:        framework.TypeCommaStringSlice,
-					Description: "List of Azure tags to attach to an application.",
+					Description: "Azure tags to attach to an application.",
 				},
 				"ttl": {
 					Type:        framework.TypeDurationSecond,

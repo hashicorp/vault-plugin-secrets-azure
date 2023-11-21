@@ -31,6 +31,8 @@ type roleEntry struct {
 	AzureGroups         []*AzureGroup `json:"azure_groups"`
 	ApplicationID       string        `json:"application_id"`
 	ApplicationObjectID string        `json:"application_object_id"`
+	SignInAudience      string        `json:"sign_in_audience"`
+	Tags                []string      `json:"tags"`
 	TTL                 time.Duration `json:"ttl"`
 	MaxTTL              time.Duration `json:"max_ttl"`
 	PermanentlyDelete   bool          `json:"permanently_delete"`
@@ -86,6 +88,14 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 				"azure_groups": {
 					Type:        framework.TypeString,
 					Description: "JSON list of Azure groups to add the service principal to.",
+				},
+				"sign_in_audience": {
+					Type:        framework.TypeString,
+					Description: "Specifies the security principal types that are allowed to sign in to the application.",
+				},
+				"tags": {
+					Type:        framework.TypeCommaStringSlice,
+					Description: "List of Azure tags to attach to an application.",
 				},
 				"ttl": {
 					Type:        framework.TypeDurationSecond,
@@ -206,6 +216,19 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		role.PermanentlyDelete = permanentlyDeleteRaw.(bool)
 	} else {
 		role.PermanentlyDelete = false
+	}
+
+	// update and verify SignInAudience if provided
+	if signInAudience, ok := d.GetOk("sign_in_audience"); ok {
+		role.SignInAudience = signInAudience.(string)
+	}
+
+	if tags, ok := d.GetOk("tags"); ok {
+		if tagsList, ok := tags.([]string); ok {
+			role.Tags = tagsList
+		} else {
+			return logical.ErrorResponse("expected tags to be []string, but got %T", tags), nil
+		}
 	}
 
 	// update and verify Application Object ID if provided
@@ -387,7 +410,7 @@ func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logica
 		return nil
 	}
 
-	app, err := c.createAppWithName(ctx, name)
+	app, err := c.createAppWithName(ctx, name, role.SignInAudience, role.Tags)
 	if err != nil {
 		return err
 	}
@@ -465,6 +488,8 @@ func (b *azureSecretBackend) pathRoleRead(ctx context.Context, req *logical.Requ
 			"application_object_id": r.ApplicationObjectID,
 			"permanently_delete":    r.PermanentlyDelete,
 			"persist_app":           r.PersistApp,
+			"sign_in_audience":      r.SignInAudience,
+			"tags":                  r.Tags,
 		},
 	}
 	return resp, nil

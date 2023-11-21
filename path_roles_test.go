@@ -44,6 +44,8 @@ func TestRoleCreate(t *testing.T) {
 			"application_object_id": "",
 			"permanently_delete":    true,
 			"persist_app":           false,
+			"sign_in_audience":      "AzureADMyOrg",
+			"tags":                  []string{"project:vault_test"},
 		}
 
 		spRole2 := map[string]interface{}{
@@ -72,6 +74,8 @@ func TestRoleCreate(t *testing.T) {
 			"application_object_id": "",
 			"permanently_delete":    true,
 			"persist_app":           false,
+			"sign_in_audience":      "AzureADMultipleOrgs",
+			"tags":                  []string{"team:engineering", "environment:development"},
 		}
 
 		// Verify basic updates of the name role
@@ -193,6 +197,8 @@ func TestRoleCreate(t *testing.T) {
 			"max_ttl":               int64(3000),
 			"azure_roles":           "[]",
 			"azure_groups":          "[]",
+			"sign_in_audience":      "",
+			"tags":                  []string{""},
 			"permanently_delete":    false,
 			"persist_app":           false,
 		}
@@ -217,6 +223,8 @@ func TestRoleCreate(t *testing.T) {
 				}]`,
 			),
 			"application_object_id": "",
+			"sign_in_audience":      "",
+			"tags":                  []string{""},
 			"azure_groups":          "[]",
 			"persist_app":           false,
 		}

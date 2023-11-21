@@ -91,7 +91,7 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 				},
 				"sign_in_audience": {
 					Type:        framework.TypeString,
-					Description: "Specifies the security principal types that are allowed to sign in to the application.",
+					Description: "Specifies the security principal types that are allowed to sign in to the application. Valid values are: AzureADMyOrg, AzureADMultipleOrgs, AzureADandPersonalMicrosoftAccount, PersonalMicrosoftAccount",
 				},
 				"tags": {
 					Type:        framework.TypeCommaStringSlice,
@@ -218,13 +218,47 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		role.PermanentlyDelete = false
 	}
 
-	// update and verify SignInAudience if provided
+	// update and validate SignInAudience if provided
 	if signInAudience, ok := d.GetOk("sign_in_audience"); ok {
-		role.SignInAudience = signInAudience.(string)
+		signInAudienceValue, ok := signInAudience.(string)
+		if !ok {
+			return logical.ErrorResponse("Invalid type for sign_in_audience field. Expected string."), nil
+		}
+
+		validSignInAudiences := []string{"AzureADMyOrg", "AzureADMultipleOrgs", "AzureADandPersonalMicrosoftAccount", "PersonalMicrosoftAccount"}
+		valid := false
+		for _, validValue := range validSignInAudiences {
+			if signInAudienceValue == validValue {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			validValuesString := strings.Join(validSignInAudiences, ", ")
+			return logical.ErrorResponse("Invalid value for sign_in_audience field. Valid values are: %s", validValuesString), nil
+		}
+		role.SignInAudience = signInAudienceValue
 	}
 
+	// update and validate Tags if provided
 	if tags, ok := d.GetOk("tags"); ok {
 		if tagsList, ok := tags.([]string); ok {
+			uniqueTags := make(map[string]struct{})
+			for _, tag := range tagsList {
+				// Check individual tag size
+				if len(tag) < 1 || len(tag) > 256 {
+					return logical.ErrorResponse("individual tag size must be between 1 and 256 characters (inclusive)"), nil
+				}
+				// Check for whitespaces
+				if strings.Contains(tag, " ") {
+					return logical.ErrorResponse("whitespaces are not allowed in tags"), nil
+				}
+				// Check for duplicates
+				if _, exists := uniqueTags[tag]; exists {
+					return logical.ErrorResponse("duplicate tags are not allowed"), nil
+				}
+				uniqueTags[tag] = struct{}{}
+			}
 			role.Tags = tagsList
 		} else {
 			return logical.ErrorResponse("expected tags to be []string, but got %T", tags), nil

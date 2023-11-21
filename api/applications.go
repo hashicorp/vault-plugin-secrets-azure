@@ -124,8 +124,12 @@ func (c *MSGraphClient) ListApplications(ctx context.Context, filter string) ([]
 func (c *MSGraphClient) CreateApplication(ctx context.Context, displayName string, signInAudience string, tags []string) (Application, error) {
 	requestBody := models.NewApplication()
 	requestBody.SetDisplayName(&displayName)
-	requestBody.SetSignInAudience(&signInAudience)
 	requestBody.SetTags(tags)
+
+	// only set signInAudience if it's non-empty
+	if signInAudience != "" {
+		requestBody.SetSignInAudience(&signInAudience)
+	}
 
 	resp, err := c.client.Applications().Post(ctx, requestBody, nil)
 	if err != nil {

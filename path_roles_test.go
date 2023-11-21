@@ -197,8 +197,8 @@ func TestRoleCreate(t *testing.T) {
 			"max_ttl":               int64(3000),
 			"azure_roles":           "[]",
 			"azure_groups":          "[]",
-			"sign_in_audience":      "",
-			"tags":                  []string{""},
+			"sign_in_audience":      "PersonalMicrosoftAccount",
+			"tags":                  []string{"environment:production"},
 			"permanently_delete":    false,
 			"persist_app":           false,
 		}
@@ -223,8 +223,8 @@ func TestRoleCreate(t *testing.T) {
 				}]`,
 			),
 			"application_object_id": "",
-			"sign_in_audience":      "",
-			"tags":                  []string{""},
+			"sign_in_audience":      "AzureADandPersonalMicrosoftAccount",
+			"tags":                  []string{"team:engineering", "environment:development", "project:vault_testing"},
 			"azure_groups":          "[]",
 			"persist_app":           false,
 		}
@@ -544,6 +544,22 @@ func TestRoleCreateBad(t *testing.T) {
 	role = map[string]interface{}{"application_object_id": "abc", "azure_roles": "asdf"}
 	resp = testRoleCreateBasic(t, b, s, "test_role_1", role)
 	msg = "error parsing Azure roles"
+	if !strings.Contains(resp.Error().Error(), msg) {
+		t.Fatalf("expected to find: %s, got: %s", msg, resp.Error().Error())
+	}
+
+	// invalid tags
+	role = map[string]interface{}{"tags": []string{"team:engineering", "team:engineering"}}
+	resp = testRoleCreateBasic(t, b, s, "test_role_1", role)
+	msg = "duplicate tags are not allowed"
+	if !strings.Contains(resp.Error().Error(), msg) {
+		t.Fatalf("expected to find: %s, got: %s", msg, resp.Error().Error())
+	}
+
+	// invalid signInAudience
+	role = map[string]interface{}{"sign_in_audience": "asdfg"}
+	resp = testRoleCreateBasic(t, b, s, "test_role_1", role)
+	msg = "Invalid value for sign_in_audience field. Valid values are: AzureADMyOrg, AzureADMultipleOrgs, AzureADandPersonalMicrosoftAccount, PersonalMicrosoftAccount"
 	if !strings.Contains(resp.Error().Error(), msg) {
 		t.Fatalf("expected to find: %s, got: %s", msg, resp.Error().Error())
 	}

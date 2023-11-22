@@ -13,6 +13,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/jsonutil"
+	"github.com/hashicorp/vault/sdk/helper/strutil"
 	"github.com/hashicorp/vault/sdk/logical"
 
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
@@ -226,43 +227,22 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		}
 
 		validSignInAudiences := []string{"AzureADMyOrg", "AzureADMultipleOrgs", "AzureADandPersonalMicrosoftAccount", "PersonalMicrosoftAccount"}
-		valid := false
-		for _, validValue := range validSignInAudiences {
-			if signInAudienceValue == validValue {
-				valid = true
-				break
-			}
-		}
-		if !valid {
+		if !strutil.StrListContains(validSignInAudiences, signInAudienceValue) {
 			validValuesString := strings.Join(validSignInAudiences, ", ")
 			return logical.ErrorResponse("Invalid value for sign_in_audience field. Valid values are: %s", validValuesString), nil
 		}
+
 		role.SignInAudience = signInAudienceValue
 	}
 
-	// update and validate Tags if provided
-	if tags, ok := d.GetOk("tags"); ok {
-		if tagsList, ok := tags.([]string); ok {
-			uniqueTags := make(map[string]struct{})
-			for _, tag := range tagsList {
-				// Check individual tag size
-				if len(tag) < 1 || len(tag) > 256 {
-					return logical.ErrorResponse("individual tag size must be between 1 and 256 characters (inclusive)"), nil
-				}
-				// Check for whitespaces
-				if strings.Contains(tag, " ") {
-					return logical.ErrorResponse("whitespaces are not allowed in tags"), nil
-				}
-				// Check for duplicates
-				if _, exists := uniqueTags[tag]; exists {
-					return logical.ErrorResponse("duplicate tags are not allowed"), nil
-				}
-				uniqueTags[tag] = struct{}{}
-			}
-			role.Tags = tagsList
-		} else {
-			return logical.ErrorResponse("expected tags to be []string, but got %T", tags), nil
+	// update and verify Tags if provided
+	tags, ok := d.GetOk("tags")
+	if ok {
+		tagsList, err := validateTags(tags)
+		if err != nil {
+			return logical.ErrorResponse(err.Error()), nil
 		}
+		role.Tags = tagsList
 	}
 
 	// update and verify Application Object ID if provided
@@ -409,6 +389,31 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 	}
 
 	return resp, nil
+}
+
+func validateTags(tags interface{}) ([]string, error) {
+	if tags == nil {
+		return nil, nil
+	}
+
+	tagsList, ok := tags.([]string)
+	if !ok {
+		return nil, fmt.Errorf("expected tags to be []string, but got %T", tags)
+	}
+
+	tagsList = strutil.RemoveDuplicates(tagsList, false)
+
+	for _, tag := range tagsList {
+		// Check individual tag size
+		if len(tag) < 1 || len(tag) > 256 {
+			return nil, fmt.Errorf("individual tag size must be between 1 and 256 characters (inclusive)")
+		}
+		// Check for whitespaces
+		if strings.Contains(tag, " ") {
+			return nil, errors.New("whitespaces are not allowed in tags")
+		}
+	}
+	return tagsList, nil
 }
 
 func (b *azureSecretBackend) createPersistedApp(ctx context.Context, req *logical.Request, role *roleEntry, name string) error {

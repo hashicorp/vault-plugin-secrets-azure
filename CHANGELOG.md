@@ -2,7 +2,6 @@
 
 IMPROVEMENTS:
 * Update dependencies [[GH-176]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/176)
-  * github.com/Azure/azure-sdk-for-go/sdk/azcore v1.9.0
   * github.com/Azure/azure-sdk-for-go/sdk/azcore v1.9.0 -> v1.9.1
   * github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.4.0 -> v1.5.1
   * github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2 v2.1.1 -> v2.2.0

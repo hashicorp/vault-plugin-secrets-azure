@@ -1,4 +1,4 @@
-## v0.16.4
+## v0.17.0
 
 IMPROVEMENTS:
 * Update dependencies [[GH-176]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/176)

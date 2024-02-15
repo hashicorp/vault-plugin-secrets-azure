@@ -14,8 +14,6 @@ import (
 	"github.com/hashicorp/vault/sdk/helper/consts"
 	"github.com/hashicorp/vault/sdk/helper/locksutil"
 	"github.com/hashicorp/vault/sdk/logical"
-
-	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 )
 
 const (
@@ -28,10 +26,9 @@ const (
 type azureSecretBackend struct {
 	*framework.Backend
 
-	getProvider func(*clientSettings, api.Passwords) (AzureProvider, error)
-	client      *client
-	settings    *clientSettings
-	lock        sync.RWMutex
+	client   *client
+	settings *clientSettings
+	lock     sync.RWMutex
 
 	// Creating/deleting passwords against a single Application is a PATCH
 	// operation that must be locked per Application Object ID.
@@ -84,7 +81,6 @@ func backend() *azureSecretBackend {
 		WALRollback:  b.walRollback,
 		PeriodicFunc: b.periodicFunc,
 	}
-	b.getProvider = newAzureProvider
 	b.appLocks = locksutil.CreateLocks()
 
 	return &b
@@ -230,12 +226,7 @@ func (b *azureSecretBackend) getClient(ctx context.Context, s logical.Storage) (
 		return nil, fmt.Errorf("config is nil")
 	}
 
-	passwords := api.Passwords{
-		PolicyGenerator: b.System(),
-		PolicyName:      config.PasswordPolicy,
-	}
-
-	p, err := b.getProvider(b.settings, passwords)
+	p, err := newAzureProvider(b.Logger(), b.System(), b.settings)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +235,6 @@ func (b *azureSecretBackend) getClient(ctx context.Context, s logical.Storage) (
 		provider:   p,
 		settings:   b.settings,
 		expiration: time.Now().Add(clientLifetime),
-		passwords:  passwords,
 	}
 	b.client = c
 

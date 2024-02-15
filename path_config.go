@@ -10,6 +10,7 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/vault/sdk/framework"
+	"github.com/hashicorp/vault/sdk/helper/pluginidentityutil"
 	"github.com/hashicorp/vault/sdk/logical"
 )
 
@@ -25,6 +26,8 @@ const (
 // defaults for roles. The zero value is useful and results in
 // environments variable and system defaults being used.
 type azureConfig struct {
+	pluginidentityutil.PluginIdentityTokenParams
+
 	SubscriptionID                string        `json:"subscription_id"`
 	TenantID                      string        `json:"tenant_id"`
 	ClientID                      string        `json:"client_id"`
@@ -41,7 +44,7 @@ type azureConfig struct {
 }
 
 func pathConfig(b *azureSecretBackend) *framework.Path {
-	return &framework.Path{
+	p := &framework.Path{
 		Pattern: "config",
 		DisplayAttrs: &framework.DisplayAttributes{
 			OperationPrefix: operationPrefixAzure,
@@ -113,6 +116,9 @@ func pathConfig(b *azureSecretBackend) *framework.Path {
 		HelpSynopsis:    confHelpSyn,
 		HelpDescription: confHelpDesc,
 	}
+	pluginidentityutil.AddPluginIdentityTokenFields(p.Fields)
+
+	return p
 }
 
 func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
@@ -163,6 +169,10 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 		config.RootPasswordTTL = defaultRootPasswordTTL
 	}
 
+	if err := config.ParsePluginIdentityTokenFields(data); err != nil {
+		return logical.ErrorResponse(err.Error()), nil
+	}
+
 	if merr.ErrorOrNil() != nil {
 		return logical.ErrorResponse(merr.Error()), nil
 	}
@@ -195,6 +205,7 @@ func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Re
 			"root_password_ttl": int(config.RootPasswordTTL.Seconds()),
 		},
 	}
+	config.PopulatePluginIdentityTokenData(resp.Data)
 
 	if !config.RootPasswordExpirationDate.IsZero() {
 		resp.Data["root_password_expiration_date"] = config.RootPasswordExpirationDate

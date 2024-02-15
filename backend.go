@@ -26,10 +26,9 @@ const (
 type azureSecretBackend struct {
 	*framework.Backend
 
-	getProvider func(*clientSettings) (AzureProvider, error)
-	client      *client
-	settings    *clientSettings
-	lock        sync.RWMutex
+	client   *client
+	settings *clientSettings
+	lock     sync.RWMutex
 
 	// Creating/deleting passwords against a single Application is a PATCH
 	// operation that must be locked per Application Object ID.
@@ -82,7 +81,6 @@ func backend() *azureSecretBackend {
 		WALRollback:  b.walRollback,
 		PeriodicFunc: b.periodicFunc,
 	}
-	b.getProvider = newAzureProvider
 	b.appLocks = locksutil.CreateLocks()
 
 	return &b
@@ -228,7 +226,7 @@ func (b *azureSecretBackend) getClient(ctx context.Context, s logical.Storage) (
 		return nil, fmt.Errorf("config is nil")
 	}
 
-	p, err := b.getProvider(b.settings)
+	p, err := newAzureProvider(ctx, b.Logger(), b.System(), b.settings)
 	if err != nil {
 		return nil, err
 	}

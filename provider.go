@@ -56,10 +56,10 @@ type provider struct {
 }
 
 // newAzureProvider creates an azureProvider, backed by Azure client objects for underlying services.
-func newAzureProvider(logger hclog.Logger, sys logical.SystemView, settings *clientSettings) (AzureProvider, error) {
+func newAzureProvider(ctx context.Context, logger hclog.Logger, sys logical.SystemView, settings *clientSettings) (AzureProvider, error) {
 	httpClient := cleanhttp.DefaultClient()
 
-	cred, err := getTokenCredential(logger, sys, settings)
+	cred, err := getTokenCredential(ctx, logger, sys, settings)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +92,7 @@ func newAzureProvider(logger hclog.Logger, sys logical.SystemView, settings *cli
 	return p, nil
 }
 
-func getTokenCredential(logger hclog.Logger, sys logical.SystemView, s *clientSettings) (azcore.TokenCredential, error) {
+func getTokenCredential(ctx context.Context, logger hclog.Logger, sys logical.SystemView, s *clientSettings) (azcore.TokenCredential, error) {
 	clientCloudOpts := azcore.ClientOptions{Cloud: s.CloudConfig}
 
 	if s.ClientSecret != "" {
@@ -113,7 +113,7 @@ func getTokenCredential(logger hclog.Logger, sys logical.SystemView, s *clientSe
 		options := &azidentity.ClientAssertionCredentialOptions{
 			ClientOptions: clientCloudOpts,
 		}
-		getAssertion := getAssertionFunc(logger, sys, s)
+		getAssertion := getAssertionFunc(ctx, logger, sys, s)
 		cred, err := azidentity.NewClientAssertionCredential(s.TenantID, s.ClientID,
 			getAssertion, options)
 		if err != nil {
@@ -137,11 +137,9 @@ func getTokenCredential(logger hclog.Logger, sys logical.SystemView, s *clientSe
 
 type getAssertion func(context.Context) (string, error)
 
-// TODO: pass namespace from context
-func getAssertionFunc(logger hclog.Logger, sys logical.SystemView, s *clientSettings) getAssertion {
-	return func(ctx context.Context) (string, error) {
-		req := pluginutil.IdentityTokenRequest{
-			Key:      s.IdentityTokenKey,
+func getAssertionFunc(ctx context.Context, logger hclog.Logger, sys logical.SystemView, s *clientSettings) getAssertion {
+	return func(_ context.Context) (string, error) {
+		req := &pluginutil.IdentityTokenRequest{
 			Audience: s.IdentityTokenAudience,
 			TTL:      s.IdentityTokenTTL * time.Second,
 		}

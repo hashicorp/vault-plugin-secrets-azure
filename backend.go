@@ -226,7 +226,7 @@ func (b *azureSecretBackend) getClient(ctx context.Context, s logical.Storage) (
 		return nil, fmt.Errorf("config is nil")
 	}
 
-	p, err := newAzureProvider(b.Logger(), b.System(), b.settings)
+	p, err := newAzureProvider(ctx, b.Logger(), b.System(), b.settings)
 	if err != nil {
 		return nil, err
 	}

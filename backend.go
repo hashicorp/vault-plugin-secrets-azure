@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/consts"
 	"github.com/hashicorp/vault/sdk/helper/locksutil"
@@ -26,9 +27,10 @@ const (
 type azureSecretBackend struct {
 	*framework.Backend
 
-	client   *client
-	settings *clientSettings
-	lock     sync.RWMutex
+	getProvider func(context.Context, hclog.Logger, logical.SystemView, *clientSettings) (AzureProvider, error)
+	client      *client
+	settings    *clientSettings
+	lock        sync.RWMutex
 
 	// Creating/deleting passwords against a single Application is a PATCH
 	// operation that must be locked per Application Object ID.
@@ -45,7 +47,7 @@ func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend,
 }
 
 func backend() *azureSecretBackend {
-	var b = azureSecretBackend{
+	b := azureSecretBackend{
 		updatePassword: true,
 	}
 
@@ -81,6 +83,7 @@ func backend() *azureSecretBackend {
 		WALRollback:  b.walRollback,
 		PeriodicFunc: b.periodicFunc,
 	}
+	b.getProvider = newAzureProvider
 	b.appLocks = locksutil.CreateLocks()
 
 	return &b
@@ -226,7 +229,7 @@ func (b *azureSecretBackend) getClient(ctx context.Context, s logical.Storage) (
 		return nil, fmt.Errorf("config is nil")
 	}
 
-	p, err := newAzureProvider(ctx, b.Logger(), b.System(), b.settings)
+	p, err := b.getProvider(ctx, b.Logger(), b.System(), b.settings)
 	if err != nil {
 		return nil, err
 	}

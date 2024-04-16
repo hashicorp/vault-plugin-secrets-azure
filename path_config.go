@@ -166,6 +166,10 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 		return logical.ErrorResponse(err.Error()), nil
 	}
 
+	if config.IdentityTokenAudience != "" && config.ClientSecret != "" {
+		return logical.ErrorResponse("only one of 'client_secret' or 'identity_token_audience' can be set"), nil
+	}
+
 	if merr.ErrorOrNil() != nil {
 		return logical.ErrorResponse(merr.Error()), nil
 	}
@@ -180,7 +184,6 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 
 func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	config, err := b.getConfig(ctx, req.Storage)
-
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +249,6 @@ func (b *azureSecretBackend) getConfig(ctx context.Context, s logical.Storage) (
 
 func (b *azureSecretBackend) saveConfig(ctx context.Context, config *azureConfig, s logical.Storage) error {
 	entry, err := logical.StorageEntryJSON(configStoragePath, config)
-
 	if err != nil {
 		return err
 	}
@@ -263,9 +265,11 @@ func (b *azureSecretBackend) saveConfig(ctx context.Context, config *azureConfig
 	return nil
 }
 
-const confHelpSyn = `Configure the Azure Secret backend.`
-const confHelpDesc = `
+const (
+	confHelpSyn  = `Configure the Azure Secret backend.`
+	confHelpDesc = `
 The Azure secret backend requires credentials for managing applications and
 service principals. This endpoint is used to configure those credentials as
 well as default values for the backend in general.
 `
+)

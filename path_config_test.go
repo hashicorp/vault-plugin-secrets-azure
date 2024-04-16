@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/hashicorp/vault/sdk/logical"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConfig(t *testing.T) {
@@ -76,21 +78,45 @@ func TestConfig(t *testing.T) {
 				"identity_token_audience": "",
 			},
 		},
+		{
+			name: "client_secret and identity_token_audience are mutually exclusive",
+			config: map[string]interface{}{
+				"subscription_id":         "a228ceec-bf1a-4411-9f95-39678d8cdb34",
+				"tenant_id":               "7ac36e27-80fc-4209-a453-e8ad83dc18c2",
+				"client_id":               "testClientId",
+				"client_secret":           "testClientSecret",
+				"environment":             "AZURECHINACLOUD",
+				"identity_token_audience": "vault-azure-secrets-d0f0d253",
+			},
+			expected: map[string]interface{}{
+				"subscription_id":         "a228ceec-bf1a-4411-9f95-39678d8cdb34",
+				"tenant_id":               "7ac36e27-80fc-4209-a453-e8ad83dc18c2",
+				"client_id":               "testClientId",
+				"root_password_ttl":       15768000,
+				"environment":             "AZURECHINACLOUD",
+				"identity_token_ttl":      int64(0),
+				"identity_token_audience": "vault-azure-secrets-d0f0d253",
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			testConfigCreate(t, b, s, tc.config)
-			testConfigRead(t, b, s, tc.expected)
+			testConfigCreate(t, b, s, tc.config, tc.wantErr)
 
-			// Test that updating one element retains the others
-			tc.expected["tenant_id"] = "800e371d-ee51-4145-9ac8-5c43e4ceb79b"
-			configSubset := map[string]interface{}{
-				"tenant_id": "800e371d-ee51-4145-9ac8-5c43e4ceb79b",
+			if !tc.wantErr {
+				testConfigRead(t, b, s, tc.expected)
+
+				// Test that updating one element retains the others
+				tc.expected["tenant_id"] = "800e371d-ee51-4145-9ac8-5c43e4ceb79b"
+				configSubset := map[string]interface{}{
+					"tenant_id": "800e371d-ee51-4145-9ac8-5c43e4ceb79b",
+				}
+
+				testConfigUpdate(t, b, s, configSubset, tc.wantErr)
+				testConfigRead(t, b, s, tc.expected)
 			}
-
-			testConfigUpdate(t, b, s, configSubset)
-			testConfigRead(t, b, s, tc.expected)
 		})
 	}
 }
@@ -107,7 +133,7 @@ func TestConfigEnvironmentClouds(t *testing.T) {
 		"root_password_ttl": int((24 * time.Hour).Seconds()),
 	}
 
-	testConfigCreate(t, b, s, config)
+	testConfigCreate(t, b, s, config, false)
 
 	tests := []struct {
 		env      string
@@ -172,7 +198,7 @@ func TestConfigDelete(t *testing.T) {
 		"identity_token_ttl":      int64(0),
 	}
 
-	testConfigCreate(t, b, s, config)
+	testConfigCreate(t, b, s, config, false)
 
 	delete(config, "client_secret")
 	testConfigRead(t, b, s, config)
@@ -201,17 +227,17 @@ func TestConfigDelete(t *testing.T) {
 	testConfigRead(t, b, s, config)
 }
 
-func testConfigCreate(t *testing.T, b logical.Backend, s logical.Storage, d map[string]interface{}) {
+func testConfigCreate(t *testing.T, b logical.Backend, s logical.Storage, d map[string]interface{}, wantErr bool) {
 	t.Helper()
-	testConfigCreateUpdate(t, b, logical.CreateOperation, s, d)
+	testConfigCreateUpdate(t, b, logical.CreateOperation, s, d, wantErr)
 }
 
-func testConfigUpdate(t *testing.T, b logical.Backend, s logical.Storage, d map[string]interface{}) {
+func testConfigUpdate(t *testing.T, b logical.Backend, s logical.Storage, d map[string]interface{}, wantErr bool) {
 	t.Helper()
-	testConfigCreateUpdate(t, b, logical.UpdateOperation, s, d)
+	testConfigCreateUpdate(t, b, logical.UpdateOperation, s, d, wantErr)
 }
 
-func testConfigCreateUpdate(t *testing.T, b logical.Backend, op logical.Operation, s logical.Storage, d map[string]interface{}) {
+func testConfigCreateUpdate(t *testing.T, b logical.Backend, op logical.Operation, s logical.Storage, d map[string]interface{}, wantErr bool) {
 	t.Helper()
 
 	// save and restore the client since the config change will clear it
@@ -224,12 +250,16 @@ func testConfigCreateUpdate(t *testing.T, b logical.Backend, op logical.Operatio
 	})
 	b.(*azureSecretBackend).settings = settings
 
-	if err != nil {
+	if !wantErr && err != nil {
 		t.Fatal(err)
 	}
 
-	if resp != nil && resp.IsError() {
+	if !wantErr && resp != nil && resp.IsError() {
 		t.Fatal(resp.Error())
+	}
+
+	if wantErr {
+		assert.True(t, resp.IsError() || err != nil, "expected error, got nil")
 	}
 }
 
@@ -248,5 +278,6 @@ func testConfigRead(t *testing.T, b logical.Backend, s logical.Storage, expected
 		t.Fatal(resp.Error())
 	}
 
-	equal(t, expected, resp.Data)
+	// equal(t, expected, resp.Data)
+	require.Equal(t, expected, resp.Data)
 }

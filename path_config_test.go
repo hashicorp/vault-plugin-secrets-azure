@@ -10,7 +10,6 @@ import (
 
 	"github.com/hashicorp/vault/sdk/logical"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestConfig(t *testing.T) {
@@ -295,6 +294,5 @@ func testConfigRead(t *testing.T, b logical.Backend, s logical.Storage, expected
 		t.Fatal(resp.Error())
 	}
 
-	// equal(t, expected, resp.Data)
-	require.Equal(t, expected, resp.Data)
+	equal(t, expected, resp.Data)
 }

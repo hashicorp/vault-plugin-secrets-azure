@@ -14,8 +14,6 @@ import (
 )
 
 func TestConfig(t *testing.T) {
-	b, s := getTestBackendMocked(t, false)
-
 	tests := []struct {
 		name     string
 		config   map[string]interface{}
@@ -99,10 +97,29 @@ func TestConfig(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "wif happy path",
+			config: map[string]interface{}{
+				"subscription_id":         "a228ceec-bf1a-4411-9f95-39678d8cdb34",
+				"tenant_id":               "7ac36e27-80fc-4209-a453-e8ad83dc18c2",
+				"identity_token_ttl":      int64(500),
+				"identity_token_audience": "vault-azure-secrets-d0f0d253",
+			},
+			expected: map[string]interface{}{
+				"subscription_id":         "a228ceec-bf1a-4411-9f95-39678d8cdb34",
+				"tenant_id":               "7ac36e27-80fc-4209-a453-e8ad83dc18c2",
+				"client_id":               "",
+				"root_password_ttl":       15768000,
+				"environment":             "",
+				"identity_token_ttl":      int64(500),
+				"identity_token_audience": "vault-azure-secrets-d0f0d253",
+			},
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			b, s := getTestBackendMocked(t, false)
 			testConfigCreate(t, b, s, tc.config, tc.wantErr)
 
 			if !tc.wantErr {

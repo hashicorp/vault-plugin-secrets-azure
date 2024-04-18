@@ -3,7 +3,7 @@
 ## v0.17.1
 
 BUG FIXES:
-* Add nil check for response when unassigning roles #191 [[GH-191]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/191)
+* Add nil check for response when unassigning roles [[GH-191]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/191)
 
 ## v0.17.0
 

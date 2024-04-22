@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/pluginidentityutil"
+	"github.com/hashicorp/vault/sdk/helper/pluginutil"
 	"github.com/hashicorp/vault/sdk/logical"
 )
 
@@ -168,6 +169,19 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 
 	if config.IdentityTokenAudience != "" && config.ClientSecret != "" {
 		return logical.ErrorResponse("only one of 'client_secret' or 'identity_token_audience' can be set"), nil
+	}
+
+	// generate token to check if WIF is enabled on this edition of Vault
+	if config.IdentityTokenAudience != "" {
+		_, err := b.System().GenerateIdentityToken(ctx, &pluginutil.IdentityTokenRequest{
+			Audience: config.IdentityTokenAudience,
+		})
+		if err != nil {
+			if errors.Is(err, pluginidentityutil.ErrPluginWorkloadIdentityUnsupported) {
+				return logical.ErrorResponse(err.Error()), nil
+			}
+			return nil, err
+		}
 	}
 
 	if merr.ErrorOrNil() != nil {

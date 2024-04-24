@@ -73,8 +73,8 @@ func NewMSGraphClient(graphURI string, creds azcore.TokenCredential) (*MSGraphCl
 	return ac, nil
 }
 
-func (c *MSGraphClient) GetApplication(ctx context.Context, clientID string) (Application, error) {
-	filter := fmt.Sprintf("appId eq '%s'", clientID)
+func (c *MSGraphClient) GetApplication(ctx context.Context, applicationObjectID string) (Application, error) {
+	filter := fmt.Sprintf("Id eq '%s'", applicationObjectID)
 	req := applications.ApplicationsRequestBuilderGetRequestConfiguration{
 		QueryParameters: &applications.ApplicationsRequestBuilderGetQueryParameters{
 			Filter: &filter,
@@ -91,7 +91,7 @@ func (c *MSGraphClient) GetApplication(ctx context.Context, clientID string) (Ap
 		return Application{}, fmt.Errorf("no application found")
 	}
 	if len(apps) > 1 {
-		return Application{}, fmt.Errorf("multiple applications found - double check your client_id")
+		return Application{}, fmt.Errorf("multiple applications found - double check your Application Object ID")
 	}
 
 	app := apps[0]

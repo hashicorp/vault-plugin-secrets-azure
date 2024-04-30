@@ -4,6 +4,10 @@ CHANGES:
 
 * `/config` endpoint no longer supports a `password_policy` parameter [[GH-181]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/181)
 
+BUGS:
+
+* Prevent panic when unassigning roles [[GH-191]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/191)
+
 IMPROVEMENTS:
 
 * Updated dependencies [[GH-182]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/182)

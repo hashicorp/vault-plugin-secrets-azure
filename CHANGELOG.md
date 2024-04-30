@@ -1,3 +1,5 @@
+## Unreleased
+
 ## v0.18.0
 
 CHANGES:
@@ -18,6 +20,11 @@ IMPROVEMENTS:
   * github.com/microsoftgraph/msgraph-sdk-go-core v1.0.1 -> v1.1.0
 * google.golang.org/protobuf v1.32.0 -> v1.33.0 [[GH-184]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/184)
 * github.com/docker/docker v25.0.2+incompatible -> v25.0.5+incompatible [[GH-185]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/185)
+
+## v0.17.1
+
+BUG FIXES:
+* Add nil check for response when unassigning roles [[GH-191]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/191)
 
 ## v0.17.0
 

@@ -73,8 +73,8 @@ func NewMSGraphClient(graphURI string, creds azcore.TokenCredential) (*MSGraphCl
 	return ac, nil
 }
 
-func (c *MSGraphClient) GetApplication(ctx context.Context, clientID string) (Application, error) {
-	filter := fmt.Sprintf("appId eq '%s'", clientID)
+func (c *MSGraphClient) GetApplication(ctx context.Context, objectId string) (Application, error) {
+	filter := fmt.Sprintf("id eq '%s'", objectId)
 	req := applications.ApplicationsRequestBuilderGetRequestConfiguration{
 		QueryParameters: &applications.ApplicationsRequestBuilderGetQueryParameters{
 			Filter: &filter,

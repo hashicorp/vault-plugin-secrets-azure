@@ -5,7 +5,6 @@
 BUG FIXES:
 * Use applicationObjectID instead of clientID in GetApplication filter [[GH-200]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/200)
 
-
 ## v0.18.0
 
 CHANGES:

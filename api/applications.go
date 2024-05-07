@@ -17,7 +17,7 @@ import (
 )
 
 type ApplicationsClient interface {
-	GetApplication(ctx context.Context, clientID string) (Application, error)
+	GetApplication(ctx context.Context, applicationObjectID string) (Application, error)
 	CreateApplication(ctx context.Context, displayName string, signInAudience string, tags []string) (Application, error)
 	DeleteApplication(ctx context.Context, applicationObjectID string, permanentlyDelete bool) error
 	ListApplications(ctx context.Context, filter string) ([]Application, error)

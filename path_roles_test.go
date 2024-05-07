@@ -561,7 +561,7 @@ func TestRoleCreateBad(t *testing.T) {
 }
 
 // TestRolesCreate_applicationObjectID tests that a role
-// cna be created using the Application Object ID field.
+// can be created using the Application Object ID field.
 // This test requires valid, sufficiently-privileged
 // Azure credentials in env variables.
 func TestRolesCreate_applicationObjectID(t *testing.T) {

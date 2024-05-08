@@ -1,5 +1,34 @@
 ## Unreleased
 
+## v0.18.1
+
+BUG FIXES:
+* Use applicationObjectID instead of clientID in GetApplication filter [[GH-200]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/200)
+
+## v0.18.0
+
+CHANGES:
+
+* `/config` endpoint no longer supports a `password_policy` parameter [[GH-181]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/181)
+
+BUGS:
+
+* Prevent panic when unassigning roles [[GH-191]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/191)
+
+IMPROVEMENTS:
+
+* Updated dependencies [[GH-182]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/182) [[GH-197]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/197)
+   * `github.com/Azure/azure-sdk-for-go/sdk/azcore` v1.9.1 -> v1.11.1
+   * `github.com/Azure/azure-sdk-for-go/sdk/azidentity` v1.5.1 -> v1.5.2
+   * `github.com/hashicorp/go-hclog` v1.6.2 -> v1.6.3
+   * `github.com/hashicorp/vault/api` v1.11.0 -> v1.13.0
+   * `github.com/hashicorp/vault/sdk` v0.10.2 -> v0.12.0
+   * `github.com/microsoftgraph/msgraph-sdk-go` v1.32.0 -> v1.40.0
+   * `github.com/microsoftgraph/msgraph-sdk-go-core` v1.0.1 -> v1.1.0
+* `google.golang.org/protobuf` v1.32.0 -> v1.33.0 [[GH-184]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/184)
+* `github.com/docker/docker` v25.0.2+incompatible -> v25.0.5+incompatible [[GH-185]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/185)
+* `golang.org/x/net` 0.21.0 -> 0.23.0 [[GH-195]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/195)
+
 ## v0.17.1
 
 BUG FIXES:
@@ -8,6 +37,7 @@ BUG FIXES:
 ## v0.17.0
 
 IMPROVEMENTS:
+
 * Update dependencies [[GH-176]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/176)
   * github.com/Azure/azure-sdk-for-go/sdk/azcore v1.9.0 -> v1.9.1
   * github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.4.0 -> v1.5.1
@@ -22,6 +52,7 @@ IMPROVEMENTS:
 ## v0.16.3
 
 IMPROVEMENTS:
+
 * Add sign_in_audience and tags fields to application registration [GH-174](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/174)
 * Prevent write-ahead-log data from being replicated to performance secondaries [GH-164](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/164)
 * Update dependencies [[GH-161]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/161)
@@ -35,6 +66,7 @@ IMPROVEMENTS:
 ## v0.16.2
 
 IMPROVEMENTS:
+
 * Update dependencies [[GH-160]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/160)
   * github.com/hashicorp/vault/api v1.9.1 -> v1.10.0
   * github.com/hashicorp/vault/sdk v0.9.0 -> v0.10.0
@@ -42,6 +74,7 @@ IMPROVEMENTS:
 ## v0.16.1
 
 BUG FIXES:
+
 * Fix intermittent 401s by preventing performance secondary clusters from rotating root credentials [[GH-150]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/150)
 
 ## v0.16.0

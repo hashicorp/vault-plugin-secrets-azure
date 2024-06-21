@@ -248,20 +248,10 @@ func (b *azureSecretBackend) spRenew(ctx context.Context, req *logical.Request, 
 	}
 	keyLifetime := time.Until(keyEndDate)
 
-	// Determine TTL and MaxTTL
-	ttl := role.TTL
-	if keyLifetime < ttl {
-		ttl = keyLifetime
-	}
-
-	maxTTL := role.MaxTTL
-	if keyLifetime < maxTTL {
-		maxTTL = keyLifetime
-	}
-
 	resp := &logical.Response{Secret: req.Secret}
-	resp.Secret.TTL = ttl
-	resp.Secret.MaxTTL = maxTTL
+	resp.Secret.TTL = min(role.TTL, keyLifetime)
+	resp.Secret.MaxTTL = min(role.MaxTTL, keyLifetime)
+	resp.Secret.Renewable = role.TTL < keyLifetime // Lease cannot be renewed beyond service-side endDate
 
 	return resp, nil
 }

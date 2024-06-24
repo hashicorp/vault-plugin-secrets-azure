@@ -2,6 +2,7 @@
 
 FEATURES:
 * Adds secret-less configuration of Azure secret engine using plugin Workload Identity Federation (https://github.com/hashicorp/vault-plugin-secrets-azure/pull/188)
+* Adds ability to limit the lifetime of service principal secrets in Azure through `explicit_max_ttl` on roles ([GH-199](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/199))
 
 ## v0.18.1
 

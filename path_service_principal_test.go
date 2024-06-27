@@ -895,7 +895,9 @@ func TestUnassignRoleFailures(t *testing.T) {
 
 	mp := newMockProvider()
 	mp.(*mockProvider).failUnassignRoles = true
-	mp.(*mockProvider).expectError = true
+	mp.(*mockProvider).unassignRolesFailureParams = failureParams{
+		expectError: true,
+	}
 	b.getProvider = func(context.Context, hclog.Logger, logical.SystemView, *clientSettings) (AzureProvider, error) {
 		return mp, nil
 	}
@@ -914,10 +916,27 @@ func TestUnassignRoleFailures(t *testing.T) {
 		}
 	})
 
-	mp.(*mockProvider).expectError = false
+	mp.(*mockProvider).unassignRolesFailureParams = failureParams{
+		expectError: false,
+		statusCode:  204,
+	}
 
-	// verify the error is properly handled and ignored
-	t.Run("Role unassign error handled", func(t *testing.T) {
+	// verify the error is properly handled and ignored in 204 case
+	t.Run("Role unassign error handled for 204", func(t *testing.T) {
+		testAssignmentIDs := []string{"test-1", "test-2"}
+		// Remove one of the RA IDs to simulate a failure to assign a role
+		if err := c.unassignRoles(context.Background(), testAssignmentIDs); err != nil {
+			t.Fatalf("error unassigning Role: %s", err.Error())
+		}
+	})
+
+	mp.(*mockProvider).unassignRolesFailureParams = failureParams{
+		expectError: false,
+		statusCode:  404,
+	}
+
+	// verify the error is properly handled and ignored in 404 case
+	t.Run("Role unassign error handled for 404", func(t *testing.T) {
 		testAssignmentIDs := []string{"test-1", "test-2"}
 		// Remove one of the RA IDs to simulate a failure to assign a role
 		if err := c.unassignRoles(context.Background(), testAssignmentIDs); err != nil {

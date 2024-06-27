@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
 	"github.com/google/uuid"
 
@@ -25,6 +26,8 @@ type mockProvider struct {
 	deletedObjects            map[string]bool
 	passwords                 map[string]string
 	failNextCreateApplication bool
+	failUnassignRoles         bool
+	expectError               bool
 	ctxTimeout                time.Duration
 	lock                      sync.Mutex
 }
@@ -224,6 +227,21 @@ func (m *mockProvider) CreateRoleAssignment(_ context.Context, scope string, nam
 }
 
 func (m *mockProvider) DeleteRoleAssignmentByID(_ context.Context, _ string) (armauthorization.RoleAssignmentsClientDeleteByIDResponse, error) {
+	if m.failUnassignRoles {
+		if m.expectError {
+			// return empty response and no 200 status codes to throw error
+			return armauthorization.RoleAssignmentsClientDeleteByIDResponse{}, &azcore.ResponseError{
+				ErrorCode: "mock: fail to delete role assignment",
+			}
+		} else {
+			// return empty response and with 204 status code; will ignore error and assume role
+			// assignment was manually deleted
+			return armauthorization.RoleAssignmentsClientDeleteByIDResponse{}, &azcore.ResponseError{
+				StatusCode: 204,
+				ErrorCode:  "mock: fail to delete role assignment",
+			}
+		}
+	}
 	return armauthorization.RoleAssignmentsClientDeleteByIDResponse{}, nil
 }
 

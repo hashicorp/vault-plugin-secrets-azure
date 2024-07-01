@@ -893,7 +893,7 @@ func TestUnassignRoleFailures(t *testing.T) {
 	mp.(*mockProvider).unassignRolesFailureParams = failureParams{
 		expectError: true,
 	}
-	b.getProvider = func(context.Context, hclog.Logger, logical.SystemView, *clientSettings) (AzureProvider, error) {
+	b.getProvider = func(s *clientSettings, p api.Passwords) (AzureProvider, error) {
 		return mp, nil
 	}
 

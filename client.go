@@ -215,7 +215,7 @@ func (c *client) unassignRoles(ctx context.Context, roleIDs []string) error {
 
 	for _, id := range roleIDs {
 		if _, err := c.provider.DeleteRoleAssignmentByID(ctx, id); err != nil {
-			// If a role was deleted manually then Azure returns an error and status 204
+			// If a role was deleted out-of-band then Azure returns an error and status 204
 			respErr := new(azcore.ResponseError)
 			if errors.As(err, &respErr) && (respErr.StatusCode == http.StatusNoContent || respErr.StatusCode == http.StatusNotFound) {
 				continue

@@ -238,13 +238,13 @@ func (m *mockProvider) DeleteRoleAssignmentByID(_ context.Context, _ string) (ar
 			return armauthorization.RoleAssignmentsClientDeleteByIDResponse{}, &azcore.ResponseError{
 				ErrorCode: "mock: fail to delete role assignment",
 			}
-		} else {
-			// return empty response and with status code; will ignore error and assume role
-			// assignment was manually deleted based on status code
-			return armauthorization.RoleAssignmentsClientDeleteByIDResponse{}, &azcore.ResponseError{
-				StatusCode: m.unassignRolesFailureParams.statusCode,
-				ErrorCode:  "mock: fail to delete role assignment",
-			}
+		}
+
+		// return empty response and with status code; will ignore error and assume role
+		// assignment was manually deleted based on status code
+		return armauthorization.RoleAssignmentsClientDeleteByIDResponse{}, &azcore.ResponseError{
+			StatusCode: m.unassignRolesFailureParams.statusCode,
+			ErrorCode:  "mock: fail to delete role assignment",
 		}
 	}
 	return armauthorization.RoleAssignmentsClientDeleteByIDResponse{}, nil

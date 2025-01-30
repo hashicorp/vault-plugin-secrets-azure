@@ -39,9 +39,6 @@ func pathRotateRoot(b *azureSecretBackend) *framework.Path {
 
 func (b *azureSecretBackend) pathRotateRoot(ctx context.Context, req *logical.Request, _ *framework.FieldData) (*logical.Response, error) {
 	err := b.rotateCredential(ctx, req)
-	if err != nil {
-		return nil, err
-	}
 
 	// this replicates the old case where a wal error returned the multierror and a blank response instead of nil.
 	var error *multierror.Error

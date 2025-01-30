@@ -82,6 +82,10 @@ func backend() *azureSecretBackend {
 
 		WALRollback:  b.walRollback,
 		PeriodicFunc: b.periodicFunc,
+
+		RotateCredential: func(ctx context.Context, request *logical.Request) error {
+			return b.rotateCredential(ctx, request)
+		},
 	}
 	b.getProvider = newAzureProvider
 	b.appLocks = locksutil.CreateLocks()

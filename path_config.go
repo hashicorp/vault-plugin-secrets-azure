@@ -6,10 +6,12 @@ package azuresecrets
 import (
 	"context"
 	"errors"
+	"github.com/hashicorp/vault/sdk/rotation"
 	"time"
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/vault/sdk/framework"
+	"github.com/hashicorp/vault/sdk/helper/automatedrotationutil"
 	"github.com/hashicorp/vault/sdk/helper/pluginidentityutil"
 	"github.com/hashicorp/vault/sdk/helper/pluginutil"
 	"github.com/hashicorp/vault/sdk/logical"
@@ -28,6 +30,7 @@ const (
 // environments variable and system defaults being used.
 type azureConfig struct {
 	pluginidentityutil.PluginIdentityTokenParams
+	automatedrotationutil.AutomatedRotationParams
 
 	SubscriptionID                string        `json:"subscription_id"`
 	TenantID                      string        `json:"tenant_id"`
@@ -114,6 +117,11 @@ func pathConfig(b *azureSecretBackend) *framework.Path {
 	}
 	pluginidentityutil.AddPluginIdentityTokenFields(p.Fields)
 
+	// this adds rotation_schedule, rotation_window, rotation_period, and disable_automated_rotation,
+	// which might be confusing when taken with the existing ttl and expiration date field.
+	// Be sure to make clear what each of these do.
+	automatedrotationutil.AddAutomatedRotationFields(p.Fields)
+
 	return p
 }
 
@@ -125,11 +133,17 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 		return nil, err
 	}
 
+	// this is used if de-register is set to determine if there actually is anything to de-register.
+	var prevRotateCfg bool
 	if config == nil {
 		if req.Operation == logical.UpdateOperation {
 			return nil, errors.New("config not found during update operation")
 		}
 		config = new(azureConfig)
+	} else {
+		if req.Operation == logical.UpdateOperation {
+			prevRotateCfg = config.ShouldRegisterRotationJob()
+		}
 	}
 
 	if subscriptionID, ok := data.GetOk("subscription_id"); ok {
@@ -167,6 +181,10 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 		return logical.ErrorResponse(err.Error()), nil
 	}
 
+	if err := config.ParseAutomatedRotationFields(data); err != nil {
+		return logical.ErrorResponse(err.Error()), nil
+	}
+
 	if config.IdentityTokenAudience != "" && config.ClientSecret != "" {
 		return logical.ErrorResponse("only one of 'client_secret' or 'identity_token_audience' can be set"), nil
 	}
@@ -186,6 +204,36 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 
 	if merr.ErrorOrNil() != nil {
 		return logical.ErrorResponse(merr.Error()), nil
+	}
+
+	// set up rotation after everything is fine
+	if config.ShouldRegisterRotationJob() {
+		req := &rotation.RotationJobConfigureRequest{
+			Name:             "",
+			MountType:        req.MountType,
+			ReqPath:          req.Path,
+			RotationSchedule: config.RotationSchedule,
+			RotationWindow:   config.RotationWindow,
+			RotationPeriod:   config.RotationPeriod,
+		}
+
+		_, err := b.System().RegisterRotationJob(ctx, req)
+		if err != nil {
+			return logical.ErrorResponse("error registering rotation job: %s", err), nil
+		}
+	} else if config.DisableAutomatedRotation {
+		// Ensure de-registering only occurs on updates and if
+		// a credential has actually been registered (rotation_period or rotation_schedule is set)
+		deregisterReq := &rotation.RotationJobDeregisterRequest{
+			MountType: req.MountType,
+			ReqPath:   req.Path,
+		}
+		if prevRotateCfg {
+			err := b.System().DeregisterRotationJob(ctx, deregisterReq)
+			if err != nil {
+				return logical.ErrorResponse("error de-registering rotation job: %s", err), nil
+			}
+		}
 	}
 
 	err = b.saveConfig(ctx, config, req.Storage)
@@ -216,6 +264,7 @@ func (b *azureSecretBackend) pathConfigRead(ctx context.Context, req *logical.Re
 		},
 	}
 	config.PopulatePluginIdentityTokenData(resp.Data)
+	config.PopulateAutomatedRotationData(resp.Data)
 
 	if !config.RootPasswordExpirationDate.IsZero() {
 		resp.Data["root_password_expiration_date"] = config.RootPasswordExpirationDate

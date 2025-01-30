@@ -207,7 +207,20 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 	}
 
 	// set up rotation after everything is fine
-	if config.ShouldRegisterRotationJob() {
+	if config.DisableAutomatedRotation {
+		// Ensure de-registering only occurs on updates and if
+		// a credential has actually been registered (rotation_period or rotation_schedule is set)
+		deregisterReq := &rotation.RotationJobDeregisterRequest{
+			MountType: req.MountType,
+			ReqPath:   req.Path,
+		}
+		if prevRotateCfg {
+			err := b.System().DeregisterRotationJob(ctx, deregisterReq)
+			if err != nil {
+				return logical.ErrorResponse("error de-registering rotation job: %s", err), nil
+			}
+		}
+	} else if config.ShouldRegisterRotationJob() {
 		req := &rotation.RotationJobConfigureRequest{
 			Name:             "",
 			MountType:        req.MountType,
@@ -220,19 +233,6 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 		_, err := b.System().RegisterRotationJob(ctx, req)
 		if err != nil {
 			return logical.ErrorResponse("error registering rotation job: %s", err), nil
-		}
-	} else if config.DisableAutomatedRotation {
-		// Ensure de-registering only occurs on updates and if
-		// a credential has actually been registered (rotation_period or rotation_schedule is set)
-		deregisterReq := &rotation.RotationJobDeregisterRequest{
-			MountType: req.MountType,
-			ReqPath:   req.Path,
-		}
-		if prevRotateCfg {
-			err := b.System().DeregisterRotationJob(ctx, deregisterReq)
-			if err != nil {
-				return logical.ErrorResponse("error de-registering rotation job: %s", err), nil
-			}
 		}
 	}
 

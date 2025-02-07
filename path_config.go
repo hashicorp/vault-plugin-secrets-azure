@@ -226,7 +226,7 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 	} else if config.ShouldRegisterRotationJob() {
 		req := &rotation.RotationJobConfigureRequest{
 			Name:             rootRotationJobName,
-			MountType:        req.MountType,
+			MountType:        req.MountPoint,
 			ReqPath:          req.Path,
 			RotationSchedule: config.RotationSchedule,
 			RotationWindow:   config.RotationWindow,

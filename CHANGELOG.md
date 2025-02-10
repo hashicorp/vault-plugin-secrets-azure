@@ -1,5 +1,10 @@
 ## Unreleased
 
+IMPROVEMENTS
+* Updated dependencies:
+  * `golang.org/x/net` v0.27.0 -> v0.35.0
+  * `golang.org/x/crypto` v0.25.0 -> v0.33.0
+
 ## v0.20.1
 ### October 14, 2024
 

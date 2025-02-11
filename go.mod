@@ -15,7 +15,7 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/go-uuid v1.0.3
 	github.com/hashicorp/vault/api v1.15.0
-	github.com/hashicorp/vault/sdk v0.14.2-0.20250210233644-9b70487623a5
+	github.com/hashicorp/vault/sdk v0.15.0
 	github.com/microsoftgraph/msgraph-sdk-go v1.47.0
 	github.com/microsoftgraph/msgraph-sdk-go-core v1.2.1
 	github.com/mitchellh/mapstructure v1.5.0

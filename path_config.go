@@ -6,6 +6,7 @@ package azuresecrets
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/hashicorp/vault/sdk/rotation"
 	"time"
 
@@ -210,7 +211,9 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 	}
 
 	// set up rotation after everything is fine
+	var rotOp string
 	if config.ShouldDeregisterRotationJob() {
+		rotOp = "deregistration"
 		// Ensure de-registering only occurs on updates and if
 		// a credential has actually been registered (rotation_period or rotation_schedule is set)
 		deregisterReq := &rotation.RotationJobDeregisterRequest{
@@ -224,6 +227,7 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 			}
 		}
 	} else if config.ShouldRegisterRotationJob() {
+		rotOp = "registeration"
 		req := &rotation.RotationJobConfigureRequest{
 			Name:             rootRotationJobName,
 			MountPoint:       req.MountPoint,
@@ -241,7 +245,12 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 
 	err = b.saveConfig(ctx, config, req.Storage)
 	if err != nil {
-		return nil, err
+		wrappedError := err
+		if rotOp != "" {
+			wrappedError = fmt.Errorf("write to storage failed but the rotation manager still succeeded; "+
+				"operation=%s, mount=%s, path=%s, storageError=%s", rotOp, req.MountPoint, req.Path, err)
+		}
+		return nil, wrappedError
 	}
 
 	return nil, err

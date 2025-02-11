@@ -137,17 +137,11 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 		return nil, err
 	}
 
-	// this is used if de-register is set to determine if there actually is anything to de-register.
-	var prevRotateCfg bool
 	if config == nil {
 		if req.Operation == logical.UpdateOperation {
 			return nil, errors.New("config not found during update operation")
 		}
 		config = new(azureConfig)
-	} else {
-		if req.Operation == logical.UpdateOperation {
-			prevRotateCfg = config.ShouldRegisterRotationJob()
-		}
 	}
 
 	if subscriptionID, ok := data.GetOk("subscription_id"); ok {
@@ -220,12 +214,12 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 			MountPoint: req.MountPoint,
 			ReqPath:    req.Path,
 		}
-		if prevRotateCfg {
-			err := b.System().DeregisterRotationJob(ctx, deregisterReq)
-			if err != nil {
-				return logical.ErrorResponse("error de-registering rotation job: %s", err), nil
-			}
+
+		err := b.System().DeregisterRotationJob(ctx, deregisterReq)
+		if err != nil {
+			return logical.ErrorResponse("error de-registering rotation job: %s", err), nil
 		}
+
 	} else if config.ShouldRegisterRotationJob() {
 		rotOp = "registeration"
 		req := &rotation.RotationJobConfigureRequest{

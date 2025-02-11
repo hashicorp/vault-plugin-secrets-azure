@@ -157,6 +157,18 @@ func TestConfig(t *testing.T) {
 	}
 }
 
+func TestRotationConfig(t *testing.T) {
+	// Ensure rotation settings return an error
+	b, s := getTestBackend(t)
+
+	configData := map[string]interface{}{
+		"tenant_id":       "tid",
+		"resource":        "res",
+		"rotation_period": 10,
+	}
+	testConfigCreate(t, b, s, configData, true)
+}
+
 func TestConfigEnvironmentClouds(t *testing.T) {
 	b, s := getTestBackendMocked(t, false)
 

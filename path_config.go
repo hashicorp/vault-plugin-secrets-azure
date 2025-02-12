@@ -24,9 +24,6 @@ const (
 	// the Azure UI, so we're setting it to 6 months (in hours)
 	// as the default.
 	defaultRootPasswordTTL = 4380 * time.Hour
-
-	// name to use on rotation jobs submitted to the rotation manager
-	rootRotationJobName = "azure-secrets-root-creds"
 )
 
 // azureConfig contains values to configure Azure clients and
@@ -223,7 +220,6 @@ func (b *azureSecretBackend) pathConfigWrite(ctx context.Context, req *logical.R
 	} else if config.ShouldRegisterRotationJob() {
 		rotOp = "registeration"
 		req := &rotation.RotationJobConfigureRequest{
-			Name:             rootRotationJobName,
 			MountPoint:       req.MountPoint,
 			ReqPath:          req.Path,
 			RotationSchedule: config.RotationSchedule,

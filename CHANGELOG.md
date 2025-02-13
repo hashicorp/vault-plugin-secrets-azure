@@ -1,6 +1,6 @@
 ## Unreleased
 
-IMPROVEMENTS:
+FEATURES:
 * (Enterprise feature) Add api fields to allow for scheduled rotation of root credentials. (https://github.com/vault-plugin-secrets-azure/pull/227)
 
 ## v0.20.1

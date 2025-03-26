@@ -1,3 +1,8 @@
+## Unreleased
+
+BUG FIXES:
+* Forward Performance Secondary Requests when configuring root credentials [GH-228](https://github.com/hashicorp/vault-plugin-auth-gcp/pull/228)
+
 ## v0.21.1
 ### February 26, 2025
 

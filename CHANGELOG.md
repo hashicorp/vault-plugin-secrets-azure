@@ -1,7 +1,7 @@
 ## Unreleased
 
 BUG FIXES:
-* Forward Performance Secondary Requests when configuring root credentials [GH-245](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/245)
+* Fix a panic when a performance standby node attempts to write/update config [GH-245](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/245)
 
 ## v0.21.1
 ### February 26, 2025

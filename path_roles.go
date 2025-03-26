@@ -338,7 +338,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 			roleDef = *defs[0]
 		}
 		roleDefID := *roleDef.ID
-		roleDefName := *roleDef.Name
+		roleDefName := *roleDef.Properties.RoleName
 
 		r.RoleName, r.RoleID = roleDefName, roleDefID
 

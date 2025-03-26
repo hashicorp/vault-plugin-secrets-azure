@@ -98,12 +98,16 @@ func pathConfig(b *azureSecretBackend) *framework.Path {
 				DisplayAttrs: &framework.DisplayAttributes{
 					OperationVerb: "configure",
 				},
+				ForwardPerformanceSecondary: true,
+				ForwardPerformanceStandby:   true,
 			},
 			logical.UpdateOperation: &framework.PathOperation{
 				Callback: b.pathConfigWrite,
 				DisplayAttrs: &framework.DisplayAttributes{
 					OperationVerb: "configure",
 				},
+				ForwardPerformanceSecondary: true,
+				ForwardPerformanceStandby:   true,
 			},
 			logical.DeleteOperation: &framework.PathOperation{
 				Callback: b.pathConfigDelete,

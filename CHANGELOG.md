@@ -1,9 +1,5 @@
 ## Unreleased
 
-## v0.19.1
-BUG FIXES:
-* Revert role name from GUID back to human readable format [[GH-239]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/239)
-
 ## v0.19.0
 
 IMPROVEMENTS:

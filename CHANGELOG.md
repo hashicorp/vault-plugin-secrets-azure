@@ -8,6 +8,10 @@ BUG FIXES:
 
 ## v0.21.2
 ### March 26, 2025
+IMPROVEMENTS:
+* Updated dependencies:
+  * `github.com/golang-jwt/jwt/v5` v5.2.1 -> v5.2.2
+  * `golang.org/x/net` v0.35.0 -> v0.38.0
 
 BUG FIXES:
 * Revert role name changes to no longer be a GUID [GH-233](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/233)

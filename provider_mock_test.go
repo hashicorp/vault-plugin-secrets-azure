@@ -100,9 +100,11 @@ func (m *mockProvider) GetRoleDefinitionByID(_ context.Context, roleID string) (
 	roleName := s[1]
 	return armauthorization.RoleDefinitionsClientGetByIDResponse{
 		RoleDefinition: armauthorization.RoleDefinition{
-			Properties: &armauthorization.RoleDefinitionProperties{},
-			ID:         &roleID,
-			Name:       &roleName,
+			Properties: &armauthorization.RoleDefinitionProperties{
+				RoleName: &roleName,
+			},
+			ID:   &roleID,
+			Name: &roleName,
 		},
 	}, nil
 }

@@ -1,6 +1,27 @@
 # Copyright (c) HashiCorp, Inc.
 # SPDX-License-Identifier: MPL-2.0
 
+terraform {
+  required_providers {
+    random = {
+      source  = "hashicorp/random"
+      version = "3.7.0"
+    }
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.30.0"
+    }
+    azuread = {
+      source  = "hashicorp/azuread"
+      version = "~> 3.4.0"
+    }
+    local = {
+      source  = "hashicorp/local"
+      version = "~> 2.5.0"
+    }
+  }
+}
+
 provider "azuread" {}
 provider "azurerm" {
   features {}

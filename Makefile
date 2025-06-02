@@ -4,7 +4,7 @@ VETARGS?=-asmdecl -atomic -bool -buildtags -copylocks -methods -nilfunc -printf 
 EXTERNAL_TOOLS=
 BUILD_TAGS?=${TOOL}
 GOFMT_FILES?=$$(find . -name '*.go' | grep -v vendor)
-PLUGIN_NAME := $(shell command ls cmd/)
+PLUGIN_NAME ?= $(shell command ls cmd/)
 PLUGIN_DIR ?= $$GOPATH/vault-plugins
 PLUGIN_PATH ?= local-secrets-azure
 

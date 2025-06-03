@@ -5,10 +5,13 @@ package azuresecrets
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	multierror "github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/vault/sdk/logical"
 	"github.com/mitchellh/mapstructure"
@@ -62,22 +65,30 @@ func (b *azureSecretBackend) rollbackAppWAL(ctx context.Context, req *logical.Re
 		return err
 	}
 
-	b.Logger().Debug("rolling back SP", "appID", entry.AppID, "appObjID", entry.AppObjID)
+	rollbackLogger := b.Logger().With("appID", entry.AppID, "appObjID", entry.AppObjID)
+	rollbackLogger.Debug("rollback: attempting to delete app")
 
-	// Attempt to delete the App. deleteApp doesn't return an error if the app isn't
-	// found, so no special handling is needed for that case. If we don't succeed within
-	// maxWALAge (e.g. client creds have changed and the delete will never succeed),
-	// unconditionally remove the WAL.
+	// Attempt to delete the App. The service principal is deleted
+	// automatically by Azure so we don't attempt to roll it back.
 	if err := client.deleteApp(ctx, entry.AppObjID, true); err != nil {
-		b.Logger().Warn("rollback error deleting App", "err", err)
+		respErr := new(azcore.ResponseError)
+		if errors.As(err, &respErr) && (respErr.StatusCode == http.StatusNoContent || respErr.StatusCode == http.StatusNotFound) {
+			rollbackLogger.Debug("rollback: app already deleted or does not exist", "err", err.Error())
+			return nil
+		} else {
+			rollbackLogger.Warn("rollback: error deleting app", "err", err)
+		}
 
+		// If we don't succeed within maxWALAge (e.g. client creds have changed
+		// and the delete will never succeed), unconditionally remove the WAL.
 		if time.Now().After(entry.Expiration) {
-			b.Logger().Warn("app WAL expired prior to rollback; resources may still exist")
+			rollbackLogger.Warn("rollback: app WAL expired prior to rollback; resources may still exist")
 			return nil
 		}
 		return err
 	}
 
+	rollbackLogger.Debug("rollback: deleted app")
 	return nil
 }
 
@@ -132,11 +143,12 @@ func (b *azureSecretBackend) rollbackRoleAssignWAL(ctx context.Context, req *log
 		return err
 	}
 
-	b.Logger().Debug("rolling back role assignments for service principal", "ID", entry.SpID)
+	rollbackLogger := b.Logger().With("principalId", entry.SpID)
+	rollbackLogger.Debug("rollback: attempting to remove role assignments for service principal")
 
 	// Return if there aren't any roles to unassign
 	if entry.AzureRoles == nil {
-		b.Logger().Error("no azure roles associated with role")
+		rollbackLogger.Debug("rollback: no azure roles associated with role")
 		return nil
 	}
 
@@ -144,7 +156,7 @@ func (b *azureSecretBackend) rollbackRoleAssignWAL(ctx context.Context, req *log
 	var roleAssignments []string
 	for i, assignmentID := range entry.AssignmentIDs {
 		if entry.AzureRoles[i] == nil {
-			return fmt.Errorf("azure role was nil")
+			return fmt.Errorf("azure role was nil for service principal: %s", entry.SpID)
 		}
 		roleAssignments = append(roleAssignments, fmt.Sprintf("%s/providers/Microsoft.Authorization/roleAssignments/%s",
 			entry.AzureRoles[i].Scope,
@@ -158,13 +170,14 @@ func (b *azureSecretBackend) rollbackRoleAssignWAL(ctx context.Context, req *log
 		for _, e := range err.(*multierror.Error).Errors {
 			switch {
 			case strings.Contains(e.Error(), "StatusCode=204"):
-				b.Logger().Trace("role assignment already deleted or does not exist", "err", e.Error())
+				rollbackLogger.Debug("rollback: role assignment already deleted or does not exist", "err", e.Error())
+				return nil
 			default:
 				return fmt.Errorf("rollback error unassinging role: %w", e)
 			}
 		}
 		if time.Now().After(entry.Expiration) {
-			b.Logger().Warn("role assignment WAL expired prior to rollback; resources may still exist")
+			rollbackLogger.Warn("rollback: role assignment WAL expired prior to rollback; resources may still exist")
 			return nil
 		}
 	}

@@ -1,6 +1,27 @@
 # Copyright (c) HashiCorp, Inc.
 # SPDX-License-Identifier: MPL-2.0
 
+terraform {
+  required_providers {
+    random = {
+      source  = "hashicorp/random"
+      version = "3.7.0"
+    }
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.30.0"
+    }
+    azuread = {
+      source  = "hashicorp/azuread"
+      version = "~> 3.4.0"
+    }
+    local = {
+      source  = "hashicorp/local"
+      version = "~> 2.5.0"
+    }
+  }
+}
+
 provider "azuread" {}
 provider "azurerm" {
   features {}
@@ -44,12 +65,13 @@ resource "azuread_application" "vault_azure_app" {
 }
 
 resource "azuread_service_principal" "ms_graph" {
-  application_id = data.azuread_application_published_app_ids.well_known.result.MicrosoftGraph
-  use_existing   = true
+  client_id    = data.azuread_application_published_app_ids.well_known.result.MicrosoftGraph
+  owners       = [data.azuread_client_config.current.object_id]
+  use_existing = true
 }
 
 resource "azuread_service_principal" "vault_azure_sp" {
-  application_id = azuread_application.vault_azure_app.application_id
+  client_id = azuread_application.vault_azure_app.client_id
 }
 
 resource "azuread_service_principal_password" "vault_azure_sp_pwd" {
@@ -88,7 +110,7 @@ export AZURE_SUBSCRIPTION_ID=${data.azurerm_client_config.current.subscription_i
 export AZURE_TENANT_ID=${data.azurerm_client_config.current.tenant_id}
 export AZURE_GROUP_NAME=${azuread_group.test_group.display_name}
 export AZURE_APPLICATION_OBJECT_ID=${azuread_application.vault_azure_app.object_id}
-export AZURE_CLIENT_ID=${azuread_application.vault_azure_app.application_id}
+export AZURE_CLIENT_ID=${azuread_application.vault_azure_app.client_id}
 export AZURE_CLIENT_SECRET=${azuread_service_principal_password.vault_azure_sp_pwd.value}
 EOF
 }
@@ -117,7 +139,7 @@ output "application_object_id" {
 }
 
 output "client_id" {
-  value = azuread_application.vault_azure_app.application_id
+  value = azuread_application.vault_azure_app.client_id
 }
 
 output "client_secret" {

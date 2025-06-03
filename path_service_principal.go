@@ -237,11 +237,22 @@ func (b *azureSecretBackend) spRenew(ctx context.Context, req *logical.Request, 
 		return nil, nil
 	}
 
-	// Determine remaining lifetime of SP secret in Azure
-	keyEndDateRaw, ok := req.Secret.InternalData["key_end_date"]
-	if !ok {
-		return nil, errors.New("internal data 'key_end_date' not found")
+	keyEndDateRaw, hasKeyEndDate := req.Secret.InternalData["key_end_date"]
+	if !hasKeyEndDate {
+		// Leases that were created in Vault <=1.18 don't have `key_end_date`
+		// in the internal data. To ensure backwards compatibility for older leases,
+		// we set the `key_end_date` to the system default expiration time (spExpiration).
+		keyEndDate := req.Secret.IssueTime.Add(spExpiration)
+		keyLifetime := time.Until(keyEndDate)
+		req.Secret.InternalData["key_end_date"] = keyEndDate.Format(time.RFC3339Nano)
+
+		resp := &logical.Response{Secret: req.Secret}
+		resp.Secret.TTL = min(role.TTL, keyLifetime)
+		resp.Secret.MaxTTL = min(role.MaxTTL, keyLifetime)
+		resp.Secret.Renewable = role.TTL < keyLifetime
+		return resp, nil
 	}
+
 	keyEndDate, err := time.Parse(time.RFC3339Nano, keyEndDateRaw.(string))
 	if err != nil {
 		return nil, errors.New("cannot parse 'key_end_date' to timestamp")

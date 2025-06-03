@@ -1,5 +1,16 @@
 ## Unreleased
 
+## v0.20.3
+### June 3, 2025
+
+IMPROVEMENTS:
+
+* Delete WAL in rollback when app not found, improve logging (https://github.com/hashicorp/vault-plugin-secrets-azure/pull/251)
+
+BUG FIXES:
+
+* Fix a bug in spRenew func to set the `key_end_date` field for leases that were created in Vault <=1.18 [GH-249](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/249)
+
 ## v0.20.1
 ### October 14, 2024
 

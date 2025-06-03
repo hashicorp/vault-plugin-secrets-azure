@@ -1143,6 +1143,62 @@ func TestCredentialInteg_msgraph(t *testing.T) {
 	})
 }
 
+// TestSPRenewFallback_keyEndDate verifies that if a lease is missing the
+// `key_end_date` field (created in Vault <= 1.18), the renew logic falls
+// back to the system default and sets the field. This ensures backwards
+// compatibility for older leases that didn't have `key_end_date` field
+// in their internal metadata.
+func TestSPRenewFallback_keyEndDate(t *testing.T) {
+	b, s := getTestBackendMocked(t, true)
+
+	name := generateUUID()
+	role := map[string]interface{}{
+		"azure_roles": encodeJSON([]AzureRole{
+			{
+				RoleName: "Owner",
+				RoleID:   "/subscriptions/FAKE_SUB_ID/providers/Microsoft.Authorization/roleDefinitions/FAKE_ROLE-Owner",
+				Scope:    "/subscriptions/ce7d1612-67c1-4dc6-8d81-4e0a432e696b",
+			},
+		}),
+		"ttl":     20,
+		"max_ttl": 30,
+	}
+	testRoleCreate(t, b, s, name, role)
+
+	resp, err := b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.ReadOperation,
+		Path:      "creds/" + name,
+		Storage:   s,
+	})
+	assertErrorIsNil(t, err)
+	if resp == nil || resp.Secret == nil {
+		t.Fatalf("expected non-nil response and secret")
+	}
+
+	// Manually set IssueTime, since we don't have a real backend
+	resp.Secret.IssueTime = time.Now()
+	// Delete `key_end_data` to simulate a lease created in Vault <= 1.18
+	delete(resp.Secret.InternalData, "key_end_date")
+
+	fakeSaveLoad(resp.Secret)
+	resp.Secret.InternalData["issue_time"] = time.Now().Format(time.RFC3339)
+
+	renewResp, err := b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.RenewOperation,
+		Secret:    resp.Secret,
+		Storage:   s,
+	})
+	assertErrorIsNil(t, err)
+	if renewResp == nil || renewResp.Secret == nil {
+		t.Fatalf("expected non-nil response and secret")
+	}
+
+	// Validate that the `key_end_date` is set to a system default (10 years)
+	if _, ok := renewResp.Secret.InternalData["key_end_date"]; !ok {
+		t.Fatalf("expected key_end_date to be set")
+	}
+}
+
 func skipIfMissingEnvVars(t *testing.T, envVars ...string) {
 	t.Helper()
 	for _, envVar := range envVars {

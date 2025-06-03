@@ -1,5 +1,12 @@
 ## Unreleased
 
+## v0.17.5
+### June 3, 2025
+
+IMPROVEMENTS:
+
+* Delete WAL in rollback when app not found, improve logging (https://github.com/hashicorp/vault-plugin-secrets-azure/pull/251)
+
 ## v0.17.2
 
 BUG FIXES:

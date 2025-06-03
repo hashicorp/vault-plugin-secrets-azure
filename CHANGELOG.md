@@ -1,5 +1,13 @@
 ## Unreleased
 
+## v0.22.0
+### June 3, 2025
+
+IMPROVEMENTS:
+
+* Bump go version to 1.23.9
+* Update indirect dependencies
+
 ## v0.21.4
 ### June 3, 2025
 
@@ -51,6 +59,17 @@ IMPROVEMENTS
   * `github.com/hashicorp/vault/api` v1.15.0 -> v1.16.0
   * `github.com/microsoftgraph/msgraph-sdk-go` v1.47.0 -> v1.61.0
 
+## v0.20.3
+### June 3, 2025
+
+IMPROVEMENTS:
+
+* Delete WAL in rollback when app not found, improve logging (https://github.com/hashicorp/vault-plugin-secrets-azure/pull/251)
+
+BUG FIXES:
+
+* Fix a bug in spRenew func to set the `key_end_date` field for leases that were created in Vault <=1.18 [GH-249](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/249)
+
 ## v0.20.1
 ### October 14, 2024
 
@@ -73,6 +92,13 @@ IMPROVEMENTS:
 
 FEATURES:
 * Adds ability to limit the lifetime of service principal secrets in Azure through `explicit_max_ttl` on roles ([GH-199](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/199))
+
+## v0.19.4
+### June 3, 2025
+
+IMPROVEMENTS:
+
+* Delete WAL in rollback when app not found, improve logging (https://github.com/hashicorp/vault-plugin-secrets-azure/pull/251)
 
 ## v0.19.2
 IMPROVEMENTS:
@@ -125,6 +151,13 @@ IMPROVEMENTS:
 * `google.golang.org/protobuf` v1.32.0 -> v1.33.0 [[GH-184]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/184)
 * `github.com/docker/docker` v25.0.2+incompatible -> v25.0.5+incompatible [[GH-185]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/185)
 * `golang.org/x/net` 0.21.0 -> 0.23.0 [[GH-195]](https://github.com/hashicorp/vault-plugin-secrets-azure/pull/195)
+
+## v0.17.5
+### June 3, 2025
+
+IMPROVEMENTS:
+
+* Delete WAL in rollback when app not found, improve logging (https://github.com/hashicorp/vault-plugin-secrets-azure/pull/251)
 
 ## v0.17.3
 

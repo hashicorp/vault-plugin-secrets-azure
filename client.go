@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -80,8 +81,8 @@ func (c *client) createAppWithName(ctx context.Context, rolename string, signInA
 func (c *client) createSP(
 	ctx context.Context,
 	app api.Application,
-	duration time.Duration) (spID string, password string, endDate time.Time, err error) {
-
+	duration time.Duration,
+) (spID string, password string, endDate time.Time, err error) {
 	type idPass struct {
 		ID       string
 		Password string
@@ -106,7 +107,6 @@ func (c *client) createSP(
 
 		return result, true, err
 	})
-
 	if err != nil {
 		return "", "", time.Time{}, fmt.Errorf("error creating service principal: %w", err)
 	}
@@ -176,6 +176,16 @@ func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRol
 
 	for i, role := range roles {
 		resultRaw, err := retry(ctx, func() (interface{}, bool, error) {
+			var azurePrincipal armauthorization.PrincipalType
+			if role.PrincipalType != "" {
+				azurePrincipal = armauthorization.PrincipalType(role.PrincipalType)
+
+				// Check if set to a valid option
+				if !slices.Contains(armauthorization.PossiblePrincipalTypeValues(), azurePrincipal) {
+					return nil, true, fmt.Errorf("invalid principal type %q for role %q", role.PrincipalType, role.RoleName)
+				}
+			}
+
 			if assignmentIDs[i] == "" {
 				return nil, true, fmt.Errorf("assignmentID at index %d was empty", i)
 			}
@@ -184,6 +194,7 @@ func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRol
 					Properties: &armauthorization.RoleAssignmentProperties{
 						RoleDefinitionID: &role.RoleID,
 						PrincipalID:      &spID,
+						PrincipalType:    &azurePrincipal,
 					},
 				})
 
@@ -198,7 +209,6 @@ func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRol
 			}
 			return *ra.ID, true, err
 		})
-
 		if err != nil {
 			return nil, fmt.Errorf("error while assigning roles: %w", err)
 		}
@@ -244,7 +254,6 @@ func (c *client) addGroupMemberships(ctx context.Context, spID string, groups []
 
 			return nil, true, err
 		})
-
 		if err != nil {
 			return fmt.Errorf("error while adding group membership: %w", err)
 		}
@@ -280,7 +289,6 @@ func groupObjectIDs(groups []*AzureGroup) []string {
 	groupIDs := make([]string, 0, len(groups))
 	for _, group := range groups {
 		groupIDs = append(groupIDs, group.ObjectID)
-
 	}
 	return groupIDs
 }

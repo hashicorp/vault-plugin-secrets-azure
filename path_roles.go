@@ -51,9 +51,10 @@ type roleEntry struct {
 // to a scope. RoleName and RoleID are both traits of the role. RoleID is the unique identifier, but RoleName is
 // more useful to a human (thought it is not unique).
 type AzureRole struct {
-	RoleName string `json:"role_name"` // e.g. Owner
-	RoleID   string `json:"role_id"`   // e.g. /subscriptions/e0a207b2-.../providers/Microsoft.Authorization/roleDefinitions/de139f84-...
-	Scope    string `json:"scope"`     // e.g. /subscriptions/e0a207b2-...
+	RoleName      string `json:"role_name"`                // e.g. Owner
+	RoleID        string `json:"role_id"`                  // e.g. /subscriptions/e0a207b2-.../providers/Microsoft.Authorization/roleDefinitions/de139f84-...
+	Scope         string `json:"scope"`                    // e.g. /subscriptions/e0a207b2-...
+	PrincipalType string `json:"principal_type,omitempty"` // e.g. ServicePrincipal
 }
 
 // AzureGroup is an Azure Active Directory Group

@@ -90,12 +90,9 @@ func (b *azureSecretBackend) pathStaticRoleCreateUpdate(ctx context.Context, req
 		return logical.ErrorResponse("missing required field 'application_object_id'"), nil
 	}
 
-	entry, err := logical.StorageEntryJSON(pathStaticRole+name, role)
+	err = b.saveStaticRole(ctx, req.Storage, role, name)
 	if err != nil {
-		return nil, fmt.Errorf("failed to serialize role: %w", err)
-	}
-	if err := req.Storage.Put(ctx, entry); err != nil {
-		return nil, fmt.Errorf("failed to save role to storage: %w", err)
+		return nil, fmt.Errorf("error storing role: %w", err)
 	}
 
 	return nil, nil
@@ -128,6 +125,15 @@ func (b *azureSecretBackend) pathStaticRoleDelete(ctx context.Context, req *logi
 		return nil, fmt.Errorf("error deleting role: %w", err)
 	}
 	return nil, nil
+}
+
+func (b *azureSecretBackend) saveStaticRole(ctx context.Context, s logical.Storage, role *azureStaticRole, name string) error {
+	entry, err := logical.StorageEntryJSON(pathStaticRole+name, role)
+	if err != nil {
+		return err
+	}
+
+	return s.Put(ctx, entry)
 }
 
 func (b *azureSecretBackend) getStaticRole(ctx context.Context, s logical.Storage, name string) (*azureStaticRole, error) {

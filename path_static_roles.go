@@ -52,30 +52,30 @@ func pathStaticRoles(b *azureSecretBackend) *framework.Path {
 				Callback: b.pathStaticRoleDelete,
 			},
 		},
-		ExistenceCheck:  b.staticRoleExists,
+		ExistenceCheck:  b.pathStaticRoleExistenceCheck,
 		HelpSynopsis:    pathStaticRolesHelpSyn,
 		HelpDescription: pathStaticRolesHelpDesc,
 	}
 }
 
-func (b *azureSecretBackend) staticRoleExists(ctx context.Context, req *logical.Request, data *framework.FieldData) (bool, error) {
+func (b *azureSecretBackend) pathStaticRoleExistenceCheck(ctx context.Context, req *logical.Request, data *framework.FieldData) (bool, error) {
 	name := data.Get(paramRoleName).(string)
 	if name == "" {
 		return false, fmt.Errorf("missing required field 'name'")
 	}
 
-	path := pathStaticRole + name
-	entry, err := req.Storage.Get(ctx, path)
+	role, err := getStaticRole(ctx, req.Storage, name)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("error reading role: %w", err)
 	}
-	return entry != nil, nil
+
+	return role != nil, nil
 }
 
 func (b *azureSecretBackend) pathStaticRoleCreateUpdate(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	name := data.Get(paramRoleName).(string)
 
-	role, err := b.getStaticRole(ctx, req.Storage, name)
+	role, err := getStaticRole(ctx, req.Storage, name)
 	if err != nil {
 		return nil, fmt.Errorf("error reading role from storage: %w", err)
 	}
@@ -90,7 +90,7 @@ func (b *azureSecretBackend) pathStaticRoleCreateUpdate(ctx context.Context, req
 		return logical.ErrorResponse("missing required field 'application_object_id'"), nil
 	}
 
-	err = b.saveStaticRole(ctx, req.Storage, role, name)
+	err = saveStaticRole(ctx, req.Storage, role, name)
 	if err != nil {
 		return nil, fmt.Errorf("error storing role: %w", err)
 	}
@@ -101,7 +101,7 @@ func (b *azureSecretBackend) pathStaticRoleCreateUpdate(ctx context.Context, req
 func (b *azureSecretBackend) pathStaticRoleRead(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	name := data.Get(paramRoleName).(string)
 
-	role, err := b.getStaticRole(ctx, req.Storage, name)
+	role, err := getStaticRole(ctx, req.Storage, name)
 	if err != nil {
 		return nil, fmt.Errorf("error reading role: %w", err)
 	}
@@ -124,10 +124,11 @@ func (b *azureSecretBackend) pathStaticRoleDelete(ctx context.Context, req *logi
 	if err := req.Storage.Delete(ctx, pathStaticRole+name); err != nil {
 		return nil, fmt.Errorf("error deleting role: %w", err)
 	}
+
 	return nil, nil
 }
 
-func (b *azureSecretBackend) saveStaticRole(ctx context.Context, s logical.Storage, role *azureStaticRole, name string) error {
+func saveStaticRole(ctx context.Context, s logical.Storage, role *azureStaticRole, name string) error {
 	entry, err := logical.StorageEntryJSON(pathStaticRole+name, role)
 	if err != nil {
 		return err
@@ -136,7 +137,7 @@ func (b *azureSecretBackend) saveStaticRole(ctx context.Context, s logical.Stora
 	return s.Put(ctx, entry)
 }
 
-func (b *azureSecretBackend) getStaticRole(ctx context.Context, s logical.Storage, name string) (*azureStaticRole, error) {
+func getStaticRole(ctx context.Context, s logical.Storage, name string) (*azureStaticRole, error) {
 	entry, err := s.Get(ctx, pathStaticRole+name)
 	if err != nil || entry == nil {
 		return nil, err
@@ -146,6 +147,7 @@ func (b *azureSecretBackend) getStaticRole(ctx context.Context, s logical.Storag
 	if err := entry.DecodeJSON(&role); err != nil {
 		return nil, err
 	}
+
 	return &role, nil
 }
 

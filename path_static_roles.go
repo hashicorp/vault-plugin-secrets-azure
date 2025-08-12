@@ -6,6 +6,7 @@ package azuresecrets
 import (
 	"context"
 	"fmt"
+
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/logical"
 )
@@ -73,6 +74,15 @@ func (b *azureSecretBackend) pathStaticRoleExistenceCheck(ctx context.Context, r
 }
 
 func (b *azureSecretBackend) pathStaticRoleCreateUpdate(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+	config, err := b.getConfig(ctx, req.Storage)
+	if err != nil {
+		return nil, err
+	}
+
+	if config == nil {
+		return nil, fmt.Errorf("config is nil")
+	}
+
 	name := data.Get(paramRoleName).(string)
 
 	role, err := getStaticRole(ctx, req.Storage, name)
@@ -80,16 +90,32 @@ func (b *azureSecretBackend) pathStaticRoleCreateUpdate(ctx context.Context, req
 		return nil, fmt.Errorf("error reading role from storage: %w", err)
 	}
 	if role == nil {
+		if req.Operation == logical.UpdateOperation {
+			return nil, fmt.Errorf("role entry not found during update operation")
+		}
+
 		role = &azureStaticRole{}
 	}
 
-	if v, ok := data.GetOk(paramApplicationObjectID); ok {
-		role.ApplicationObjectID = v.(string)
+	if appObjectID, ok := data.GetOk(paramApplicationObjectID); ok {
+		role.ApplicationObjectID = appObjectID.(string)
 	}
 	if role.ApplicationObjectID == "" {
 		return logical.ErrorResponse("missing required field 'application_object_id'"), nil
 	}
 
+	client, err := b.getClient(ctx, req.Storage)
+	if err != nil {
+		return nil, err
+	}
+
+	// checks if the application object id is valid
+	_, err = client.provider.GetApplication(ctx, role.ApplicationObjectID)
+	if err != nil {
+		return nil, fmt.Errorf("error loading Application: %w", err)
+	}
+
+	// save the role in storage
 	err = saveStaticRole(ctx, req.Storage, role, name)
 	if err != nil {
 		return nil, fmt.Errorf("error storing role: %w", err)

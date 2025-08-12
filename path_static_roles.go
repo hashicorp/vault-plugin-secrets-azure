@@ -52,6 +52,9 @@ func pathStaticRoles(b *azureSecretBackend) *framework.Path {
 			logical.DeleteOperation: &framework.PathOperation{
 				Callback: b.pathStaticRoleDelete,
 			},
+			logical.ListOperation: &framework.PathOperation{
+				Callback: b.pathStaticRoleList,
+			},
 		},
 		ExistenceCheck:  b.pathStaticRoleExistenceCheck,
 		HelpSynopsis:    pathStaticRolesHelpSyn,
@@ -122,6 +125,15 @@ func (b *azureSecretBackend) pathStaticRoleCreateUpdate(ctx context.Context, req
 	}
 
 	return nil, nil
+}
+
+func (b *azureSecretBackend) pathStaticRoleList(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
+	roles, err := req.Storage.List(ctx, pathStaticRole+"/")
+	if err != nil {
+		return nil, fmt.Errorf("error listing roles: %w", err)
+	}
+
+	return logical.ListResponse(roles), nil
 }
 
 func (b *azureSecretBackend) pathStaticRoleRead(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {

@@ -41,16 +41,22 @@ func pathStaticRoles(b *azureSecretBackend) *framework.Path {
 		Fields:  fields,
 		Operations: map[logical.Operation]framework.OperationHandler{
 			logical.CreateOperation: &framework.PathOperation{
-				Callback: b.pathStaticRoleCreateUpdate,
+				Callback:                    b.pathStaticRoleCreateUpdate,
+				ForwardPerformanceSecondary: true,
+				ForwardPerformanceStandby:   true,
 			},
 			logical.UpdateOperation: &framework.PathOperation{
-				Callback: b.pathStaticRoleCreateUpdate,
+				Callback:                    b.pathStaticRoleCreateUpdate,
+				ForwardPerformanceSecondary: true,
+				ForwardPerformanceStandby:   true,
+			},
+			logical.DeleteOperation: &framework.PathOperation{
+				Callback:                    b.pathStaticRoleDelete,
+				ForwardPerformanceSecondary: true,
+				ForwardPerformanceStandby:   true,
 			},
 			logical.ReadOperation: &framework.PathOperation{
 				Callback: b.pathStaticRoleRead,
-			},
-			logical.DeleteOperation: &framework.PathOperation{
-				Callback: b.pathStaticRoleDelete,
 			},
 			logical.ListOperation: &framework.PathOperation{
 				Callback: b.pathStaticRoleList,

@@ -22,7 +22,7 @@ type azureStaticRole struct {
 	ApplicationObjectID string `json:"application_object_id"`
 }
 
-func pathStaticRoles(b *azureSecretBackend) *framework.Path {
+func pathStaticRoles(b *azureSecretBackend) []*framework.Path {
 	fields := map[string]*framework.FieldSchema{
 		paramRoleName: {
 			Type:        framework.TypeLowerCaseString,
@@ -36,29 +36,38 @@ func pathStaticRoles(b *azureSecretBackend) *framework.Path {
 		},
 	}
 
-	return &framework.Path{
-		Pattern: pathStaticRole + framework.GenericNameRegex("name"),
-		Fields:  fields,
-		Operations: map[logical.Operation]framework.OperationHandler{
-			logical.CreateOperation: &framework.PathOperation{
-				Callback: b.pathStaticRoleCreateUpdate,
+	return []*framework.Path{
+		{
+			Pattern: pathStaticRole + framework.GenericNameRegex("name"),
+			Fields:  fields,
+			Operations: map[logical.Operation]framework.OperationHandler{
+				logical.CreateOperation: &framework.PathOperation{
+					Callback: b.pathStaticRoleCreateUpdate,
+				},
+				logical.UpdateOperation: &framework.PathOperation{
+					Callback: b.pathStaticRoleCreateUpdate,
+				},
+				logical.DeleteOperation: &framework.PathOperation{
+					Callback: b.pathStaticRoleDelete,
+				},
+				logical.ReadOperation: &framework.PathOperation{
+					Callback: b.pathStaticRoleRead,
+				},
 			},
-			logical.UpdateOperation: &framework.PathOperation{
-				Callback: b.pathStaticRoleCreateUpdate,
-			},
-			logical.DeleteOperation: &framework.PathOperation{
-				Callback: b.pathStaticRoleDelete,
-			},
-			logical.ReadOperation: &framework.PathOperation{
-				Callback: b.pathStaticRoleRead,
-			},
-			logical.ListOperation: &framework.PathOperation{
-				Callback: b.pathStaticRoleList,
-			},
+			ExistenceCheck:  b.pathStaticRoleExistenceCheck,
+			HelpSynopsis:    pathStaticRolesHelpSyn,
+			HelpDescription: pathStaticRolesHelpDesc,
 		},
-		ExistenceCheck:  b.pathStaticRoleExistenceCheck,
-		HelpSynopsis:    pathStaticRolesHelpSyn,
-		HelpDescription: pathStaticRolesHelpDesc,
+		{
+			Pattern: pathStaticRole + "?",
+			Operations: map[logical.Operation]framework.OperationHandler{
+				logical.ListOperation: &framework.PathOperation{
+					Callback: b.pathStaticRoleList,
+				},
+			},
+			HelpSynopsis:    pathStaticRolesListHelpSyn,
+			HelpDescription: pathStaticRolesListHelpDesc,
+		},
 	}
 }
 
@@ -128,7 +137,7 @@ func (b *azureSecretBackend) pathStaticRoleCreateUpdate(ctx context.Context, req
 }
 
 func (b *azureSecretBackend) pathStaticRoleList(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-	roles, err := req.Storage.List(ctx, pathStaticRole+"/")
+	roles, err := req.Storage.List(ctx, pathStaticRole)
 	if err != nil {
 		return nil, fmt.Errorf("error listing roles: %w", err)
 	}
@@ -189,11 +198,18 @@ func getStaticRole(ctx context.Context, s logical.Storage, name string) (*azureS
 	return &role, nil
 }
 
-const pathStaticRolesHelpSyn = `
+const (
+	pathStaticRolesHelpSyn = `
 Manage static roles for Azure Secrets.
 `
-
-const pathStaticRolesHelpDesc = `
+	pathStaticRolesHelpDesc = `
 This path lets you manage static roles for Azure secret backend.
 Static roles are used to manage long-lived Azure AD application credentials.
 `
+	pathStaticRolesListHelpSyn = `
+List existing roles for Azure Secrets.
+`
+	pathStaticRolesListHelpDesc = `
+This path lists existing roles for Azure Secrets.
+`
+)

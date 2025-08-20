@@ -116,15 +116,9 @@ func (b *azureSecretBackend) pathStaticRoleCreateUpdate(ctx context.Context, req
 		return logical.ErrorResponse("missing required field 'application_object_id'"), nil
 	}
 
-	client, err := b.getClient(ctx, req.Storage)
+	err = b.createAzureStaticCred(ctx, req.Storage, name, role.ApplicationObjectID)
 	if err != nil {
 		return nil, err
-	}
-
-	// checks if the application object id is valid
-	_, err = client.provider.GetApplication(ctx, role.ApplicationObjectID)
-	if err != nil {
-		return nil, fmt.Errorf("error loading Application: %w", err)
 	}
 
 	// save the role in storage

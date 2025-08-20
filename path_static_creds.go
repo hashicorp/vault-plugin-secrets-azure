@@ -49,11 +49,13 @@ func (b *azureSecretBackend) pathStaticCredRotate(ctx context.Context, req *logi
 		return nil, fmt.Errorf("error reading role from storage: %w", err)
 	}
 	if role == nil {
-		//if req.Operation == logical.UpdateOperation {
-		//	return nil, fmt.Errorf("role entry not found during update operation")
-		//}
-		//
-		//role = &azureStaticRole{}
+		return nil, fmt.Errorf("role not found in storage")
+	}
+
+	// create and save new azure static credential
+	err = b.createAzureStaticCred(ctx, req.Storage, role.ApplicationObjectID, name)
+	if err != nil {
+		return nil, fmt.Errorf("error rotating static cred: %w", err)
 	}
 
 	return nil, nil

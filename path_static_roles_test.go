@@ -5,6 +5,7 @@ package azuresecrets
 
 import (
 	"context"
+	"sort"
 	"testing"
 
 	"github.com/hashicorp/vault/sdk/logical"
@@ -124,6 +125,48 @@ func TestStaticRole_Read(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestStaticRole_Read tests listing static roles from the Azure secrets backend.
+// It ensures that only existing roles are listed.
+func TestStaticRole_List(t *testing.T) {
+	b, s := getTestBackendMocked(t, true)
+
+	testStaticRoleCreateHelper(t, b, s, "r1", appObjID)
+	testStaticRoleCreateHelper(t, b, s, "r2", appObjID)
+	testStaticRoleCreateHelper(t, b, s, "r3", appObjID)
+
+	// Ensure that all roles created are included in the list
+	resp, err := b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.ListOperation,
+		Path:      pathStaticRole,
+		Storage:   s,
+	})
+
+	assertErrorIsNil(t, err)
+
+	exp := []string{"r1", "r2", "r3"}
+	sort.Strings(resp.Data["keys"].([]string))
+	equal(t, exp, resp.Data["keys"])
+
+	// Delete a role and verify list is updated
+	resp, err = b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.DeleteOperation,
+		Path:      pathStaticRole + "r2",
+		Storage:   s,
+	})
+	assertErrorIsNil(t, err)
+
+	resp, err = b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.ListOperation,
+		Path:      pathStaticRole,
+		Storage:   s,
+	})
+	assertErrorIsNil(t, err)
+
+	exp = []string{"r1", "r3"}
+	sort.Strings(resp.Data["keys"].([]string))
+	equal(t, exp, resp.Data["keys"])
 }
 
 // TestStaticRole_Update tests updating static roles in the Azure secrets backend.

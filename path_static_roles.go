@@ -116,7 +116,7 @@ func (b *azureSecretBackend) pathStaticRoleCreateUpdate(ctx context.Context, req
 		return logical.ErrorResponse("missing required field 'application_object_id'"), nil
 	}
 
-	err = b.createAzureStaticCred(ctx, req.Storage, name, role.ApplicationObjectID)
+	err = b.createAzureStaticCred(ctx, req.Storage, role.ApplicationObjectID, name)
 	if err != nil {
 		return nil, err
 	}

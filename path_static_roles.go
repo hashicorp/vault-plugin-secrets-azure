@@ -6,6 +6,7 @@ package azuresecrets
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/logical"
@@ -16,10 +17,12 @@ const (
 
 	paramRoleName            = "name"
 	paramApplicationObjectID = "application_object_id"
+	paramTTL                 = "ttl"
 )
 
 type azureStaticRole struct {
-	ApplicationObjectID string `json:"application_object_id"`
+	ApplicationObjectID string        `json:"application_object_id"`
+	TTL                 time.Duration `json:"ttl"`
 }
 
 func pathStaticRoles(b *azureSecretBackend) []*framework.Path {
@@ -33,6 +36,10 @@ func pathStaticRoles(b *azureSecretBackend) []*framework.Path {
 			Type:        framework.TypeString,
 			Description: "The Azure AD application object ID whose credentials Vault will manage.",
 			Required:    true,
+		},
+		paramTTL: {
+			Type:        framework.TypeDurationSecond,
+			Description: "The duration until the credentials for the static role expire. If not set or set to 0, will use system default.",
 		},
 	}
 
@@ -116,13 +123,28 @@ func (b *azureSecretBackend) pathStaticRoleCreateUpdate(ctx context.Context, req
 		return logical.ErrorResponse("missing required field 'application_object_id'"), nil
 	}
 
+	// load and validate TTL
+	if ttlRaw, ok := data.GetOk(paramTTL); ok {
+		role.TTL = time.Duration(ttlRaw.(int)) * time.Second
+	} else if req.Operation == logical.CreateOperation {
+		role.TTL = time.Duration(data.Get(paramTTL).(int)) * time.Second
+	}
+
+	// determine whether we should use the system default or the TTL provided by the user
+	var expiration time.Duration
+	if role.TTL > 0 {
+		expiration = role.TTL
+	} else {
+		expiration = spExpiration
+	}
+
 	client, err := b.getClient(ctx, req.Storage)
 	if err != nil {
 		return nil, err
 	}
 
 	// provision new Azure credential
-	cred, err := b.provisionStaticCred(ctx, client, role.ApplicationObjectID, spExpiration)
+	cred, err := b.provisionStaticCred(ctx, client, role.ApplicationObjectID, expiration)
 	if err != nil {
 		return nil, err
 	}

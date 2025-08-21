@@ -3,10 +3,10 @@ package azuresecrets
 import (
 	"context"
 	"fmt"
-	"github.com/hashicorp/vault/sdk/framework"
-	"github.com/hashicorp/vault/sdk/helper/locksutil"
-	"github.com/hashicorp/vault/sdk/logical"
 	"time"
+
+	"github.com/hashicorp/vault/sdk/framework"
+	"github.com/hashicorp/vault/sdk/logical"
 )
 
 const (
@@ -83,6 +83,14 @@ func (b *azureSecretBackend) pathStaticCredRotate(ctx context.Context, req *logi
 		return nil, err
 	}
 
+	// determine whether we should use the system default or the role's TTL for the new credential
+	var expiration time.Duration
+	if role.TTL > 0 {
+		expiration = role.TTL
+	} else {
+		expiration = spExpiration
+	}
+
 	// revoke the old credential
 	err = client.deleteAppPassword(ctx, role.ApplicationObjectID, cred.SecretID)
 	if err != nil {
@@ -90,7 +98,7 @@ func (b *azureSecretBackend) pathStaticCredRotate(ctx context.Context, req *logi
 	}
 
 	// provision a new static credential to save
-	newCred, err := b.provisionStaticCred(ctx, client, role.ApplicationObjectID, spExpiration)
+	newCred, err := b.provisionStaticCred(ctx, client, role.ApplicationObjectID, expiration)
 	if err != nil {
 		return nil, err
 	}
@@ -128,9 +136,6 @@ func (b *azureSecretBackend) pathStaticCredRead(ctx context.Context, req *logica
 
 // provisions a new credential for a service principal used in an Azure static role
 func (b *azureSecretBackend) provisionStaticCred(ctx context.Context, c *client, appObjID string, expiresIn time.Duration) (*azureStaticCred, error) {
-	lock := locksutil.LockForKey(b.appLocks, appObjID)
-	lock.Lock()
-	defer lock.Unlock()
 
 	// retrieve the Azure application
 	app, err := c.provider.GetApplication(ctx, appObjID)

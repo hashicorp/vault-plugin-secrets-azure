@@ -181,7 +181,7 @@ func (m *mockProvider) DeleteServicePrincipal(_ context.Context, spObjectID stri
 	return nil
 }
 
-func (m *mockProvider) AddApplicationPassword(_ context.Context, _ string, _ string, _ time.Time) (result api.PasswordCredential, err error) {
+func (m *mockProvider) AddApplicationPassword(_ context.Context, _ string, _ string, endDateTime time.Time) (result api.PasswordCredential, err error) {
 	keyID := uuid.New().String()
 	pass := uuid.New().String()
 
@@ -192,6 +192,7 @@ func (m *mockProvider) AddApplicationPassword(_ context.Context, _ string, _ str
 	return api.PasswordCredential{
 		KeyID:      keyID,
 		SecretText: pass,
+		EndDate:    endDateTime,
 	}, nil
 }
 

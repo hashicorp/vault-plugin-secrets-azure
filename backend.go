@@ -64,11 +64,11 @@ func backend() *azureSecretBackend {
 		Paths: framework.PathAppend(
 			pathsRole(&b),
 			pathStaticRoles(&b),
+			pathStaticRoleCreds(&b),
 			[]*framework.Path{
 				pathConfig(&b),
 				pathServicePrincipal(&b),
 				pathRotateRoot(&b),
-				pathStaticRoleCred(&b),
 			},
 		),
 		Secrets: []*framework.Secret{

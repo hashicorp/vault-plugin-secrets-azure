@@ -4,19 +4,25 @@ import (
 	"context"
 	"fmt"
 	"github.com/hashicorp/vault/sdk/framework"
+	"github.com/hashicorp/vault/sdk/helper/locksutil"
 	"github.com/hashicorp/vault/sdk/logical"
+	"time"
 )
 
 const (
-	pathStaticCred = "static-cred/"
+	pathStaticCreds = "static-creds/"
+
+	pathRotateRole = "rotate-role/"
 )
 
 type azureStaticCred struct {
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
+	SecretID     string `json:"secret_id"`
+	Expiration   string `json:"expiration"`
 }
 
-func pathStaticRoleCred(b *azureSecretBackend) *framework.Path {
+func pathStaticRoleCreds(b *azureSecretBackend) []*framework.Path {
 	fields := map[string]*framework.FieldSchema{
 		paramRoleName: {
 			Type:        framework.TypeLowerCaseString,
@@ -25,25 +31,36 @@ func pathStaticRoleCred(b *azureSecretBackend) *framework.Path {
 		},
 	}
 
-	return &framework.Path{
-		Pattern: pathStaticCred + framework.GenericNameRegex("name"),
-		Fields:  fields,
-		Operations: map[logical.Operation]framework.OperationHandler{
-			logical.UpdateOperation: &framework.PathOperation{
-				Callback: b.pathStaticCredRotate,
+	return []*framework.Path{
+		{
+			Pattern: pathStaticCreds + framework.GenericNameRegex("name"),
+			Fields:  fields,
+			Operations: map[logical.Operation]framework.OperationHandler{
+				logical.ReadOperation: &framework.PathOperation{
+					Callback: b.pathStaticCredRead,
+				},
 			},
-			logical.ReadOperation: &framework.PathOperation{
-				Callback: b.pathStaticCredRead,
-			},
+			HelpSynopsis:    pathStaticCredReadHelpSyn,
+			HelpDescription: pathStaticCredReadHelpDesc,
 		},
-		HelpSynopsis:    pathStaticCredHelpSyn,
-		HelpDescription: pathStaticCredHelpDesc,
+		{
+			Pattern: pathRotateRole + framework.GenericNameRegex("name"),
+			Fields:  fields,
+			Operations: map[logical.Operation]framework.OperationHandler{
+				logical.UpdateOperation: &framework.PathOperation{
+					Callback: b.pathStaticCredRotate,
+				},
+			},
+			HelpSynopsis:    pathStaticCredRotateHelpSyn,
+			HelpDescription: pathStaticCredRotateHelpDesc,
+		},
 	}
 }
 
 func (b *azureSecretBackend) pathStaticCredRotate(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	name := data.Get(paramRoleName).(string)
 
+	// ensure a valid role was requested for rotation
 	role, err := getStaticRole(ctx, req.Storage, name)
 	if err != nil {
 		return nil, fmt.Errorf("error reading role from storage: %w", err)
@@ -52,42 +69,38 @@ func (b *azureSecretBackend) pathStaticCredRotate(ctx context.Context, req *logi
 		return nil, fmt.Errorf("role not found in storage")
 	}
 
-	// create and save new azure static credential
-	err = b.createAzureStaticCred(ctx, req.Storage, role.ApplicationObjectID, name)
+	// get the credential info associated with the role
+	cred, err := getStaticCred(ctx, req.Storage, name)
 	if err != nil {
-		return nil, fmt.Errorf("error rotating static cred: %w", err)
+		return nil, fmt.Errorf("error reading credential from storage: %w", err)
+	}
+	if cred == nil {
+		return nil, fmt.Errorf("credential not found in storage")
+	}
+
+	client, err := b.getClient(ctx, req.Storage)
+	if err != nil {
+		return nil, err
+	}
+
+	// revoke the old credential
+	err = client.deleteAppPassword(ctx, role.ApplicationObjectID, cred.SecretID)
+	if err != nil {
+		return nil, err
+	}
+
+	// provision a new static credential to save
+	newCred, err := b.provisionStaticCred(ctx, client, role.ApplicationObjectID, spExpiration)
+	if err != nil {
+		return nil, err
+	}
+
+	err = saveStaticCred(ctx, req.Storage, newCred, name)
+	if err != nil {
+		return nil, err
 	}
 
 	return nil, nil
-}
-
-func (b *azureSecretBackend) createAzureStaticCred(ctx context.Context, s logical.Storage, applicationObjId string, name string) error {
-	client, err := b.getClient(ctx, s)
-	if err != nil {
-		return err
-	}
-
-	app, err := client.provider.GetApplication(ctx, applicationObjId)
-	if err != nil {
-		return fmt.Errorf("error loading Application: %w", err)
-	}
-
-	spID, password, _, err := client.createSP(ctx, app, spExpiration)
-	if err != nil {
-		return err
-	}
-
-	cred := &azureStaticCred{
-		ClientID:     spID,
-		ClientSecret: password,
-	}
-
-	err = saveStaticCred(ctx, s, cred, name)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (b *azureSecretBackend) pathStaticCredRead(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
@@ -104,15 +117,45 @@ func (b *azureSecretBackend) pathStaticCredRead(ctx context.Context, req *logica
 	resp := &logical.Response{
 		Data: map[string]interface{}{
 			"client_id":     cred.ClientID,
+			"secret_id":     cred.SecretID,
 			"client_secret": cred.ClientSecret,
+			"expiration":    cred.Expiration,
 		},
 	}
 
 	return resp, nil
 }
 
+// provisions a new credential for a service principal used in an Azure static role
+func (b *azureSecretBackend) provisionStaticCred(ctx context.Context, c *client, appObjID string, expiresIn time.Duration) (*azureStaticCred, error) {
+	lock := locksutil.LockForKey(b.appLocks, appObjID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	// retrieve the Azure application
+	app, err := c.provider.GetApplication(ctx, appObjID)
+	if err != nil {
+		return nil, fmt.Errorf("error loading Application: %w", err)
+	}
+
+	// provision a new credential with the given expiration
+	secretId, password, endDate, err := c.addAppPassword(ctx, appObjID, expiresIn)
+	if err != nil {
+		return nil, fmt.Errorf("error provisioning new credential for static role: %w", err)
+	}
+
+	cred := &azureStaticCred{
+		ClientID:     app.AppID,
+		ClientSecret: password,
+		SecretID:     secretId,
+		Expiration:   endDate.Format(time.RFC3339),
+	}
+
+	return cred, nil
+}
+
 func saveStaticCred(ctx context.Context, s logical.Storage, cred *azureStaticCred, name string) error {
-	entry, err := logical.StorageEntryJSON(pathStaticCred+name, cred)
+	entry, err := logical.StorageEntryJSON(pathStaticCreds+name, cred)
 	if err != nil {
 		return err
 	}
@@ -121,7 +164,7 @@ func saveStaticCred(ctx context.Context, s logical.Storage, cred *azureStaticCre
 }
 
 func getStaticCred(ctx context.Context, s logical.Storage, name string) (*azureStaticCred, error) {
-	entry, err := s.Get(ctx, pathStaticCred+name)
+	entry, err := s.Get(ctx, pathStaticCreds+name)
 	if err != nil || entry == nil {
 		return nil, err
 	}
@@ -135,10 +178,17 @@ func getStaticCred(ctx context.Context, s logical.Storage, name string) (*azureS
 }
 
 const (
-	pathStaticCredHelpSyn = `
-Manage the credentials for an Azure static role.
+	pathStaticCredReadHelpSyn = `
+Read the credentials stored in an Azure static role.
 `
-	pathStaticCredHelpDesc = `
-This path lets you manage the credentials of static roles for the Azure secret backend.
+	pathStaticCredReadHelpDesc = `
+This path lets you read the credentials of a static role for the Azure secret backend.
+`
+
+	pathStaticCredRotateHelpSyn = `
+Rotate the credentials for an Azure static role.
+`
+	pathStaticCredRotateHelpDesc = `
+This path lets you revoke the current credential associated with an Azure static role and provision a new one.
 `
 )

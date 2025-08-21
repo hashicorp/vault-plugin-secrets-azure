@@ -116,7 +116,13 @@ func (b *azureSecretBackend) pathStaticRoleCreateUpdate(ctx context.Context, req
 		return logical.ErrorResponse("missing required field 'application_object_id'"), nil
 	}
 
-	err = b.createAzureStaticCred(ctx, req.Storage, role.ApplicationObjectID, name)
+	client, err := b.getClient(ctx, req.Storage)
+	if err != nil {
+		return nil, err
+	}
+
+	// provision new Azure credential
+	cred, err := b.provisionStaticCred(ctx, client, role.ApplicationObjectID, spExpiration)
 	if err != nil {
 		return nil, err
 	}
@@ -125,6 +131,12 @@ func (b *azureSecretBackend) pathStaticRoleCreateUpdate(ctx context.Context, req
 	err = saveStaticRole(ctx, req.Storage, role, name)
 	if err != nil {
 		return nil, fmt.Errorf("error storing role: %w", err)
+	}
+
+	// save the credential in storage
+	err = saveStaticCred(ctx, req.Storage, cred, name)
+	if err != nil {
+		return nil, fmt.Errorf("error storing credential: %w", err)
 	}
 
 	return nil, nil

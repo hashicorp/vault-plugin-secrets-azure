@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// create role and confirm that it's client id and client secret are not nil
-// and matches the expected output
+// create role and confirm that the credentials associated with the role match
+// the expected output
 func TestStaticCred_Read(t *testing.T) {
 	b, s := getTestBackendMocked(t, true)
 
@@ -27,14 +27,16 @@ func TestStaticCred_Read(t *testing.T) {
 	// read the Azure credential to ensure that it was properly created
 	resp, err = b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.ReadOperation,
-		Path:      pathStaticCred + roleName,
+		Path:      pathStaticCreds + roleName,
 		Storage:   s,
 	})
 	assertRespNoError(t, resp, err)
 
 	// ensure that the client id and secret have been retrieved
 	assertNotEmptyString(t, resp.Data["client_id"].(string))
+	assertNotEmptyString(t, resp.Data["secret_id"].(string))
 	assertNotEmptyString(t, resp.Data["client_secret"].(string))
+	assertNotEmptyString(t, resp.Data["expiration"].(string))
 }
 
 func TestStaticCred_Rotate(t *testing.T) {
@@ -54,7 +56,7 @@ func TestStaticCred_Rotate(t *testing.T) {
 	// read the Azure credential to ensure that it was properly created
 	resp, err = b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.ReadOperation,
-		Path:      pathStaticCred + roleName,
+		Path:      pathStaticCreds + roleName,
 		Storage:   s,
 	})
 	assertRespNoError(t, resp, err)
@@ -68,14 +70,14 @@ func TestStaticCred_Rotate(t *testing.T) {
 
 	resp, err = b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.UpdateOperation,
-		Path:      pathStaticCred + roleName,
+		Path:      pathStaticCreds + roleName,
 		Storage:   s,
 	})
 
 	assertRespNoError(t, resp, err)
 	resp, err = b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.ReadOperation,
-		Path:      pathStaticCred + roleName,
+		Path:      pathStaticCreds + roleName,
 		Storage:   s,
 	})
 

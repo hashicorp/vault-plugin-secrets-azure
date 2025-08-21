@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hashicorp/vault/sdk/helper/locksutil"
+
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/logical"
 )
@@ -78,6 +80,11 @@ func (b *azureSecretBackend) pathStaticCredRotate(ctx context.Context, req *logi
 		return nil, fmt.Errorf("credential not found in storage")
 	}
 
+	// prevents a race condition of multiple rotation requests are running for the same role
+	lock := locksutil.LockForKey(b.appLocks, role.ApplicationObjectID)
+	lock.Lock()
+	defer lock.Unlock()
+
 	client, err := b.getClient(ctx, req.Storage)
 	if err != nil {
 		return nil, err
@@ -136,7 +143,6 @@ func (b *azureSecretBackend) pathStaticCredRead(ctx context.Context, req *logica
 
 // provisions a new credential for a service principal used in an Azure static role
 func (b *azureSecretBackend) provisionStaticCred(ctx context.Context, c *client, appObjID string, expiresIn time.Duration) (*azureStaticCred, error) {
-
 	// retrieve the Azure application
 	app, err := c.provider.GetApplication(ctx, appObjID)
 	if err != nil {

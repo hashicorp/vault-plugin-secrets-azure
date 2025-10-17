@@ -29,6 +29,5 @@ How was this change implemented?
 
 - [ ] If applicable, I've documented the impact of any changes to security controls.
 
-- [ ] Changelog entry added. See [Updating the Changelog](https://github.com/hashicorp/vault-plugin-secrets-azure/blob/main/README.md#updating-the-changelog).
 
   Examples of changes to security controls include using new access control methods, adding or removing logging pipelines, etc.

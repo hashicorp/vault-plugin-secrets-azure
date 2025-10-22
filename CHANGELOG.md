@@ -1,3 +1,8 @@
+## v0.24.2
+### October 22, 2025
+
+* chore: remove changie (#271)
+
 ## v0.22.0
 ### June 3, 2025
 

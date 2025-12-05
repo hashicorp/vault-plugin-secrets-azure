@@ -1,3 +1,14 @@
+## v0.23.0
+### October 3, 2025
+
+* bump go version (#269)
+* Automated dependency upgrades (#260)
+* Bump github.com/docker/docker (#265)
+* init changie (#267)
+* Add backport assistant workflow (#264)
+* Add backport assistant workflow (#262)
+* [Compliance] - PR Template Changes Required (#261)
+
 ## v0.22.0
 ### June 3, 2025
 

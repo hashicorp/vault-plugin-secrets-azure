@@ -112,13 +112,21 @@ func (m *mockProvider) GetRoleDefinitionByID(_ context.Context, roleID string) (
 	}, nil
 }
 
-func (m *mockProvider) CreateServicePrincipal(_ context.Context, _ string, _ time.Time, _ time.Time) (spID string, password string, err error) {
-	id := generateUUID()
-	pass := generateUUID()
-
+func (m *mockProvider) CreateServicePrincipal(_ context.Context, _ string, _ time.Time, _ time.Time) (string, string, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
+	m.servicePrincipalCalls++
 
+	// Fail first N attempts to simulate Azure graph propagation delay
+	if m.servicePrincipalCalls <= m.servicePrincipalFailureCount {
+		return "", "", fmt.Errorf(
+			"When using this permission, the backing application of the service principal being created must be in the local tenant",
+		)
+	}
+
+	// Success after failures
+	id := generateUUID()
+	pass := generateUUID()
 	m.servicePrincipals[id] = true
 
 	return id, pass, nil

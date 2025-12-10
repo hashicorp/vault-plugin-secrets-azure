@@ -9,6 +9,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/vault/sdk/logical"
 )
 
 func TestRetry(t *testing.T) {
@@ -99,6 +102,50 @@ func TestRetry(t *testing.T) {
 			t.Fatalf("expected %s, got: %v", context.Canceled, err)
 		}
 	})
+}
+
+// TestSPCreate_RetryLogic ensures createSP invokes retry logic when provider.CreateServicePrincipal
+// repeatedly returns transient Azure-style errors before eventually succeeding.
+func TestSPCreate_RetryLogic(t *testing.T) {
+	t.Parallel()
+
+	// Use the mock backend so we can inject our modified mockProvider
+	b, s := getTestBackendMocked(t, true)
+
+	// Create a mock provider with deterministic SP failures
+	mp := newMockProvider().(*mockProvider)
+	mp.failNextCreateServicePrincipal = true // enable the failure mode
+	mp.servicePrincipalFailureCount = 3      // fail first 3 calls
+	mp.servicePrincipalCalls = 0             // track total calls
+
+	// Patch the backend to return our custom mock provider
+	b.getProvider = func(ctx context.Context, lg hclog.Logger, sys logical.SystemView, cs *clientSettings) (AzureProvider, error) {
+		return mp, nil
+	}
+
+	// Create a fake role so the backend will try to issue creds
+	roleName := generateUUID()
+	testRoleCreate(t, b, s, roleName, testRole)
+
+	// Requesting credentials triggers: CreateApplication -> CreateServicePrincipal
+	resp, err := b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.ReadOperation,
+		Path:      "creds/" + roleName,
+		Storage:   s,
+	})
+
+	// The retry logic should hide the transient failures
+	if err != nil {
+		t.Fatalf("Expected retry logic to recover but got error: %v", err)
+	}
+	if resp.IsError() {
+		t.Fatalf("Unexpected Vault response error: %#v", resp.Error())
+	}
+
+	// Validate retry behavior: 3 failures + 1 success = 4 calls
+	if mp.servicePrincipalCalls != 4 {
+		t.Fatalf("Expected 4 calls (3 failures + 1 success), got %d", mp.servicePrincipalCalls)
+	}
 }
 
 // assertDuration with a certain amount of flex in the exact value

@@ -21,15 +21,18 @@ import (
 
 // mockProvider is a Provider that provides stubs and simple, deterministic responses.
 type mockProvider struct {
-	applications               map[string]string
-	servicePrincipals          map[string]bool
-	deletedObjects             map[string]bool
-	passwords                  map[string]string
-	failNextCreateApplication  bool
-	failUnassignRoles          bool
-	unassignRolesFailureParams failureParams
-	ctxTimeout                 time.Duration
-	lock                       sync.Mutex
+	applications                   map[string]string
+	servicePrincipals              map[string]bool
+	deletedObjects                 map[string]bool
+	passwords                      map[string]string
+	failNextCreateApplication      bool
+	failUnassignRoles              bool
+	failNextCreateServicePrincipal bool
+	servicePrincipalFailureCount   int
+	servicePrincipalCalls          int
+	unassignRolesFailureParams     failureParams
+	ctxTimeout                     time.Duration
+	lock                           sync.Mutex
 }
 
 type failureParams struct {
@@ -109,13 +112,21 @@ func (m *mockProvider) GetRoleDefinitionByID(_ context.Context, roleID string) (
 	}, nil
 }
 
-func (m *mockProvider) CreateServicePrincipal(_ context.Context, _ string, _ time.Time, _ time.Time) (spID string, password string, err error) {
-	id := generateUUID()
-	pass := generateUUID()
-
+func (m *mockProvider) CreateServicePrincipal(_ context.Context, _ string, _ time.Time, _ time.Time) (string, string, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
+	m.servicePrincipalCalls++
 
+	// Fail first N attempts to simulate Azure graph propagation delay
+	if m.servicePrincipalCalls <= m.servicePrincipalFailureCount {
+		return "", "", fmt.Errorf(
+			"When using this permission, the backing application of the service principal being created must be in the local tenant",
+		)
+	}
+
+	// Success after failures
+	id := generateUUID()
+	pass := generateUUID()
 	m.servicePrincipals[id] = true
 
 	return id, pass, nil

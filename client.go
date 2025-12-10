@@ -93,9 +93,24 @@ func (c *client) createSP(
 		endDate := now.Add(duration)
 		spID, password, err := c.provider.CreateServicePrincipal(ctx, app.AppID, now, endDate)
 
-		// Propagation delays within Azure can cause this error occasionally, so don't quit on it.
-		if err != nil && (strings.Contains(err.Error(), errInvalidApplicationObject)) {
-			return nil, false, nil
+		// Propagation delays within Azure can cause transient errors when creating
+		// a service principal immediately after creating an application. Different
+		// tenants and APIs emit slightly different error messages, so match on a
+		// broader set of substrings rather than a single exact string.
+		if err != nil {
+			errStr := strings.ToLower(err.Error())
+			retryable :=
+				strings.Contains(errStr, "local tenant") ||
+					strings.Contains(errStr, errInvalidApplicationObject) ||
+					strings.Contains(errStr, "authorization_requestdenied") ||
+					strings.Contains(errStr, "propagation") ||
+					strings.Contains(errStr, "please try again") ||
+					strings.Contains(errStr, "could not find") ||
+					strings.Contains(errStr, "not found")
+
+			if retryable {
+				return nil, false, nil
+			}
 		}
 
 		result := idPass{

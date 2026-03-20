@@ -1,3 +1,12 @@
+## v0.25.0
+### March 20, 2026
+
+* Automated dependency upgrades (#272)
+* Bump golang.org/x/crypto from 0.41.0 to 0.45.0 (#273)
+* [COMPLIANCE] Update Copyright and License Headers (#275)
+* Manual Backport for ent #26 Bug Fix: add retry logic for SP creation to handle Microsoft Graph propagation (#276)
+* Update changelog for v0.23.0 release (#270)
+
 ## v0.23.0
 ### October 3, 2025
 

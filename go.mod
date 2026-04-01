@@ -12,8 +12,8 @@ require (
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/go-uuid v1.0.3
-	github.com/hashicorp/vault/api v1.22.0
-	github.com/hashicorp/vault/sdk v0.24.0
+	github.com/hashicorp/vault/api v1.23.0
+	github.com/hashicorp/vault/sdk v0.25.0
 	github.com/microsoftgraph/msgraph-sdk-go v1.96.0
 	github.com/microsoftgraph/msgraph-sdk-go-core v1.4.0
 	github.com/mitchellh/mapstructure v1.5.0

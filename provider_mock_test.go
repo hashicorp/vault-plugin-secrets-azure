@@ -30,6 +30,10 @@ type mockProvider struct {
 	failNextCreateServicePrincipal bool
 	servicePrincipalFailureCount   int
 	servicePrincipalCalls          int
+	servicePrincipalErrorMessage   string
+	roleAssignmentFailureCount     int
+	roleAssignmentCalls            int
+	roleAssignmentErrorMessage     string
 	unassignRolesFailureParams     failureParams
 	ctxTimeout                     time.Duration
 	lock                           sync.Mutex
@@ -119,9 +123,11 @@ func (m *mockProvider) CreateServicePrincipal(_ context.Context, _ string, _ tim
 
 	// Fail first N attempts to simulate Azure graph propagation delay
 	if m.servicePrincipalCalls <= m.servicePrincipalFailureCount {
-		return "", "", fmt.Errorf(
-			"When using this permission, the backing application of the service principal being created must be in the local tenant",
-		)
+		errMsg := m.servicePrincipalErrorMessage
+		if errMsg == "" {
+			errMsg = "When using this permission, the backing application of the service principal being created must be in the local tenant"
+		}
+		return "", "", errors.New(errMsg)
 	}
 
 	// Success after failures
@@ -233,6 +239,20 @@ func (m *mockProvider) passwordExists(s string) bool {
 }
 
 func (m *mockProvider) CreateRoleAssignment(_ context.Context, scope string, name string, params armauthorization.RoleAssignmentCreateParameters) (armauthorization.RoleAssignmentsClientCreateResponse, error) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	m.roleAssignmentCalls++
+
+	// Fail first N attempts to simulate Azure propagation delay
+	if m.roleAssignmentCalls <= m.roleAssignmentFailureCount {
+		errMsg := m.roleAssignmentErrorMessage
+		if errMsg == "" {
+			errMsg = "PrincipalNotFound"
+		}
+		return armauthorization.RoleAssignmentsClientCreateResponse{}, errors.New(errMsg)
+	}
+
 	return armauthorization.RoleAssignmentsClientCreateResponse{
 		RoleAssignment: armauthorization.RoleAssignment{
 			Properties: &armauthorization.RoleAssignmentProperties{
@@ -295,7 +315,6 @@ func (m *mockProvider) ListGroups(_ context.Context, filter string) ([]api.Group
 	if len(match) > 0 {
 		name := match[0][1]
 		if name == "multiple" {
-
 			return []api.Group{
 				{
 					ID:          fmt.Sprintf("00000000-1111-2222-3333-444444444444FAKE_GROUP-%s-1", name),
@@ -317,5 +336,4 @@ func (m *mockProvider) ListGroups(_ context.Context, filter string) ([]api.Group
 	}
 
 	return []api.Group{}, nil
-
 }

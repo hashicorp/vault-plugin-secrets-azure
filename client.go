@@ -15,6 +15,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
 	"github.com/google/uuid"
 	"github.com/hashicorp/go-multierror"
@@ -80,8 +81,8 @@ func (c *client) createAppWithName(ctx context.Context, rolename string, signInA
 func (c *client) createSP(
 	ctx context.Context,
 	app api.Application,
-	duration time.Duration) (spID string, password string, endDate time.Time, err error) {
-
+	duration time.Duration,
+) (spID string, password string, endDate time.Time, err error) {
 	type idPass struct {
 		ID       string
 		Password string
@@ -92,21 +93,21 @@ func (c *client) createSP(
 		now := time.Now()
 		endDate := now.Add(duration)
 		spID, password, err := c.provider.CreateServicePrincipal(ctx, app.AppID, now, endDate)
-
 		// Propagation delays within Azure can cause transient errors when creating
 		// a service principal immediately after creating an application. Different
 		// tenants and APIs emit slightly different error messages, so match on a
 		// broader set of substrings rather than a single exact string.
 		if err != nil {
 			errStr := strings.ToLower(err.Error())
-			retryable :=
-				strings.Contains(errStr, "local tenant") ||
-					strings.Contains(errStr, errInvalidApplicationObject) ||
-					strings.Contains(errStr, "authorization_requestdenied") ||
-					strings.Contains(errStr, "propagation") ||
-					strings.Contains(errStr, "please try again") ||
-					strings.Contains(errStr, "could not find") ||
-					strings.Contains(errStr, "not found")
+			retryable := strings.Contains(errStr, "local tenant") ||
+				strings.Contains(errStr, errInvalidApplicationObject) ||
+				strings.Contains(errStr, "authorization_requestdenied") ||
+				strings.Contains(errStr, "propagation") ||
+				strings.Contains(errStr, "please try again") ||
+				strings.Contains(errStr, "could not find") ||
+				strings.Contains(errStr, "not found") ||
+				strings.Contains(errStr, "does not exist") ||
+				strings.Contains(errStr, "reference-property")
 
 			if retryable {
 				return nil, false, nil
@@ -121,7 +122,6 @@ func (c *client) createSP(
 
 		return result, true, err
 	})
-
 	if err != nil {
 		return "", "", time.Time{}, fmt.Errorf("error creating service principal: %w", err)
 	}
@@ -199,12 +199,13 @@ func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRol
 					Properties: &armauthorization.RoleAssignmentProperties{
 						RoleDefinitionID: &role.RoleID,
 						PrincipalID:      &spID,
+						PrincipalType:    to.Ptr(armauthorization.PrincipalTypeServicePrincipal),
 					},
 				})
 
 			// Propagation delays within Azure can cause this error occasionally, so don't quit on it.
 			if err != nil && strings.Contains(err.Error(), "PrincipalNotFound") {
-				return nil, false, nil
+				return nil, false, err
 			}
 			// check if ra is an empty response
 			// if so, return empty string
@@ -213,7 +214,6 @@ func (c *client) assignRoles(ctx context.Context, spID string, roles []*AzureRol
 			}
 			return *ra.ID, true, err
 		})
-
 		if err != nil {
 			return nil, fmt.Errorf("error while assigning roles: %w", err)
 		}
@@ -259,7 +259,6 @@ func (c *client) addGroupMemberships(ctx context.Context, spID string, groups []
 
 			return nil, true, err
 		})
-
 		if err != nil {
 			return fmt.Errorf("error while adding group membership: %w", err)
 		}
@@ -295,7 +294,6 @@ func groupObjectIDs(groups []*AzureGroup) []string {
 	groupIDs := make([]string, 0, len(groups))
 	for _, group := range groups {
 		groupIDs = append(groupIDs, group.ObjectID)
-
 	}
 	return groupIDs
 }
@@ -420,7 +418,7 @@ func graphURIFromName(name string) (string, error) {
 //   - 80 seconds elapses. Vault's default request timeout is 90s; we want to expire before then.
 //
 // Delays are random but will average 5 seconds.
-func retry(ctx context.Context, f func() (interface{}, bool, error)) (interface{}, error) {
+func retry(ctx context.Context, f func() (any, bool, error)) (result any, err error) {
 	delayTimer := time.NewTimer(0)
 	if _, hasTimeout := ctx.Deadline(); !hasTimeout {
 		var cancel func()
@@ -429,24 +427,18 @@ func retry(ctx context.Context, f func() (interface{}, bool, error)) (interface{
 	}
 
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	var lastErr error
+	var done bool
 	for {
 		select {
 		case <-delayTimer.C:
-			result, done, err := f()
-			if done {
+			if result, done, err = f(); done {
 				return result, err
 			}
-			lastErr = err
 
 			delay := time.Duration(2+rng.Intn(6)) * time.Second
 			delayTimer.Reset(delay)
 		case <-ctx.Done():
-			err := lastErr
-			if err == nil {
-				err = ctx.Err()
-			}
-			return nil, fmt.Errorf("retry failed: %w", err)
+			return nil, fmt.Errorf("retry failed: %w", errors.Join(err, ctx.Err()))
 		}
 	}
 }

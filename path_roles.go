@@ -275,6 +275,10 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		}
 		role.ApplicationID = app.AppID
 
+		if config.ClientID != "" && app.AppID == config.ClientID {
+			return logical.ErrorResponse("cannot target Vault's own Azure application"), nil
+		}
+
 		if role.PermanentlyDelete {
 			return logical.ErrorResponse("permanently_delete must be false if application_object_id is provided"), nil
 		}

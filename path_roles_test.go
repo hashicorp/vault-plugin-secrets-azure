@@ -581,7 +581,7 @@ func TestRoleCreate_SelfTargetBlocked(t *testing.T) {
 
 	// Seed the mock provider so that the application object ID resolves
 	// to an AppID equal to the configured client_id (testClientID).
-	vaultAppObjectID := "vault-own-app-object-id"
+	vaultAppObjectID := "root credential"
 	mp.lock.Lock()
 	mp.applications[vaultAppObjectID] = testClientID
 	mp.lock.Unlock()
@@ -593,7 +593,7 @@ func TestRoleCreate_SelfTargetBlocked(t *testing.T) {
 	if resp == nil || !resp.IsError() {
 		t.Fatal("expected error when targeting Vault's own Azure application")
 	}
-	expectedMsg := "cannot target Vault's own Azure application"
+	expectedMsg := "refusing update: cannot target the root credential of the plugin"
 	if !strings.Contains(resp.Error().Error(), expectedMsg) {
 		t.Fatalf("expected error containing %q, got: %s", expectedMsg, resp.Error().Error())
 	}
@@ -616,7 +616,7 @@ func TestRoleUpdate_SelfTargetBlocked(t *testing.T) {
 	testRoleCreate(t, b, s, "update_target_role", role)
 
 	// Now seed Vault's own app and attempt to update the role to target it
-	vaultAppObjectID := "vault-own-app-object-id"
+	vaultAppObjectID := "root credential"
 	mp.lock.Lock()
 	mp.applications[vaultAppObjectID] = testClientID
 	mp.lock.Unlock()
@@ -635,7 +635,7 @@ func TestRoleUpdate_SelfTargetBlocked(t *testing.T) {
 	if resp == nil || !resp.IsError() {
 		t.Fatal("expected error when updating role to target Vault's own Azure application")
 	}
-	expectedMsg := "cannot target Vault's own Azure application"
+	expectedMsg := "refusing update: cannot target the root credential of the plugin"
 	if !strings.Contains(resp.Error().Error(), expectedMsg) {
 		t.Fatalf("expected error containing %q, got: %s", expectedMsg, resp.Error().Error())
 	}

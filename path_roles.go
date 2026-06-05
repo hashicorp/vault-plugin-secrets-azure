@@ -276,7 +276,7 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		role.ApplicationID = app.AppID
 
 		if config.ClientID != "" && app.AppID == config.ClientID {
-			return logical.ErrorResponse("cannot target Vault's own Azure application"), nil
+			return logical.ErrorResponse("refusing update: cannot target the root credential of the plugin"), nil
 		}
 
 		if role.PermanentlyDelete {

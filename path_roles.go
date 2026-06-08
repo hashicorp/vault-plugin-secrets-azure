@@ -276,7 +276,8 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		role.ApplicationID = app.AppID
 
 		if config.ClientID != "" && app.AppID == config.ClientID {
-			return logical.ErrorResponse("refusing update: cannot target the root credential of the plugin"), nil
+			err = asCodedErrorEx(errTargetRootCredential)
+			return &logical.Response{Data: map[string]any{"error": err}}, err
 		}
 
 		if role.PermanentlyDelete {

@@ -587,14 +587,18 @@ func TestRoleCreate_SelfTargetBlocked(t *testing.T) {
 	mp.applications[vaultAppObjectID] = testClientID
 	mp.lock.Unlock()
 
-	role := map[string]interface{}{
-		"application_object_id": vaultAppObjectID,
-	}
-	resp := testRoleCreateBasic(t, b, s, "self_target_role", role)
-	if resp == nil || !resp.IsError() {
-		t.Fatal("expected error when targeting Vault's own Azure application")
-	}
-	assert.Contains(t, resp.Error().Error(), errTargetRootCredential.Error())
+	resp, err := b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.CreateOperation,
+		Path:      "roles/foo",
+		Data: map[string]any{
+			"application_object_id": vaultAppObjectID,
+		},
+		Storage: s,
+	})
+
+	_ = assert.NotNil(t, resp, "expected a response") &&
+		assert.ErrorIs(t, resp.Error(), errTargetRootCredential, "updating root cred should be refused") &&
+		assert.NotNil(t, err, "expected an error")
 }
 
 // TestRoleUpdate_SelfTargetBlocked verifies that updating a role to target
@@ -627,13 +631,9 @@ func TestRoleUpdate_SelfTargetBlocked(t *testing.T) {
 		},
 		Storage: s,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp == nil || !resp.IsError() {
-		t.Fatal("expected error when updating role to target Vault's own Azure application")
-	}
-	assert.Contains(t, resp.Error().Error(), errTargetRootCredential.Error())
+	_ = assert.NotNil(t, resp, "expected a response") &&
+		assert.ErrorIs(t, resp.Error(), errTargetRootCredential, "updating root cred should be refused") &&
+		assert.NotNil(t, err, "expected an error")
 }
 
 // TestRoleCreate_DifferentAppAllowed verifies that targeting a non-Vault

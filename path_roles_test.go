@@ -15,6 +15,7 @@ import (
 	log "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/sdk/helper/logging"
 	"github.com/hashicorp/vault/sdk/logical"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRoleCreate(t *testing.T) {
@@ -593,10 +594,7 @@ func TestRoleCreate_SelfTargetBlocked(t *testing.T) {
 	if resp == nil || !resp.IsError() {
 		t.Fatal("expected error when targeting Vault's own Azure application")
 	}
-	expectedMsg := "refusing update: cannot target the root credential of the plugin"
-	if !strings.Contains(resp.Error().Error(), expectedMsg) {
-		t.Fatalf("expected error containing %q, got: %s", expectedMsg, resp.Error().Error())
-	}
+	assert.Contains(t, resp.Error().Error(), errTargetRootCredential.Error())
 }
 
 // TestRoleUpdate_SelfTargetBlocked verifies that updating a role to target
@@ -635,10 +633,7 @@ func TestRoleUpdate_SelfTargetBlocked(t *testing.T) {
 	if resp == nil || !resp.IsError() {
 		t.Fatal("expected error when updating role to target Vault's own Azure application")
 	}
-	expectedMsg := "refusing update: cannot target the root credential of the plugin"
-	if !strings.Contains(resp.Error().Error(), expectedMsg) {
-		t.Fatalf("expected error containing %q, got: %s", expectedMsg, resp.Error().Error())
-	}
+	assert.Contains(t, resp.Error().Error(), errTargetRootCredential.Error())
 }
 
 // TestRoleCreate_DifferentAppAllowed verifies that targeting a non-Vault

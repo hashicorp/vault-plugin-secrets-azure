@@ -106,10 +106,16 @@ func (b *azureSecretBackend) pathSPRead(ctx context.Context, req *logical.Reques
 
 // createSPSecret generates a new App/Service Principal.
 func (b *azureSecretBackend) createSPSecret(ctx context.Context, s logical.Storage, c *client, roleName string, role *roleEntry) (*logical.Response, error) {
+	// Determine SP duration
+	spDuration := spExpiration
+	if role.ExplicitMaxTTL != 0 {
+		spDuration = role.ExplicitMaxTTL
+	}
+
 	// Create the App, which is the top level object to be tracked in the secret
 	// and deleted upon revocation. If any subsequent step fails, the App will be
 	// deleted as part of WAL rollback.
-	app, err := c.createApp(ctx, role.SignInAudience, role.Tags)
+	app, password, endDate, err := c.createAppWithCredential(ctx, "", role.SignInAudience, "", spDuration, role.Tags)
 	if err != nil {
 		return nil, err
 	}
@@ -126,14 +132,8 @@ func (b *azureSecretBackend) createSPSecret(ctx context.Context, s logical.Stora
 		return nil, fmt.Errorf("error writing WAL: %w", err)
 	}
 
-	// Determine SP duration
-	spDuration := spExpiration
-	if role.ExplicitMaxTTL != 0 {
-		spDuration = role.ExplicitMaxTTL
-	}
-
 	// Create a service principal associated with the new App
-	spID, password, endDate, err := c.createSP(ctx, app, spDuration)
+	spID, err := c.createSPWithoutPassword(ctx, app)
 	if err != nil {
 		return nil, err
 	}

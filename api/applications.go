@@ -19,6 +19,7 @@ import (
 type ApplicationsClient interface {
 	GetApplication(ctx context.Context, applicationObjectID string) (Application, error)
 	CreateApplication(ctx context.Context, displayName string, signInAudience string, tags []string) (Application, error)
+	CreateApplicationWithPassword(ctx context.Context, displayName, signInAudience, credentialName string, credentialDuration time.Duration, tags []string) (Application, error)
 	DeleteApplication(ctx context.Context, applicationObjectID string, permanentlyDelete bool) error
 	ListApplications(ctx context.Context, filter string) ([]Application, error)
 	AddApplicationPassword(ctx context.Context, applicationObjectID string, displayName string, endDateTime time.Time) (PasswordCredential, error)
@@ -121,6 +122,40 @@ func (c *MSGraphClient) CreateApplication(ctx context.Context, displayName strin
 	if signInAudience != "" {
 		requestBody.SetSignInAudience(&signInAudience)
 	}
+
+	resp, err := c.client.Applications().Post(ctx, requestBody, nil)
+	if err != nil {
+		return Application{}, err
+	}
+
+	return getApplicationResponse(resp), nil
+}
+
+// CreateApplicationWithPassword creates a new Azure application object with a password credential.
+func (c *MSGraphClient) CreateApplicationWithPassword(ctx context.Context, displayName, signInAudience, credentialName string, credentialDuration time.Duration, tags []string) (Application, error) {
+	// the difference between this call and the previous one is that we supply a passwordCredential in the request body and get a password back
+
+	requestBody := models.NewApplication()
+	requestBody.SetDisplayName(&displayName)
+	requestBody.SetTags(tags)
+
+	// only set signInAudience if it's non-empty
+	if signInAudience != "" {
+		requestBody.SetSignInAudience(&signInAudience)
+	}
+
+	expireTime := time.Now().Add(credentialDuration)
+
+	passwordCredential := models.NewPasswordCredential()
+
+	// only set credential name if it's non-empty
+	if credentialName != "" {
+		passwordCredential.SetDisplayName(&credentialName)
+	}
+
+	passwordCredential.SetEndDateTime(&expireTime)
+	credentials := []models.PasswordCredentialable{passwordCredential}
+	requestBody.SetPasswordCredentials(credentials)
 
 	resp, err := c.client.Applications().Post(ctx, requestBody, nil)
 	if err != nil {

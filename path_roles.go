@@ -276,8 +276,11 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		role.ApplicationID = app.AppID
 
 		if config.ClientID != "" && app.AppID == config.ClientID {
-			err = asCodedErrorEx(errTargetRootCredential)
-			return &logical.Response{Data: map[string]any{"error": err}}, err
+			return &logical.Response{
+				Data: map[string]any{
+					"error": logical.CodedError(403, errTargetRootCredential.Error()),
+				},
+			}, nil
 		}
 
 		if role.PermanentlyDelete {

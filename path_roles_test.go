@@ -195,7 +195,6 @@ func TestRoleCreate(t *testing.T) {
 
 		equal(t, fullRole.ApplicationID, originalAppID)
 		equal(t, fullRole.ApplicationObjectID, originalAppObjID)
-
 	})
 
 	t.Run("Static SP role", func(t *testing.T) {
@@ -308,7 +307,7 @@ func TestRoleCreate(t *testing.T) {
 
 	t.Run("Role name lookup", func(t *testing.T) {
 		b, s := getTestBackendMocked(t, true)
-		var role = map[string]interface{}{
+		role := map[string]interface{}{
 			"azure_roles": compactJSON(`[
 				{
 					"role_name": "Owner",
@@ -346,7 +345,7 @@ func TestRoleCreate(t *testing.T) {
 
 	t.Run("Group name lookup", func(t *testing.T) {
 		b, s := getTestBackendMocked(t, true)
-		var group = map[string]interface{}{
+		group := map[string]interface{}{
 			"azure_groups": compactJSON(`[
 				{
 					"group_name": "baz",
@@ -383,7 +382,7 @@ func TestRoleCreate(t *testing.T) {
 	t.Run("Duplicate role name and scope", func(t *testing.T) {
 		b, s := getTestBackendMocked(t, true)
 
-		var role = map[string]interface{}{
+		role := map[string]interface{}{
 			"azure_roles": compactJSON(`[
 				{
 					"role_name": "Owner",
@@ -412,7 +411,7 @@ func TestRoleCreate(t *testing.T) {
 	t.Run("Duplicate role name, different scope", func(t *testing.T) {
 		b, s := getTestBackendMocked(t, true)
 
-		var role = map[string]interface{}{
+		role := map[string]interface{}{
 			"azure_roles": compactJSON(`[
 				{
 					"role_name": "Owner",
@@ -441,7 +440,7 @@ func TestRoleCreate(t *testing.T) {
 	t.Run("Duplicate group object ID", func(t *testing.T) {
 		b, s := getTestBackendMocked(t, true)
 
-		var role = map[string]interface{}{
+		role := map[string]interface{}{
 			"azure_groups": compactJSON(`[
 				{
 					"display_name": "foo",
@@ -471,7 +470,7 @@ func TestRoleCreate(t *testing.T) {
 		b, s := getTestBackendMocked(t, true)
 
 		// if role_name=="multiple", the mock will return multiple IDs, which are not allowed
-		var role = map[string]interface{}{
+		role := map[string]interface{}{
 			"azure_roles": compactJSON(`[
 				{
 					"role_name": "multiple",
@@ -503,7 +502,7 @@ func TestRoleCreate(t *testing.T) {
 		b, s := getTestBackendMocked(t, true)
 
 		// if group_name=="multiple", the mock will return multiple IDs, which are not allowed
-		var role = map[string]interface{}{
+		role := map[string]interface{}{
 			"azure_groups": compactJSON(`[
 				{
 					"display_name": "multiple",
@@ -528,7 +527,6 @@ func TestRoleCreate(t *testing.T) {
 			t.Fatal("expected error response")
 		}
 	})
-
 }
 
 func TestRoleCreateBad(t *testing.T) {
@@ -587,7 +585,7 @@ func TestRoleCreate_SelfTargetBlocked(t *testing.T) {
 	mp.applications[vaultAppObjectID] = testClientID
 	mp.lock.Unlock()
 
-	resp, err := b.HandleRequest(context.Background(), &logical.Request{
+	resp, _ := b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.CreateOperation,
 		Path:      "roles/foo",
 		Data: map[string]any{
@@ -596,9 +594,9 @@ func TestRoleCreate_SelfTargetBlocked(t *testing.T) {
 		Storage: s,
 	})
 
-	_ = assert.NotNil(t, resp, "expected a response") &&
-		assert.ErrorIs(t, resp.Error(), errTargetRootCredential, "updating root cred should be refused") &&
-		assert.NotNil(t, err, "expected an error")
+	_ = assert.NotNil(t, resp) &&
+		assert.NotNil(t, resp.Error(), "should have an error") &&
+		assert.ErrorContains(t, resp.Error(), errTargetRootCredential.Error())
 }
 
 // TestRoleUpdate_SelfTargetBlocked verifies that updating a role to target
@@ -623,7 +621,7 @@ func TestRoleUpdate_SelfTargetBlocked(t *testing.T) {
 	mp.applications[vaultAppObjectID] = testClientID
 	mp.lock.Unlock()
 
-	resp, err := b.HandleRequest(context.Background(), &logical.Request{
+	resp, _ := b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.UpdateOperation,
 		Path:      "roles/update_target_role",
 		Data: map[string]interface{}{
@@ -631,9 +629,10 @@ func TestRoleUpdate_SelfTargetBlocked(t *testing.T) {
 		},
 		Storage: s,
 	})
-	_ = assert.NotNil(t, resp, "expected a response") &&
-		assert.ErrorIs(t, resp.Error(), errTargetRootCredential, "updating root cred should be refused") &&
-		assert.NotNil(t, err, "expected an error")
+
+	_ = assert.NotNil(t, resp) &&
+		assert.NotNil(t, resp.Error(), "should have an error") &&
+		assert.ErrorContains(t, resp.Error(), errTargetRootCredential.Error())
 }
 
 // TestRoleCreate_DifferentAppAllowed verifies that targeting a non-Vault
@@ -756,7 +755,6 @@ func TestRolesCreate_applicationObjectID(t *testing.T) {
 			Storage:   s,
 		})
 		assertRespNoError(t, credsResp, err)
-
 	})
 }
 
@@ -933,7 +931,6 @@ func testRoleCreate(t *testing.T, b *azureSecretBackend, s logical.Storage, name
 		Data:      d,
 		Storage:   s,
 	})
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -952,7 +949,6 @@ func testRoleCreateBasic(t *testing.T, b *azureSecretBackend, s logical.Storage,
 		Data:      d,
 		Storage:   s,
 	})
-
 	if err != nil {
 		t.Fatal(err)
 	}

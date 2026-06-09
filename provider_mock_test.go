@@ -37,6 +37,8 @@ type mockProvider struct {
 	unassignRolesFailureParams     failureParams
 	ctxTimeout                     time.Duration
 	lock                           sync.Mutex
+
+	applicationPasswordCount int
 }
 
 type failureParams struct {
@@ -55,6 +57,8 @@ func newMockProvider() AzureProvider {
 		servicePrincipals: make(map[string]bool),
 		deletedObjects:    make(map[string]bool),
 		passwords:         make(map[string]string),
+
+		applicationPasswordCount: 1,
 	}
 }
 
@@ -138,6 +142,13 @@ func (m *mockProvider) CreateServicePrincipal(_ context.Context, _ string, _ tim
 	return id, pass, nil
 }
 
+func (m *mockProvider) CreateServicePrincipalWithoutPassword(c context.Context, s string) (string, error) {
+	// call the mock with password, then just discard the fake password
+	id, _, err := m.CreateServicePrincipal(c, s, time.Time{}, time.Time{})
+
+	return id, err
+}
+
 func (m *mockProvider) CreateApplication(_ context.Context, _ string, _ string, _ []string) (api.Application, error) {
 	if m.ctxTimeout != 0 {
 		// simulate a context deadline error by sleeping for timeout period
@@ -160,6 +171,25 @@ func (m *mockProvider) CreateApplication(_ context.Context, _ string, _ string, 
 		AppID:       appID,
 		AppObjectID: appObjID,
 	}, nil
+}
+
+func (m *mockProvider) CreateApplicationWithPassword(c context.Context, s, t, credName string, credDuration time.Duration, r []string) (api.Application, error) {
+	a, err := m.CreateApplication(c, s, t, r)
+	if err != nil {
+		return api.Application{}, err
+	}
+
+	pc := make([]api.PasswordCredential, m.applicationPasswordCount)
+	for i := range pc {
+		pc[i] = api.PasswordCredential{
+			EndDate:    time.Now().Add(credDuration),
+			KeyID:      generateUUID(),
+			SecretText: generateUUID(),
+		}
+	}
+	a.PasswordCredentials = pc
+
+	return a, nil
 }
 
 func (m *mockProvider) GetApplication(_ context.Context, applicationObjectID string) (api.Application, error) {

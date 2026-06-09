@@ -77,6 +77,33 @@ func (c *client) createAppWithName(ctx context.Context, rolename string, signInA
 	return result, err
 }
 
+func (c *client) createAppWithCredential(ctx context.Context, rolename string, signInAudience string, credentialName string, credentialDuration time.Duration, tags []string) (api.Application, string, time.Time, error) {
+	var name string
+	if rolename == "" {
+		name = uuid.New().String()
+		name = appNamePrefix + name
+	} else {
+		intSuffix := fmt.Sprintf("%d", time.Now().Unix())
+		name = fmt.Sprintf("%s%s-%s", appNamePrefix, rolename, intSuffix)
+	}
+
+	// end date is synthetic
+	endDate := time.Now().Add(credentialDuration)
+
+	app, err := c.provider.CreateApplicationWithPassword(ctx, name, signInAudience, credentialName, credentialDuration, tags)
+	if err != nil {
+		return app, "", time.Time{}, err
+	}
+
+	if len(app.PasswordCredentials) != 1 {
+		return app, "", time.Time{}, fmt.Errorf("found unexpected number of credentials in application - expected 1 but found %d", len(app.PasswordCredentials))
+	}
+
+	// TODO: should this be app.passwordCredentials[0].EndDate?
+	return app, app.PasswordCredentials[0].SecretText, endDate, nil
+
+}
+
 // createSP creates a new service principal.
 func (c *client) createSP(
 	ctx context.Context,
@@ -129,6 +156,37 @@ func (c *client) createSP(
 	result := resultRaw.(idPass)
 
 	return result.ID, result.Password, result.EndDate, nil
+}
+
+// createSPWithoutPassword creates a service principal without creating a password attatched to it.
+func (c *client) createSPWithoutPassword(ctx context.Context, app api.Application) (string, error) {
+	resultRaw, err := retry(ctx, func() (interface{}, bool, error) {
+		spID, err := c.provider.CreateServicePrincipalWithoutPassword(ctx, app.AppID)
+		if err != nil {
+			errStr := strings.ToLower(err.Error())
+			retryable := strings.Contains(errStr, "local tenant") ||
+				strings.Contains(errStr, errInvalidApplicationObject) ||
+				strings.Contains(errStr, "authorization_requestdenied") ||
+				strings.Contains(errStr, "propagation") ||
+				strings.Contains(errStr, "please try again") ||
+				strings.Contains(errStr, "could not find") ||
+				strings.Contains(errStr, "not found") ||
+				strings.Contains(errStr, "does not exist") ||
+				strings.Contains(errStr, "reference-property")
+
+			if retryable {
+				return nil, false, nil
+			}
+		}
+
+		return spID, true, err
+	})
+
+	if err != nil {
+		return "", fmt.Errorf("error creating service principal: %w", err)
+	}
+
+	return resultRaw.(string), nil
 }
 
 // addAppPassword adds a new password to an App's credentials list.

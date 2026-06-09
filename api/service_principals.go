@@ -16,6 +16,7 @@ import (
 type ServicePrincipalClient interface {
 	// CreateServicePrincipal in Azure. The password returned is the actual password that the appID was created with
 	CreateServicePrincipal(ctx context.Context, appID string, startDate time.Time, endDate time.Time) (id string, password string, err error)
+	CreateServicePrincipalWithoutPassword(ctx context.Context, appID string) (id string, err error)
 	DeleteServicePrincipal(ctx context.Context, spObjectID string, permanentlyDelete bool) error
 }
 
@@ -50,6 +51,18 @@ func (c *MSGraphClient) CreateServicePrincipal(ctx context.Context, appID string
 		return "", "", merr.ErrorOrNil()
 	}
 	return *spID, *password.GetSecretText(), nil
+}
+
+func (c *MSGraphClient) CreateServicePrincipalWithoutPassword(ctx context.Context, appID string) (string, error) {
+	spReq := models.NewServicePrincipal()
+	spReq.SetAppId(&appID)
+
+	sp, err := c.client.ServicePrincipals().Post(ctx, spReq, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return *sp.GetId(), nil
 }
 
 func (c *MSGraphClient) DeleteServicePrincipal(ctx context.Context, spObjectID string, permanentlyDelete bool) error {

@@ -199,6 +199,10 @@ func (p *provider) CreateApplication(ctx context.Context, displayName string, si
 	return p.appClient.CreateApplication(ctx, displayName, signInAudience, tags)
 }
 
+func (p *provider) CreateApplicationWithPassword(ctx context.Context, displayName, signInAudience, credentialName string, credentialDuration time.Duration, tags []string) (result api.Application, err error) {
+	return p.appClient.CreateApplicationWithPassword(ctx, displayName, signInAudience, credentialName, credentialDuration, tags)
+}
+
 func (p *provider) GetApplication(ctx context.Context, applicationObjectID string) (result api.Application, err error) {
 	return p.appClient.GetApplication(ctx, applicationObjectID)
 }
@@ -225,6 +229,10 @@ func (p *provider) RemoveApplicationPassword(ctx context.Context, applicationObj
 // An Application must be created prior to calling this and pass in parameters.
 func (p *provider) CreateServicePrincipal(ctx context.Context, appID string, startDate time.Time, endDate time.Time) (id string, password string, err error) {
 	return p.spClient.CreateServicePrincipal(ctx, appID, startDate, endDate)
+}
+
+func (p *provider) CreateServicePrincipalWithoutPassword(ctx context.Context, appID string) (id string, err error) {
+	return p.spClient.CreateServicePrincipalWithoutPassword(ctx, appID)
 }
 
 func (p *provider) DeleteServicePrincipal(ctx context.Context, spObjectID string, permanentlyDelete bool) error {

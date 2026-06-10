@@ -148,7 +148,7 @@ func TestSPCreate_RetryLogic(t *testing.T) {
 	roleName := generateUUID()
 	testRoleCreate(t, b, s, roleName, testRole)
 
-	// Requesting credentials triggers: CreateApplication -> CreateServicePrincipal
+	// Requesting credentials triggers: CreateApplicationWithPassword -> CreateServicePrincipalWithoutPassword
 	resp, err := b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.ReadOperation,
 		Path:      "creds/" + roleName,

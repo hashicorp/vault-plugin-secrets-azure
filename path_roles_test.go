@@ -585,7 +585,7 @@ func TestRoleCreate_SelfTargetBlocked(t *testing.T) {
 	mp.applications[vaultAppObjectID] = testClientID
 	mp.lock.Unlock()
 
-	resp, _ := b.HandleRequest(context.Background(), &logical.Request{
+	_, err := b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.CreateOperation,
 		Path:      "roles/foo",
 		Data: map[string]any{
@@ -594,9 +594,8 @@ func TestRoleCreate_SelfTargetBlocked(t *testing.T) {
 		Storage: s,
 	})
 
-	_ = assert.NotNil(t, resp) &&
-		assert.NotNil(t, resp.Error(), "should have an error") &&
-		assert.ErrorContains(t, resp.Error(), errTargetRootCredential.Error())
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, errTargetRootCredential)
 }
 
 // TestRoleUpdate_SelfTargetBlocked verifies that updating a role to target
@@ -621,7 +620,7 @@ func TestRoleUpdate_SelfTargetBlocked(t *testing.T) {
 	mp.applications[vaultAppObjectID] = testClientID
 	mp.lock.Unlock()
 
-	resp, _ := b.HandleRequest(context.Background(), &logical.Request{
+	_, err := b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.UpdateOperation,
 		Path:      "roles/update_target_role",
 		Data: map[string]interface{}{
@@ -630,9 +629,8 @@ func TestRoleUpdate_SelfTargetBlocked(t *testing.T) {
 		Storage: s,
 	})
 
-	_ = assert.NotNil(t, resp) &&
-		assert.NotNil(t, resp.Error(), "should have an error") &&
-		assert.ErrorContains(t, resp.Error(), errTargetRootCredential.Error())
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, errTargetRootCredential)
 }
 
 // TestRoleCreate_DifferentAppAllowed verifies that targeting a non-Vault

@@ -307,7 +307,7 @@ func TestRoleCreate(t *testing.T) {
 
 	t.Run("Role name lookup", func(t *testing.T) {
 		b, s := getTestBackendMocked(t, true)
-		role := map[string]interface{}{
+		var role = map[string]interface{}{
 			"azure_roles": compactJSON(`[
 				{
 					"role_name": "Owner",
@@ -345,7 +345,7 @@ func TestRoleCreate(t *testing.T) {
 
 	t.Run("Group name lookup", func(t *testing.T) {
 		b, s := getTestBackendMocked(t, true)
-		group := map[string]interface{}{
+		var group = map[string]interface{}{
 			"azure_groups": compactJSON(`[
 				{
 					"group_name": "baz",
@@ -382,7 +382,7 @@ func TestRoleCreate(t *testing.T) {
 	t.Run("Duplicate role name and scope", func(t *testing.T) {
 		b, s := getTestBackendMocked(t, true)
 
-		role := map[string]interface{}{
+		var role = map[string]interface{}{
 			"azure_roles": compactJSON(`[
 				{
 					"role_name": "Owner",
@@ -411,7 +411,7 @@ func TestRoleCreate(t *testing.T) {
 	t.Run("Duplicate role name, different scope", func(t *testing.T) {
 		b, s := getTestBackendMocked(t, true)
 
-		role := map[string]interface{}{
+		var role = map[string]interface{}{
 			"azure_roles": compactJSON(`[
 				{
 					"role_name": "Owner",
@@ -440,7 +440,7 @@ func TestRoleCreate(t *testing.T) {
 	t.Run("Duplicate group object ID", func(t *testing.T) {
 		b, s := getTestBackendMocked(t, true)
 
-		role := map[string]interface{}{
+		var role = map[string]interface{}{
 			"azure_groups": compactJSON(`[
 				{
 					"display_name": "foo",
@@ -470,7 +470,7 @@ func TestRoleCreate(t *testing.T) {
 		b, s := getTestBackendMocked(t, true)
 
 		// if role_name=="multiple", the mock will return multiple IDs, which are not allowed
-		role := map[string]interface{}{
+		var role = map[string]interface{}{
 			"azure_roles": compactJSON(`[
 				{
 					"role_name": "multiple",
@@ -502,7 +502,7 @@ func TestRoleCreate(t *testing.T) {
 		b, s := getTestBackendMocked(t, true)
 
 		// if group_name=="multiple", the mock will return multiple IDs, which are not allowed
-		role := map[string]interface{}{
+		var role = map[string]interface{}{
 			"azure_groups": compactJSON(`[
 				{
 					"display_name": "multiple",
@@ -755,6 +755,7 @@ func TestRolesCreate_applicationObjectID(t *testing.T) {
 			Storage:   s,
 		})
 		assertRespNoError(t, credsResp, err)
+
 	})
 }
 
@@ -931,6 +932,7 @@ func testRoleCreate(t *testing.T, b *azureSecretBackend, s logical.Storage, name
 		Data:      d,
 		Storage:   s,
 	})
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -949,6 +951,7 @@ func testRoleCreateBasic(t *testing.T, b *azureSecretBackend, s logical.Storage,
 		Data:      d,
 		Storage:   s,
 	})
+
 	if err != nil {
 		t.Fatal(err)
 	}

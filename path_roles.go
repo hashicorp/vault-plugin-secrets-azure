@@ -23,6 +23,8 @@ const (
 	rolesStoragePath = "roles"
 
 	credentialTypeSP = 0
+
+	msgTargetRootCredential = "cannot target the root credential of the plugin"
 )
 
 // roleEntry is a Vault role construct that maps to Azure roles or Applications
@@ -274,6 +276,10 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 			return nil, fmt.Errorf("error loading Application: %w", err)
 		}
 		role.ApplicationID = app.AppID
+
+		if config.ClientID != "" && app.AppID == config.ClientID {
+			return nil, logical.CodedError(400, msgTargetRootCredential)
+		}
 
 		if role.PermanentlyDelete {
 			return logical.ErrorResponse("permanently_delete must be false if application_object_id is provided"), nil

@@ -5,11 +5,10 @@ package azuresecrets
 
 import (
 	"context"
-	"testing"
-	"time"
-
 	"github.com/hashicorp/vault/sdk/helper/automatedrotationutil"
 	"github.com/hashicorp/vault/sdk/rotation"
+	"testing"
+	"time"
 
 	"github.com/hashicorp/go-hclog"
 	log "github.com/hashicorp/go-hclog"

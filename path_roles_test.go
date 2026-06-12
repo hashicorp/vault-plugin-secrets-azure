@@ -15,6 +15,7 @@ import (
 	log "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/sdk/helper/logging"
 	"github.com/hashicorp/vault/sdk/logical"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRoleCreate(t *testing.T) {
@@ -572,6 +573,107 @@ func TestRoleCreateBad(t *testing.T) {
 	if !strings.Contains(resp.Error().Error(), msg) {
 		t.Fatalf("expected to find: %s, got: %s", msg, resp.Error().Error())
 	}
+}
+
+// TestRoleCreate_SelfTargetBlocked verifies that creating a role targeting
+// Vault's own Azure application is rejected.
+func TestRoleCreate_SelfTargetBlocked(t *testing.T) {
+	b, s, _, mp := getTestBackendWithStorage(t, true, nil, false)
+
+	// Seed the mock provider so that the application object ID resolves
+	// to an AppID equal to the configured client_id (testClientID).
+	vaultAppObjectID := "root credential"
+	mp.lock.Lock()
+	mp.applications[vaultAppObjectID] = testClientID
+	mp.lock.Unlock()
+
+	_, err := b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.CreateOperation,
+		Path:      "roles/foo",
+		Data: map[string]any{
+			"application_object_id": vaultAppObjectID,
+		},
+		Storage: s,
+	})
+
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, msgTargetRootCredential)
+}
+
+// TestRoleUpdate_SelfTargetBlocked verifies that updating a role to target
+// Vault's own Azure application is rejected.
+func TestRoleUpdate_SelfTargetBlocked(t *testing.T) {
+	b, s, _, mp := getTestBackendWithStorage(t, true, nil, false)
+
+	// First create a legitimate role with a different app
+	legitimateAppObjID := "legitimate-app-object-id"
+	mp.lock.Lock()
+	mp.applications[legitimateAppObjID] = "some-other-client-id"
+	mp.lock.Unlock()
+
+	role := map[string]interface{}{
+		"application_object_id": legitimateAppObjID,
+	}
+	testRoleCreate(t, b, s, "update_target_role", role)
+
+	// Now seed Vault's own app and attempt to update the role to target it
+	vaultAppObjectID := "root credential"
+	mp.lock.Lock()
+	mp.applications[vaultAppObjectID] = testClientID
+	mp.lock.Unlock()
+
+	_, err := b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.UpdateOperation,
+		Path:      "roles/update_target_role",
+		Data: map[string]interface{}{
+			"application_object_id": vaultAppObjectID,
+		},
+		Storage: s,
+	})
+
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, msgTargetRootCredential)
+}
+
+// TestRoleCreate_DifferentAppAllowed verifies that targeting a non-Vault
+// application still succeeds.
+func TestRoleCreate_DifferentAppAllowed(t *testing.T) {
+	b, s, _, mp := getTestBackendWithStorage(t, true, nil, false)
+
+	otherAppObjID := "other-app-object-id"
+	mp.lock.Lock()
+	mp.applications[otherAppObjID] = "completely-different-client-id"
+	mp.lock.Unlock()
+
+	role := map[string]interface{}{
+		"application_object_id": otherAppObjID,
+	}
+	testRoleCreate(t, b, s, "different_app_role", role)
+}
+
+// TestRoleCreate_EmptyClientIDSkipsGuard verifies that when config has no
+// client_id (e.g. WIF-only setups), the self-target guard is safely skipped.
+func TestRoleCreate_EmptyClientIDSkipsGuard(t *testing.T) {
+	b, s, _, mp := getTestBackendWithStorage(t, false, nil, false)
+
+	// Configure with empty client_id
+	cfg := map[string]interface{}{
+		"subscription_id": generateUUID(),
+		"tenant_id":       generateUUID(),
+		"client_id":       "",
+		"client_secret":   "",
+	}
+	testConfigCreate(t, b, s, cfg, false)
+
+	someAppObjID := "some-app-object-id"
+	mp.lock.Lock()
+	mp.applications[someAppObjID] = "any-app-id"
+	mp.lock.Unlock()
+
+	role := map[string]interface{}{
+		"application_object_id": someAppObjID,
+	}
+	testRoleCreate(t, b, s, "empty_client_id_role", role)
 }
 
 // TestRolesCreate_applicationObjectID tests that a role

@@ -46,6 +46,15 @@ func (d testSystemViewEnt) DeregisterRotationJob(_ context.Context, _ *rotation.
 	return nil
 }
 
+func newTestSystemView(t *testing.T) logical.SystemView {
+	t.Helper()
+
+	sysView := &testSystemViewEnt{}
+	sysView.DefaultLeaseTTLVal = defaultLeaseTTLHr
+	sysView.MaxLeaseTTLVal = maxLeaseTTLHr
+	return sysView
+}
+
 func getTestBackendMocked(t *testing.T, initConfig bool) (*azureSecretBackend, logical.Storage) {
 	b := backend()
 	sysView := testSystemViewEnt{}
@@ -84,6 +93,55 @@ func getTestBackendMocked(t *testing.T, initConfig bool) (*azureSecretBackend, l
 	}
 
 	return b, config.StorageView
+}
+
+func getTestBackendWithStorage(t *testing.T, initConfig bool, storage logical.Storage, withEvents bool) (*azureSecretBackend, logical.Storage, *logical.MockEventSender, *mockProvider) {
+	t.Helper()
+
+	if storage == nil {
+		storage = &logical.InmemStorage{}
+	}
+
+	var eventSender *logical.MockEventSender
+	config := &logical.BackendConfig{
+		Logger:      logging.NewVaultLogger(log.Trace),
+		System:      newTestSystemView(t),
+		StorageView: storage,
+		Config:      make(map[string]string),
+	}
+	if withEvents {
+		eventSender = logical.NewMockEventSender()
+		config.EventsSender = eventSender
+	}
+
+	b, err := Factory(context.Background(), config)
+	if err != nil {
+		t.Fatalf("unable to create backend: %v", err)
+	}
+
+	retBackend := b.(*azureSecretBackend)
+	retBackend.settings = new(clientSettings)
+	mockProvider := newMockProvider().(*mockProvider)
+	retBackend.getProvider = func(context.Context, hclog.Logger, logical.SystemView, *clientSettings) (AzureProvider, error) {
+		return mockProvider, nil
+	}
+
+	if initConfig {
+		cfg := map[string]interface{}{
+			"subscription_id":  generateUUID(),
+			"tenant_id":        generateUUID(),
+			"client_id":        testClientID,
+			"client_secret":    testClientSecret,
+			"environment":      "AZURECHINACLOUD",
+			"ttl":              defaultTestTTL,
+			"max_ttl":          defaultTestMaxTTL,
+			"explicit_max_ttl": defaultTestExplicitMaxTTL,
+		}
+
+		testConfigCreate(t, retBackend, config.StorageView, cfg, false)
+	}
+
+	return retBackend, config.StorageView, eventSender, mockProvider
 }
 
 func getTestBackend(t *testing.T) (*azureSecretBackend, logical.Storage) {

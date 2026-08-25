@@ -84,6 +84,12 @@ func (b *azureSecretBackend) pathSPRead(ctx context.Context, req *logical.Reques
 		return logical.ErrorResponse(fmt.Sprintf("role '%s' does not exist", roleName)), nil
 	}
 
+	if role.ApplicationObjectID != "" {
+		if err := b.checkRootCredentialTarget(client, role.ApplicationID, roleName, "read_dynamic_credentials"); err != nil {
+			return logical.ErrorResponse(err.Error()), nil
+		}
+	}
+
 	var resp *logical.Response
 
 	if role.ApplicationObjectID != "" {

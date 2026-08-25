@@ -246,6 +246,24 @@ func (b *azureSecretBackend) getClient(ctx context.Context, s logical.Storage) (
 	return c, nil
 }
 
+// checkRootCredentialTarget returns an error if targetClientID matches the
+// engine's own service principal, logging a warning so operators can detect
+// attempts to use a role that targets the root credential. action describes
+// the operation being blocked (e.g. "read_dynamic_credentials").
+func (b *azureSecretBackend) checkRootCredentialTarget(client *client, targetClientID, roleName, action string) error {
+	if client.settings.ClientID == "" || targetClientID != client.settings.ClientID {
+		return nil
+	}
+	logger := b.Logger()
+	if roleName != "" {
+		logger = logger.With("role", roleName)
+	}
+	logger.Warn("blocked attempt to use a role targeting the root credential",
+		"action", action,
+		"client_id", targetClientID)
+	return logical.CodedError(400, msgTargetRootCredential)
+}
+
 const backendHelp = `
 The Azure secrets backend dynamically generates Azure service
 principals. The SP credentials have a configurable lease and

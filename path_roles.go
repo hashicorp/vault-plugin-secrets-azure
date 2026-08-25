@@ -171,15 +171,6 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
 	var resp *logical.Response
 
-	config, err := b.getConfig(ctx, req.Storage)
-	if err != nil {
-		return nil, err
-	}
-
-	if config == nil {
-		return nil, fmt.Errorf("config is nil")
-	}
-
 	client, err := b.getClient(ctx, req.Storage)
 	if err != nil {
 		return nil, err
@@ -277,8 +268,8 @@ func (b *azureSecretBackend) pathRoleUpdate(ctx context.Context, req *logical.Re
 		}
 		role.ApplicationID = app.AppID
 
-		if config.ClientID != "" && app.AppID == config.ClientID {
-			return nil, logical.CodedError(400, msgTargetRootCredential)
+		if err := b.checkRootCredentialTarget(client, app.AppID, name, "create_update_role"); err != nil {
+			return nil, err
 		}
 
 		if role.PermanentlyDelete {

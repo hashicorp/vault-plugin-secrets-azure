@@ -1278,3 +1278,41 @@ func assertRespNoError(t *testing.T, resp *logical.Response, err error) {
 		t.Fatal(resp.Error())
 	}
 }
+
+// TestDynamicCreds_SelfTargetBlocked verifies that reading credentials for a
+// pre-fix dynamic role whose ApplicationID matches Vault's own service
+// principal is blocked at read time, even though the write-time guard was not
+// present when the role was created.
+func TestDynamicCreds_SelfTargetBlocked(t *testing.T) {
+	t.Parallel()
+
+	b, s := getTestBackendMocked(t, true)
+	roleName := "self-target-dynamic"
+
+	// Inject a "pre-fix" role directly into storage: ApplicationID equals
+	// Vault's own configured client_id (testClientID), bypassing pathRoleUpdate.
+	poisonedRole := &roleEntry{
+		ApplicationObjectID: "vault-own-app-obj-id",
+		ApplicationID:       testClientID,
+		TTL:                 time.Hour,
+	}
+	if err := saveRole(context.Background(), s, poisonedRole, roleName); err != nil {
+		t.Fatalf("failed to inject poisoned role: %v", err)
+	}
+
+	resp, err := b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.ReadOperation,
+		Path:      "creds/" + roleName,
+		Storage:   s,
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected Go error (want logical.ErrorResponse, not error return): %v", err)
+	}
+	if resp == nil || !resp.IsError() {
+		t.Fatalf("expected error response, got: %v", resp)
+	}
+	if got := resp.Error().Error(); !strings.Contains(got, msgTargetRootCredential) {
+		t.Fatalf("expected %q in response error, got: %s", msgTargetRootCredential, got)
+	}
+}

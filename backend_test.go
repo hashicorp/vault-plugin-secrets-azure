@@ -120,7 +120,6 @@ func getTestBackendWithStorage(t *testing.T, initConfig bool, storage logical.St
 	}
 
 	retBackend := b.(*azureSecretBackend)
-	retBackend.settings = new(clientSettings)
 	mockProvider := newMockProvider().(*mockProvider)
 	retBackend.getProvider = func(context.Context, hclog.Logger, logical.SystemView, *clientSettings) (AzureProvider, error) {
 		return mockProvider, nil

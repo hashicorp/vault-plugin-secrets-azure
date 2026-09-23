@@ -124,11 +124,25 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 					Default:     false,
 				},
 			},
-			Callbacks: map[logical.Operation]framework.OperationFunc{
-				logical.ReadOperation:   b.pathRoleRead,
-				logical.CreateOperation: b.pathRoleUpdate,
-				logical.UpdateOperation: b.pathRoleUpdate,
-				logical.DeleteOperation: b.pathRoleDelete,
+			Operations: map[logical.Operation]framework.OperationHandler{
+				logical.ReadOperation: &framework.PathOperation{
+					Callback: b.pathRoleRead,
+				},
+				logical.CreateOperation: &framework.PathOperation{
+					Callback:                    b.pathRoleUpdate,
+					ForwardPerformanceSecondary: true,
+					ForwardPerformanceStandby:   true,
+				},
+				logical.UpdateOperation: &framework.PathOperation{
+					Callback:                    b.pathRoleUpdate,
+					ForwardPerformanceSecondary: true,
+					ForwardPerformanceStandby:   true,
+				},
+				logical.DeleteOperation: &framework.PathOperation{
+					Callback:                    b.pathRoleDelete,
+					ForwardPerformanceSecondary: true,
+					ForwardPerformanceStandby:   true,
+				},
 			},
 			HelpSynopsis:    roleHelpSyn,
 			HelpDescription: roleHelpDesc,
@@ -140,8 +154,10 @@ func pathsRole(b *azureSecretBackend) []*framework.Path {
 				OperationPrefix: operationPrefixAzure,
 				OperationSuffix: "roles",
 			},
-			Callbacks: map[logical.Operation]framework.OperationFunc{
-				logical.ListOperation: b.pathRoleList,
+			Operations: map[logical.Operation]framework.OperationHandler{
+				logical.ListOperation: &framework.PathOperation{
+					Callback: b.pathRoleList,
+				},
 			},
 			HelpSynopsis:    roleListHelpSyn,
 			HelpDescription: roleListHelpDesc,

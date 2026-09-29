@@ -161,3 +161,68 @@ func assertDuration(t *testing.T, actual, expected, delta time.Duration) {
 		t.Fatalf("Actual duration %s does not equal expected %s with delta %s", actual, expected, delta)
 	}
 }
+
+func TestIsSPCreatePropagationError(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		err  error
+		want bool
+	}{
+		"nil":                    {err: nil, want: false},
+		"local tenant":           {err: errors.New("the backing application of the service principal being created must be in the local tenant"), want: true},
+		"invalid app object":     {err: errors.New("appId does not reference a valid application object"), want: true},
+		"authorization denied":   {err: errors.New("Authorization_RequestDenied"), want: true},
+		"propagation":            {err: errors.New("waiting for propagation"), want: true},
+		"please try again":       {err: errors.New("Please try again later"), want: true},
+		"could not find":         {err: errors.New("could not find application"), want: true},
+		"not found":              {err: errors.New("Request_ResourceNotFound: resource not found"), want: true},
+		"reference-property":     {err: errors.New("Resource 'ff3670fa-434f-46cb-8ca8-f93e5b8f0493' does not exist or one of its queried reference-property objects are not present."), want: true},
+		"permission not granted": {err: errors.New("Insufficient privileges to complete the operation."), want: false},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if got := isSPCreatePropagationError(tc.err); got != tc.want {
+				t.Fatalf("isSPCreatePropagationError(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestSPCreate_RetryLogic_ReferencePropertyNotPresent ensures createSP retries the
+// "does not exist or one of its queried reference-property objects are not present"
+// error Microsoft Graph returns while a new application is still replicating.
+func TestSPCreate_RetryLogic_ReferencePropertyNotPresent(t *testing.T) {
+	t.Parallel()
+
+	b, s := getTestBackendMocked(t, true)
+
+	mp := newMockProvider().(*mockProvider)
+	mp.failNextCreateServicePrincipal = true
+	mp.servicePrincipalFailureCount = 2
+	mp.servicePrincipalFailureMessage = "Resource 'ff3670fa-434f-46cb-8ca8-f93e5b8f0493' does not exist or one of its queried reference-property objects are not present."
+
+	b.getProvider = func(ctx context.Context, lg hclog.Logger, sys logical.SystemView, cs *clientSettings) (AzureProvider, error) {
+		return mp, nil
+	}
+
+	roleName := generateUUID()
+	testRoleCreate(t, b, s, roleName, testRole)
+
+	resp, err := b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.ReadOperation,
+		Path:      "creds/" + roleName,
+		Storage:   s,
+	})
+	if err != nil {
+		t.Fatalf("Expected retry logic to recover but got error: %v", err)
+	}
+	if resp.IsError() {
+		t.Fatalf("Unexpected Vault response error: %#v", resp.Error())
+	}
+	if mp.servicePrincipalCalls != 3 {
+		t.Fatalf("Expected 3 calls (2 failures + 1 success), got %d", mp.servicePrincipalCalls)
+	}
+}

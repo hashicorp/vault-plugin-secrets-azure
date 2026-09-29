@@ -29,6 +29,7 @@ type mockProvider struct {
 	failUnassignRoles              bool
 	failNextCreateServicePrincipal bool
 	servicePrincipalFailureCount   int
+	servicePrincipalFailureMessage string
 	servicePrincipalCalls          int
 	unassignRolesFailureParams     failureParams
 	ctxTimeout                     time.Duration
@@ -119,9 +120,11 @@ func (m *mockProvider) CreateServicePrincipal(_ context.Context, _ string, _ tim
 
 	// Fail first N attempts to simulate Azure graph propagation delay
 	if m.servicePrincipalCalls <= m.servicePrincipalFailureCount {
-		return "", "", fmt.Errorf(
-			"When using this permission, the backing application of the service principal being created must be in the local tenant",
-		)
+		msg := m.servicePrincipalFailureMessage
+		if msg == "" {
+			msg = "When using this permission, the backing application of the service principal being created must be in the local tenant"
+		}
+		return "", "", errors.New(msg)
 	}
 
 	// Success after failures

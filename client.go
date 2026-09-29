@@ -37,6 +37,10 @@ const (
 	azureUSGovCloudEnvName  = "AZUREUSGOVERNMENTCLOUD"
 
 	errInvalidApplicationObject = "does not reference a valid application object"
+	// Returned by Microsoft Graph while a newly created application has not yet
+	// replicated, e.g. "Resource '<id>' does not exist or one of its queried
+	// reference-property objects are not present."
+	errReferencePropertyNotPresent = "one of its queried reference-property objects are not present"
 )
 
 // client offers higher level Azure operations that provide a simpler interface
@@ -93,24 +97,8 @@ func (c *client) createSP(
 		endDate := now.Add(duration)
 		spID, password, err := c.provider.CreateServicePrincipal(ctx, app.AppID, now, endDate)
 
-		// Propagation delays within Azure can cause transient errors when creating
-		// a service principal immediately after creating an application. Different
-		// tenants and APIs emit slightly different error messages, so match on a
-		// broader set of substrings rather than a single exact string.
-		if err != nil {
-			errStr := strings.ToLower(err.Error())
-			retryable :=
-				strings.Contains(errStr, "local tenant") ||
-					strings.Contains(errStr, errInvalidApplicationObject) ||
-					strings.Contains(errStr, "authorization_requestdenied") ||
-					strings.Contains(errStr, "propagation") ||
-					strings.Contains(errStr, "please try again") ||
-					strings.Contains(errStr, "could not find") ||
-					strings.Contains(errStr, "not found")
-
-			if retryable {
-				return nil, false, nil
-			}
+		if isSPCreatePropagationError(err) {
+			return nil, false, nil
 		}
 
 		result := idPass{
@@ -129,6 +117,26 @@ func (c *client) createSP(
 	result := resultRaw.(idPass)
 
 	return result.ID, result.Password, result.EndDate, nil
+}
+
+// isSPCreatePropagationError reports whether err is a transient error caused by
+// Azure AD propagation delays when creating a service principal immediately after
+// creating its application. Different tenants and APIs emit slightly different
+// error messages, so match on a broader set of substrings rather than a single
+// exact string.
+func isSPCreatePropagationError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "local tenant") ||
+		strings.Contains(errStr, errInvalidApplicationObject) ||
+		strings.Contains(errStr, "authorization_requestdenied") ||
+		strings.Contains(errStr, "propagation") ||
+		strings.Contains(errStr, "please try again") ||
+		strings.Contains(errStr, "could not find") ||
+		strings.Contains(errStr, "not found") ||
+		strings.Contains(errStr, errReferencePropertyNotPresent)
 }
 
 // addAppPassword adds a new password to an App's credentials list.

@@ -6,12 +6,14 @@ package azuresecrets
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/sdk/logical"
+	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -397,6 +399,211 @@ func TestRoleAssignment_RetryLogic(t *testing.T) {
 				} else if !tc.expectRetries && mp.roleAssignmentCalls > 2 {
 					t.Fatalf("Expected minimal retries for non-retryable error, got %d calls", mp.roleAssignmentCalls)
 				}
+			}
+		})
+	}
+}
+
+// TestIsObjectNotYetVisibleError verifies which Microsoft Graph errors are treated as
+// the referenced object not having propagated yet.
+func TestIsObjectNotYetVisibleError(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "nil error",
+			err:  nil,
+			want: false,
+		},
+		{
+			name: "graph error message for a just-created object",
+			err:  errors.New("Resource '0c760b20-e7a6-4611-950c-68ff06816696' does not exist or one of its queried reference-property objects are not present."),
+			want: true,
+		},
+		{
+			name: "graph error code",
+			err:  errors.New("Request_ResourceNotFound"),
+			want: true,
+		},
+		{
+			name: "wrapped error",
+			err:  fmt.Errorf("wrapped: %w", errors.New("Resource 'abc' does not exist or one of its queried reference-property objects are not present.")),
+			want: true,
+		},
+		{
+			name: "non-retryable error",
+			err:  errors.New("Insufficient privileges to complete the operation."),
+			want: false,
+		},
+		{
+			name: "graph ODataError with Request_ResourceNotFound code",
+			err:  newODataError("Request_ResourceNotFound", "Not Found"),
+			want: true,
+		},
+		{
+			name: "graph ODataError with the not-found message",
+			err:  newODataError("", "Resource 'abc' does not exist or one of its queried reference-property objects are not present."),
+			want: true,
+		},
+		{
+			name: "wrapped graph ODataError with Request_ResourceNotFound code",
+			err:  fmt.Errorf("wrapped: %w", newODataError("Request_ResourceNotFound", "Not Found")),
+			want: true,
+		},
+		{
+			name: "graph ODataError with another code",
+			err:  newODataError("Authorization_RequestDenied", "Insufficient privileges to complete the operation."),
+			want: false,
+		},
+		{
+			name: "graph ODataError without code or message",
+			err:  odataerrors.NewODataError(),
+			want: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, isObjectNotYetVisibleError(tc.err))
+		})
+	}
+}
+
+// newODataError builds a Microsoft Graph SDK error with the given code and message.
+// Empty values are left unset.
+func newODataError(code, message string) *odataerrors.ODataError {
+	mainErr := odataerrors.NewMainError()
+	if code != "" {
+		mainErr.SetCode(&code)
+	}
+	if message != "" {
+		mainErr.SetMessage(&message)
+	}
+
+	odataErr := odataerrors.NewODataError()
+	odataErr.SetErrorEscaped(mainErr)
+	return odataErr
+}
+
+// TestGroupMembership_RetryLogic verifies that adding the new service principal to its
+// groups retries when Microsoft Graph doesn't see the service principal yet, and fails
+// fast with the original error otherwise.
+func TestGroupMembership_RetryLogic(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name          string
+		failureCount  int
+		graphErrCode  string // when set, the mock returns a Graph SDK ODataError with this code
+		errorMessage  string
+		shouldSucceed bool
+		expectRetries bool
+	}{
+		{
+			name:          "success after retries on does not exist message",
+			failureCount:  2,
+			errorMessage:  "Resource '0c760b20-e7a6-4611-950c-68ff06816696' does not exist or one of its queried reference-property objects are not present.",
+			shouldSucceed: true,
+			expectRetries: true,
+		},
+		{
+			name:          "success after retries on Request_ResourceNotFound",
+			failureCount:  2,
+			errorMessage:  "Request_ResourceNotFound",
+			shouldSucceed: true,
+			expectRetries: true,
+		},
+		{
+			name:          "success after retries on graph ODataError code",
+			failureCount:  2,
+			graphErrCode:  "Request_ResourceNotFound",
+			errorMessage:  "Not Found",
+			shouldSucceed: true,
+			expectRetries: true,
+		},
+		{
+			name:          "non-retryable error fails immediately",
+			failureCount:  100,
+			errorMessage:  "Insufficient privileges to complete the operation.",
+			shouldSucceed: false,
+			expectRetries: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			b, s := getTestBackendMocked(t, true)
+			mp := newMockProvider().(*mockProvider)
+
+			if tc.graphErrCode != "" {
+				mp.groupMemberError = newODataError(tc.graphErrCode, tc.errorMessage)
+			}
+			mp.groupMemberErrorMessage = tc.errorMessage
+			mp.groupMemberFailureCount = tc.failureCount
+			mp.groupMemberCalls = 0
+
+			b.getProvider = func(ctx context.Context, lg hclog.Logger, sys logical.SystemView, cs *clientSettings) (AzureProvider, error) {
+				return mp, nil
+			}
+
+			// Create a role with a group membership
+			roleName := generateUUID()
+			roleData := map[string]interface{}{
+				"azure_groups": compactJSON(`[{"group_name": "foo", "object_id": "239b11fe-6adf-409a-b231-08b918e9de23FAKE_GROUP-foo"}]`),
+			}
+			testRoleCreate(t, b, s, roleName, roleData)
+
+			ctx := context.Background()
+			if !tc.expectRetries {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, 3*time.Second)
+				defer cancel()
+			}
+
+			// Request credentials - this triggers adding the group membership
+			resp, err := b.HandleRequest(ctx, &logical.Request{
+				Operation: logical.ReadOperation,
+				Path:      "creds/" + roleName,
+				Storage:   s,
+			})
+
+			if tc.shouldSucceed {
+				if err != nil {
+					t.Fatalf("Expected success after retries, got error: %v", err)
+				}
+				if resp.IsError() {
+					t.Fatalf("Expected success, got response error: %v", resp.Error())
+				}
+				if mp.groupMemberCalls <= 1 {
+					t.Fatalf("Expected multiple group membership calls due to retries, got %d", mp.groupMemberCalls)
+				}
+				return
+			}
+
+			if err == nil && !resp.IsError() {
+				t.Fatalf("Expected failure for error %q", tc.errorMessage)
+			}
+
+			errMsg := ""
+			if err != nil {
+				errMsg = err.Error()
+			} else if resp.IsError() {
+				errMsg = resp.Error().Error()
+			}
+			if !strings.Contains(errMsg, tc.errorMessage) {
+				t.Fatalf("Expected error to contain %q, got: %v", tc.errorMessage, errMsg)
+			}
+			if !tc.expectRetries && mp.groupMemberCalls > 1 {
+				t.Fatalf("Expected no retries for non-retryable error, got %d calls", mp.groupMemberCalls)
 			}
 		})
 	}

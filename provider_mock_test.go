@@ -34,6 +34,10 @@ type mockProvider struct {
 	roleAssignmentFailureCount     int
 	roleAssignmentCalls            int
 	roleAssignmentErrorMessage     string
+	groupMemberFailureCount        int
+	groupMemberCalls               int
+	groupMemberErrorMessage        string
+	groupMemberError               error // returned instead of groupMemberErrorMessage when set
 	unassignRolesFailureParams     failureParams
 	ctxTimeout                     time.Duration
 	lock                           sync.Mutex
@@ -315,6 +319,23 @@ func (m *mockProvider) DeleteRoleAssignmentByID(_ context.Context, _ string) (ar
 
 // AddGroupMember adds a member to a Group.
 func (m *mockProvider) AddGroupMember(_ context.Context, _ string, _ string) error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	m.groupMemberCalls++
+
+	// Fail first N attempts to simulate Azure propagation delay
+	if m.groupMemberCalls <= m.groupMemberFailureCount {
+		if m.groupMemberError != nil {
+			return m.groupMemberError
+		}
+		errMsg := m.groupMemberErrorMessage
+		if errMsg == "" {
+			errMsg = "Resource 'FAKE_SP_ID' does not exist or one of its queried reference-property objects are not present."
+		}
+		return errors.New(errMsg)
+	}
+
 	return nil
 }
 

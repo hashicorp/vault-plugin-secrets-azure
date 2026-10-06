@@ -21,11 +21,17 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/vault/sdk/helper/pluginidentityutil"
 	"github.com/hashicorp/vault/sdk/logical"
+	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
 
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 )
 
 const (
+	// graphErrorCodeResourceNotFound is the Microsoft Graph error code returned
+	// when a referenced directory object can't be found, including objects that
+	// were just created and haven't propagated yet.
+	graphErrorCodeResourceNotFound = "Request_ResourceNotFound"
+
 	appNamePrefix  = "vault-"
 	retryTimeout   = 80 * time.Second
 	clientLifetime = 30 * time.Minute
@@ -311,8 +317,9 @@ func (c *client) addGroupMemberships(ctx context.Context, spID string, groups []
 			err := c.provider.AddGroupMember(ctx, group.ObjectID, spID)
 
 			// Propagation delays within Azure can cause this error occasionally, so don't quit on it.
-			if err != nil && strings.Contains(err.Error(), "Request_ResourceNotFound") {
-				return nil, false, nil
+			// Keep the error so it is reported if retries run out.
+			if isObjectNotYetVisibleError(err) {
+				return nil, false, err
 			}
 
 			return nil, true, err
@@ -467,6 +474,47 @@ func graphURIFromName(name string) (string, error) {
 	}
 
 	return c, nil
+}
+
+// isObjectNotYetVisibleError reports whether err is Microsoft Graph not yet
+// seeing an object that was created moments earlier. Entra ID replicates writes
+// asynchronously, so a request that references a just-created service principal
+// can fail with the error code "Request_ResourceNotFound" and the message
+// "Resource '<id>' does not exist or one of its queried reference-property
+// objects are not present."
+//
+// The Graph SDK's ODataError.Error() returns only the message, so the code is
+// read from the error itself. Errors that aren't ODataErrors (for example ones
+// that were flattened to a string) are matched on the message.
+func isObjectNotYetVisibleError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var odataErr *odataerrors.ODataError
+	if errors.As(err, &odataErr) {
+		mainErr := odataErr.GetErrorEscaped()
+		if mainErr == nil {
+			return false
+		}
+		if code := mainErr.GetCode(); code != nil && strings.EqualFold(*code, graphErrorCodeResourceNotFound) {
+			return true
+		}
+		// Don't call odataErr.Error() here: it dereferences the message without a nil check.
+		if msg := mainErr.GetMessage(); msg != nil {
+			return isObjectNotYetVisibleMessage(*msg)
+		}
+		return false
+	}
+
+	return isObjectNotYetVisibleMessage(err.Error())
+}
+
+func isObjectNotYetVisibleMessage(msg string) bool {
+	msg = strings.ToLower(msg)
+	return strings.Contains(msg, strings.ToLower(graphErrorCodeResourceNotFound)) ||
+		strings.Contains(msg, "does not exist") ||
+		strings.Contains(msg, "reference-property")
 }
 
 // retry will repeatedly call f until one of:

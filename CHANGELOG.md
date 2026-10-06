@@ -1,5 +1,9 @@
 ## Unreleased
 
+BUG FIXES:
+
+* Retry adding a new service principal to its groups when Microsoft Graph reports "Resource '...' does not exist or one of its queried reference-property objects are not present." while the service principal propagates. Previously only `Request_ResourceNotFound` was retried, so these failures returned an error and left the application and service principal behind.
+
 ## v0.21.4
 ### June 3, 2025
 

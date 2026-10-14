@@ -435,7 +435,7 @@ func TestIsObjectNotYetVisibleError(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "non-retryable error",
+			name: "insufficient privileges error",
 			err:  errors.New("Insufficient privileges to complete the operation."),
 			want: false,
 		},
@@ -491,6 +491,130 @@ func newODataError(code, message string) *odataerrors.ODataError {
 	return odataErr
 }
 
+// TestIsAuthorizationRequestDeniedError verifies which Microsoft Graph errors are treated as
+// 403 Authorization_RequestDenied.
+func TestIsAuthorizationRequestDeniedError(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "nil error",
+			err:  nil,
+			want: false,
+		},
+		{
+			name: "graph error message",
+			err:  errors.New("Insufficient privileges to complete the operation."),
+			want: true,
+		},
+		{
+			name: "graph error code",
+			err:  errors.New("Authorization_RequestDenied"),
+			want: true,
+		},
+		{
+			name: "wrapped error",
+			err:  fmt.Errorf("wrapped: %w", errors.New("Insufficient privileges to complete the operation.")),
+			want: true,
+		},
+		{
+			name: "not-found error",
+			err:  errors.New("Resource 'abc' does not exist or one of its queried reference-property objects are not present."),
+			want: false,
+		},
+		{
+			name: "graph ODataError with Authorization_RequestDenied code",
+			err:  newODataError("Authorization_RequestDenied", "Forbidden"),
+			want: true,
+		},
+		{
+			name: "graph ODataError with the insufficient privileges message",
+			err:  newODataError("", "Insufficient privileges to complete the operation."),
+			want: true,
+		},
+		{
+			name: "wrapped graph ODataError with Authorization_RequestDenied code",
+			err:  fmt.Errorf("wrapped: %w", newODataError("Authorization_RequestDenied", "Forbidden")),
+			want: true,
+		},
+		{
+			name: "graph ODataError with another code",
+			err:  newODataError("Request_ResourceNotFound", "Not Found"),
+			want: false,
+		},
+		{
+			name: "graph ODataError without code or message",
+			err:  odataerrors.NewODataError(),
+			want: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, isAuthorizationRequestDeniedError(tc.err))
+		})
+	}
+}
+
+// TestGroupMembership_AuthorizationRequestDeniedRetryWindow verifies that a group membership
+// add that keeps failing with Authorization_RequestDenied stops retrying once
+// groupMemberDeniedRetryWindow has passed, and reports the Graph error.
+//
+// It changes groupMemberDeniedRetryWindow, so it must not run in parallel.
+func TestGroupMembership_AuthorizationRequestDeniedRetryWindow(t *testing.T) {
+	orig := groupMemberDeniedRetryWindow
+	groupMemberDeniedRetryWindow = 3 * time.Second
+	t.Cleanup(func() { groupMemberDeniedRetryWindow = orig })
+
+	b, s := getTestBackendMocked(t, true)
+	mp := newMockProvider().(*mockProvider)
+	mp.groupMemberError = newODataError("Authorization_RequestDenied", "Insufficient privileges to complete the operation.")
+	mp.groupMemberFailureCount = 1000
+
+	b.getProvider = func(ctx context.Context, lg hclog.Logger, sys logical.SystemView, cs *clientSettings) (AzureProvider, error) {
+		return mp, nil
+	}
+
+	roleName := generateUUID()
+	testRoleCreate(t, b, s, roleName, map[string]interface{}{
+		"azure_groups": compactJSON(`[{"group_name": "foo", "object_id": "239b11fe-6adf-409a-b231-08b918e9de23FAKE_GROUP-foo"}]`),
+	})
+
+	start := time.Now()
+	resp, err := b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.ReadOperation,
+		Path:      "creds/" + roleName,
+		Storage:   s,
+	})
+	elapsed := time.Since(start)
+
+	errMsg := ""
+	if err != nil {
+		errMsg = err.Error()
+	} else if resp.IsError() {
+		errMsg = resp.Error().Error()
+	}
+	if errMsg == "" {
+		t.Fatal("Expected the credential read to fail")
+	}
+	if !strings.Contains(errMsg, "Insufficient privileges to complete the operation.") {
+		t.Fatalf("Expected the Graph error in the response, got: %v", errMsg)
+	}
+	if mp.groupMemberCalls < 2 {
+		t.Fatalf("Expected the group membership add to be retried, got %d calls", mp.groupMemberCalls)
+	}
+	// One retry delay (at most 7s) can start just before the window closes.
+	if elapsed > groupMemberDeniedRetryWindow+10*time.Second {
+		t.Fatalf("Expected retries to stop after the %s window, took %s", groupMemberDeniedRetryWindow, elapsed)
+	}
+}
+
 // TestGroupMembership_RetryLogic verifies that adding the new service principal to its
 // groups retries when Microsoft Graph doesn't see the service principal yet, and fails
 // fast with the original error otherwise.
@@ -528,9 +652,24 @@ func TestGroupMembership_RetryLogic(t *testing.T) {
 			expectRetries: true,
 		},
 		{
+			name:          "success after retries on insufficient privileges message",
+			failureCount:  2,
+			errorMessage:  "Insufficient privileges to complete the operation.",
+			shouldSucceed: true,
+			expectRetries: true,
+		},
+		{
+			name:          "success after retries on graph ODataError Authorization_RequestDenied code",
+			failureCount:  2,
+			graphErrCode:  "Authorization_RequestDenied",
+			errorMessage:  "Insufficient privileges to complete the operation.",
+			shouldSucceed: true,
+			expectRetries: true,
+		},
+		{
 			name:          "non-retryable error fails immediately",
 			failureCount:  100,
-			errorMessage:  "Insufficient privileges to complete the operation.",
+			errorMessage:  "Invalid object identifier 'FAKE_GROUP'.",
 			shouldSucceed: false,
 			expectRetries: false,
 		},

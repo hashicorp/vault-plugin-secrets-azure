@@ -21,11 +21,21 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/vault/sdk/helper/pluginidentityutil"
 	"github.com/hashicorp/vault/sdk/logical"
+	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
 
 	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 )
 
 const (
+	// graphErrorCodeResourceNotFound is the Microsoft Graph error code returned
+	// when a referenced directory object can't be found, including objects that
+	// were just created and haven't propagated yet.
+	graphErrorCodeResourceNotFound = "Request_ResourceNotFound"
+
+	// graphErrorCodeAuthorizationRequestDenied is the Microsoft Graph error code
+	// returned with the message "Insufficient privileges to complete the operation."
+	graphErrorCodeAuthorizationRequestDenied = "Authorization_RequestDenied"
+
 	appNamePrefix  = "vault-"
 	retryTimeout   = 80 * time.Second
 	clientLifetime = 30 * time.Minute
@@ -39,6 +49,15 @@ const (
 
 	errInvalidApplicationObject = "does not reference a valid application object"
 )
+
+// groupMemberDeniedRetryWindow bounds how long adding a new service principal to a
+// group keeps retrying Authorization_RequestDenied. When the caller has only
+// Application.ReadWrite.All and GroupMember.ReadWrite.All (no directory read
+// permission), Microsoft Graph answers a service principal that hasn't propagated
+// yet with 403 Authorization_RequestDenied instead of 404 Request_ResourceNotFound.
+// A caller that really lacks the permission still fails, after this window rather
+// than on the first attempt. It is a variable so tests can shorten it.
+var groupMemberDeniedRetryWindow = 30 * time.Second
 
 // client offers higher level Azure operations that provide a simpler interface
 // for handlers. It in turn relies on a Provider interface to access the lower level
@@ -307,12 +326,21 @@ func (c *client) unassignRoles(ctx context.Context, roleIDs []string) error {
 // addGroupMemberships adds the service principal to the Azure groups.
 func (c *client) addGroupMemberships(ctx context.Context, spID string, groups []*AzureGroup) error {
 	for _, group := range groups {
+		start := time.Now()
 		_, err := retry(ctx, func() (interface{}, bool, error) {
 			err := c.provider.AddGroupMember(ctx, group.ObjectID, spID)
 
 			// Propagation delays within Azure can cause this error occasionally, so don't quit on it.
-			if err != nil && strings.Contains(err.Error(), "Request_ResourceNotFound") {
-				return nil, false, nil
+			// Keep the error so it is reported if retries run out.
+			if isObjectNotYetVisibleError(err) {
+				return nil, false, err
+			}
+
+			// The same propagation delay, reported as 403 to callers without directory read
+			// permission. Retry it for a bounded time only, so a real permission problem
+			// still surfaces.
+			if isAuthorizationRequestDeniedError(err) && time.Since(start) < groupMemberDeniedRetryWindow {
+				return nil, false, err
 			}
 
 			return nil, true, err
@@ -467,6 +495,81 @@ func graphURIFromName(name string) (string, error) {
 	}
 
 	return c, nil
+}
+
+// isObjectNotYetVisibleError reports whether err is Microsoft Graph not yet
+// seeing an object that was created moments earlier. Entra ID replicates writes
+// asynchronously, so a request that references a just-created service principal
+// can fail with the error code "Request_ResourceNotFound" and the message
+// "Resource '<id>' does not exist or one of its queried reference-property
+// objects are not present."
+//
+// The Graph SDK's ODataError.Error() returns only the message, so the code is
+// read from the error itself. Errors that aren't ODataErrors (for example ones
+// that were flattened to a string) are matched on the message.
+func isObjectNotYetVisibleError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var odataErr *odataerrors.ODataError
+	if errors.As(err, &odataErr) {
+		mainErr := odataErr.GetErrorEscaped()
+		if mainErr == nil {
+			return false
+		}
+		if code := mainErr.GetCode(); code != nil && strings.EqualFold(*code, graphErrorCodeResourceNotFound) {
+			return true
+		}
+		// Don't call odataErr.Error() here: it dereferences the message without a nil check.
+		if msg := mainErr.GetMessage(); msg != nil {
+			return isObjectNotYetVisibleMessage(*msg)
+		}
+		return false
+	}
+
+	return isObjectNotYetVisibleMessage(err.Error())
+}
+
+func isObjectNotYetVisibleMessage(msg string) bool {
+	msg = strings.ToLower(msg)
+	return strings.Contains(msg, strings.ToLower(graphErrorCodeResourceNotFound)) ||
+		strings.Contains(msg, "does not exist") ||
+		strings.Contains(msg, "reference-property")
+}
+
+// isAuthorizationRequestDeniedError reports whether err is Microsoft Graph's
+// 403 Authorization_RequestDenied ("Insufficient privileges to complete the
+// operation."). Like isObjectNotYetVisibleError, it reads the code from a Graph
+// SDK ODataError and falls back to the message for other errors.
+func isAuthorizationRequestDeniedError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var odataErr *odataerrors.ODataError
+	if errors.As(err, &odataErr) {
+		mainErr := odataErr.GetErrorEscaped()
+		if mainErr == nil {
+			return false
+		}
+		if code := mainErr.GetCode(); code != nil && strings.EqualFold(*code, graphErrorCodeAuthorizationRequestDenied) {
+			return true
+		}
+		// Don't call odataErr.Error() here: it dereferences the message without a nil check.
+		if msg := mainErr.GetMessage(); msg != nil {
+			return isAuthorizationRequestDeniedMessage(*msg)
+		}
+		return false
+	}
+
+	return isAuthorizationRequestDeniedMessage(err.Error())
+}
+
+func isAuthorizationRequestDeniedMessage(msg string) bool {
+	msg = strings.ToLower(msg)
+	return strings.Contains(msg, strings.ToLower(graphErrorCodeAuthorizationRequestDenied)) ||
+		strings.Contains(msg, "insufficient privileges")
 }
 
 // retry will repeatedly call f until one of:

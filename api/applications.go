@@ -6,11 +6,15 @@ package api
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/google/uuid"
+	"github.com/hashicorp/go-hclog"
+	khttp "github.com/microsoft/kiota-http-go"
 	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
+	core "github.com/microsoftgraph/msgraph-sdk-go-core"
 	auth "github.com/microsoftgraph/msgraph-sdk-go-core/authentication"
 	"github.com/microsoftgraph/msgraph-sdk-go/applications"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
@@ -26,9 +30,11 @@ type ApplicationsClient interface {
 	RemoveApplicationPassword(ctx context.Context, applicationObjectID string, keyID string) error
 }
 
-var _ ApplicationsClient = (*MSGraphClient)(nil)
-var _ GroupsClient = (*MSGraphClient)(nil)
-var _ ServicePrincipalClient = (*MSGraphClient)(nil)
+var (
+	_ ApplicationsClient     = (*MSGraphClient)(nil)
+	_ GroupsClient           = (*MSGraphClient)(nil)
+	_ ServicePrincipalClient = (*MSGraphClient)(nil)
+)
 
 type MSGraphClient struct {
 	client *msgraphsdkgo.GraphServiceClient
@@ -50,7 +56,7 @@ type PasswordCredential struct {
 // the Microsoft Graph API. It can be configured to target alternative national cloud
 // deployments via graphURI. For details on the client configuration see
 // https://learn.microsoft.com/en-us/graph/sdks/national-clouds
-func NewMSGraphClient(graphURI string, creds azcore.TokenCredential) (*MSGraphClient, error) {
+func NewMSGraphClient(logger hclog.Logger, graphURI string, creds azcore.TokenCredential) (*MSGraphClient, error) {
 	scopes := []string{
 		fmt.Sprintf("%s/.default", graphURI),
 	}
@@ -60,7 +66,12 @@ func NewMSGraphClient(graphURI string, creds azcore.TokenCredential) (*MSGraphCl
 		return nil, err
 	}
 
-	adapter, err := msgraphsdkgo.NewGraphRequestAdapter(authProvider)
+	httpClient, err := newMSGraphHTTPClient(logger)
+	if err != nil {
+		return nil, err
+	}
+
+	adapter, err := msgraphsdkgo.NewGraphRequestAdapterWithParseNodeFactoryAndSerializationWriterFactoryAndHttpClient(authProvider, nil, nil, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -72,6 +83,34 @@ func NewMSGraphClient(graphURI string, creds azcore.TokenCredential) (*MSGraphCl
 		client: client,
 	}
 	return ac, nil
+}
+
+func newMSGraphHTTPClient(logger hclog.Logger, telemetry ...bool) (hc *http.Client, err error) {
+	var mw []khttp.Middleware
+	opts := new(msgraphsdkgo.GetDefaultClientOptions())
+
+	if mw, err = khttp.GetDefaultMiddlewaresWithOptions(
+		// We want explicit control over when a request is retried.
+		&khttp.RetryHandlerOptions{
+			ShouldRetry: kiotaNeverRetry,
+			MaxRetries:  1,
+		},
+	); err != nil {
+		return nil, err
+	}
+
+	// Default behavior of the Graph SDK is to enable open telemetry,
+	// but we can skip that if telemetry is explicitly false.
+	if len(telemetry) == 0 || telemetry[0] {
+		mw = append(mw, core.NewGraphTelemetryHandler(opts))
+	}
+
+	hc = core.GetDefaultClient(opts, mw...)
+	if err = WrapTransport(hc, logger); err != nil {
+		hc = nil
+	}
+
+	return hc, err
 }
 
 func (c *MSGraphClient) GetApplication(ctx context.Context, applicationObjectID string) (Application, error) {
@@ -92,7 +131,6 @@ func (c *MSGraphClient) GetApplication(ctx context.Context, applicationObjectID 
 }
 
 func (c *MSGraphClient) ListApplications(ctx context.Context, filter string) ([]Application, error) {
-
 	req := &applications.ApplicationsRequestBuilderGetQueryParameters{
 		Filter: &filter,
 	}
@@ -236,7 +274,6 @@ func getApplicationResponse(app models.Applicationable) Application {
 			AppObjectID:         ptrToString(app.GetId()),
 			PasswordCredentials: getPasswordCredentialsForApplication(app),
 		}
-
 	}
 
 	// return zero-value result if app in nil

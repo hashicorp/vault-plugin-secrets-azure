@@ -64,7 +64,7 @@ func newAzureProvider(ctx context.Context, logger hclog.Logger, sys logical.Syst
 		return nil, err
 	}
 
-	msGraphAppClient, err := api.NewMSGraphClient(settings.GraphURI, cred)
+	msGraphAppClient, err := api.NewMSGraphClient(logger, settings.GraphURI, cred)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create MS graph client: %w", err)
 	}

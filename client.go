@@ -26,9 +26,10 @@ import (
 )
 
 const (
-	appNamePrefix  = "vault-"
-	retryTimeout   = 80 * time.Second
-	clientLifetime = 30 * time.Minute
+	appNamePrefix                  = "vault-"
+	retryTimeout                   = 80 * time.Second
+	groupAuthorizationRetryTimeout = 30 * time.Second
+	clientLifetime                 = 30 * time.Minute
 
 	azurePublicCloudBaseURI = "https://graph.microsoft.com"
 	azureChinaCloudBaseURI  = "https://microsoftgraph.chinacloudapi.cn"
@@ -307,22 +308,67 @@ func (c *client) unassignRoles(ctx context.Context, roleIDs []string) error {
 // addGroupMemberships adds the service principal to the Azure groups.
 func (c *client) addGroupMemberships(ctx context.Context, spID string, groups []*AzureGroup) error {
 	for _, group := range groups {
-		_, err := retry(ctx, func() (interface{}, bool, error) {
-			err := c.provider.AddGroupMember(ctx, group.ObjectID, spID)
-
-			// Propagation delays within Azure can cause this error occasionally, so don't quit on it.
-			if err != nil && strings.Contains(err.Error(), "Request_ResourceNotFound") {
-				return nil, false, nil
-			}
-
-			return nil, true, err
-		})
-		if err != nil {
+		if err := c.addGroupMembership(ctx, spID, group.ObjectID); err != nil {
 			return fmt.Errorf("error while adding group membership: %w", err)
 		}
 	}
 
 	return nil
+}
+
+func (c *client) addGroupMembership(ctx context.Context, spID, groupID string) error {
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, retryTimeout)
+		defer cancel()
+	}
+	var lastErr error
+	// Set only when the authorization window starts, so nil means it hasn't started.
+	var authorizationCancel context.CancelFunc
+	defer func() {
+		if authorizationCancel != nil {
+			authorizationCancel()
+		}
+	}()
+	_, err := retryLoop(func() context.Context { return ctx }, func() (any, bool, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, true, fmt.Errorf("retry failed: %w", errors.Join(lastErr, err))
+		}
+		err := c.provider.AddGroupMember(ctx, groupID, spID)
+		if err == nil {
+			return nil, true, nil
+		}
+		ctxErr := ctx.Err()
+		// Keep the previous Graph error if this call only failed because the context ended.
+		if ctxErr == nil || !errors.Is(err, ctxErr) {
+			lastErr = err
+		}
+		if ctxErr != nil {
+			return nil, true, fmt.Errorf("retry failed: %w", errors.Join(lastErr, ctxErr))
+		}
+		retryable, authorizationDenied := classifyGroupMembershipError(lastErr)
+		if !retryable {
+			return nil, true, lastErr
+		}
+		if authorizationCancel == nil && authorizationDenied {
+			// Do not restart this window on subsequent failures or error-code changes.
+			ctx, authorizationCancel = context.WithTimeout(ctx, groupAuthorizationRetryTimeout)
+		}
+		return nil, false, lastErr
+	})
+	return err
+}
+
+func classifyGroupMembershipError(err error) (retryable, authorizationDenied bool) {
+	graphErr, ok := api.ConvertToError(err)
+	if !ok {
+		return false, false
+	}
+	// Group assignments for new principals can recover from authorization failures
+	// without permission changes. Persistent denials still time out.
+	authorizationDenied = graphErr.Code.Equal(api.CodeAuthorizationRequestDenied.String()) &&
+		graphErr.ResponseInfo != nil && graphErr.ResponseInfo.StatusCode == http.StatusForbidden
+	return graphErr.Code.Equal(api.CodeRequestResourceNotFound.String()) || authorizationDenied, authorizationDenied
 }
 
 // removeGroupMemberships removes the passed service principal from the passed
@@ -473,20 +519,27 @@ func graphURIFromName(name string) (string, error) {
 //
 //   - f returns true
 //   - the context is cancelled
-//   - 80 seconds elapses. Vault's default request timeout is 90s; we want to expire before then.
+//   - 80 seconds elapses, if ctx has no deadline. Otherwise its deadline is preserved
 //
 // Delays are random but will average 5 seconds.
 func retry(ctx context.Context, f func() (any, bool, error)) (result any, err error) {
-	delayTimer := time.NewTimer(0)
 	if _, hasTimeout := ctx.Deadline(); !hasTimeout {
 		var cancel func()
 		ctx, cancel = context.WithTimeout(ctx, retryTimeout)
 		defer cancel()
 	}
 
+	return retryLoop(func() context.Context { return ctx }, f)
+}
+
+// retryLoop runs the retry loop; currentContext lets an operation shorten its deadline between attempts.
+func retryLoop(currentContext func() context.Context, f func() (any, bool, error)) (result any, err error) {
+	delayTimer := time.NewTimer(0)
+	defer delayTimer.Stop()
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	var done bool
 	for {
+		ctx := currentContext()
 		select {
 		case <-delayTimer.C:
 			if result, done, err = f(); done {

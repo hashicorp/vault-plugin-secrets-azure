@@ -19,7 +19,9 @@ import (
 )
 
 const (
-	CodeDirectoryConcurrency = ErrorCode("Directory_ConcurrencyViolation")
+	CodeAuthorizationRequestDenied = ErrorCode("Authorization_RequestDenied")
+	CodeDirectoryConcurrency       = ErrorCode("Directory_ConcurrencyViolation")
+	CodeRequestResourceNotFound    = ErrorCode("Request_ResourceNotFound")
 
 	msgAppNotFound = "no application found"
 )

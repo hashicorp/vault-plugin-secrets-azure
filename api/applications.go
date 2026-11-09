@@ -205,10 +205,14 @@ func (c *MSGraphClient) CreateApplicationWithPassword(ctx context.Context, displ
 
 // DeleteApplication deletes an Azure application object.
 // This will in turn remove the service principal (but not the role assignments).
+// Permanent deletion resumes the purge if the active application is already absent.
 func (c *MSGraphClient) DeleteApplication(ctx context.Context, applicationObjectID string, permanentlyDelete bool) error {
 	err := c.client.Applications().ByApplicationId(applicationObjectID).Delete(ctx, nil)
 	if err != nil {
-		return err
+		graphErr, ok := ConvertToError(err)
+		if !permanentlyDelete || !ok || graphErr.ResponseInfo == nil || graphErr.ResponseInfo.StatusCode != http.StatusNotFound {
+			return err
+		}
 	}
 
 	if permanentlyDelete {

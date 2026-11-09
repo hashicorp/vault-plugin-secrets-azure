@@ -6,13 +6,17 @@ package azuresecrets
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/vault-plugin-secrets-azure/api"
 	"github.com/hashicorp/vault/sdk/logical"
+	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRetry(t *testing.T) {
@@ -413,5 +417,299 @@ func assertDuration(t *testing.T, actual, expected, delta time.Duration) {
 
 	if diff > delta {
 		t.Fatalf("Actual duration %s does not equal expected %s with delta %s", actual, expected, delta)
+	}
+}
+
+type groupMembershipTestProvider struct {
+	AzureProvider
+	add func(context.Context, string, string) error
+}
+
+func (p *groupMembershipTestProvider) AddGroupMember(ctx context.Context, group, member string) error {
+	return p.add(ctx, group, member)
+}
+
+func groupMembershipTestError(code string, status int) *odataerrors.ODataError {
+	main := odataerrors.NewMainError()
+	main.SetCode(&code)
+	message := "Graph failure without a code in the message"
+	main.SetMessage(&message)
+	err := odataerrors.NewODataError()
+	err.SetErrorEscaped(main)
+	err.SetStatusCode(status)
+	return err
+}
+
+// TestGroupMembershipRetryClassification verifies which Graph errors are retried
+// and which ones start the authorization retry window.
+func TestGroupMembershipRetryClassification(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		err        error
+		want       bool
+		wantDenied bool
+	}{
+		{name: "success"},
+		{name: "not found", err: groupMembershipTestError("Request_ResourceNotFound", http.StatusNotFound), want: true},
+		{name: "denied", err: groupMembershipTestError("Authorization_RequestDenied", http.StatusForbidden), want: true, wantDenied: true},
+		{name: "converted", err: &api.Error{Code: "request_resourcenotfound"}, want: true},
+		{name: "wrong status", err: groupMembershipTestError("Authorization_RequestDenied", http.StatusBadRequest)},
+		{name: "missing status", err: &api.Error{Code: "Authorization_RequestDenied"}},
+		{name: "other forbidden", err: groupMembershipTestError("OtherError", http.StatusForbidden)},
+		{name: "other not found", err: groupMembershipTestError("OtherError", http.StatusNotFound)},
+		{name: "message only", err: errors.New("Request_ResourceNotFound Authorization_RequestDenied")},
+		{name: "malformed", err: odataerrors.NewODataError()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			retryable, authorizationDenied := classifyGroupMembershipError(tc.err)
+			require.Equal(t, tc.want, retryable)
+			require.Equal(t, tc.wantDenied, authorizationDenied)
+		})
+	}
+}
+
+// TestAddGroupMembershipsRecovery verifies that a transient Graph error on one
+// group is retried before moving on to the next group.
+func TestAddGroupMembershipsRecovery(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+	for _, tc := range []struct {
+		code   string
+		status int
+	}{
+		{code: "Authorization_RequestDenied", status: http.StatusForbidden},
+		{code: "Request_ResourceNotFound", status: http.StatusNotFound},
+	} {
+		t.Run(tc.code, func(t *testing.T) {
+			t.Parallel()
+			calls := 0
+			c := &client{provider: &groupMembershipTestProvider{add: func(ctx context.Context, group, member string) error {
+				require.NoError(t, ctx.Err())
+				require.Equal(t, "member", member)
+				calls++
+				if calls <= 2 {
+					require.Equal(t, "first", group)
+				} else {
+					require.Equal(t, "second", group)
+				}
+				if calls == 1 {
+					return groupMembershipTestError(tc.code, tc.status)
+				}
+				return nil
+			}}}
+			require.NoError(t, c.addGroupMemberships(context.Background(), "member",
+				[]*AzureGroup{{ObjectID: "first"}, {ObjectID: "second"}}))
+			require.Equal(t, 3, calls)
+		})
+	}
+}
+
+// TestAddGroupMembershipsFailure verifies that failures stop at the first group,
+// keep the caller's deadline, and include the Graph error.
+func TestAddGroupMembershipsFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		code       string
+		cancel     bool
+		wantCtxErr error
+	}{
+		{name: "persistent denial", code: "Authorization_RequestDenied", wantCtxErr: context.DeadlineExceeded},
+		{name: "cancellation", code: "Authorization_RequestDenied", cancel: true, wantCtxErr: context.Canceled},
+		{name: "unrelated error", code: "OtherError"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+			graphErr := groupMembershipTestError(tc.code, http.StatusForbidden)
+			calls := 0
+			c := &client{provider: &groupMembershipTestProvider{add: func(callCtx context.Context, _, _ string) error {
+				calls++
+				deadline, ok := callCtx.Deadline()
+				require.True(t, ok)
+				parentDeadline, _ := ctx.Deadline()
+				require.Equal(t, parentDeadline, deadline)
+				if tc.cancel {
+					cancel()
+				}
+				return graphErr
+			}}}
+			err := c.addGroupMemberships(ctx, "member", []*AzureGroup{{ObjectID: "first"}, {ObjectID: "second"}})
+			require.ErrorIs(t, err, graphErr)
+			require.Equal(t, 1, calls)
+			if tc.wantCtxErr != nil {
+				require.ErrorIs(t, err, tc.wantCtxErr)
+			} else {
+				require.NotErrorIs(t, err, context.DeadlineExceeded)
+			}
+		})
+	}
+}
+
+// TestAddGroupMembershipsBudget verifies that each group gets its own 80-second
+// timeout when the caller has no deadline, and that a caller deadline is kept.
+func TestAddGroupMembershipsBudget(t *testing.T) {
+	groups := []*AzureGroup{{ObjectID: "first"}, {ObjectID: "second"}}
+
+	t.Run("no caller deadline", func(t *testing.T) {
+		start := time.Now()
+		var contexts []context.Context
+		c := &client{provider: &groupMembershipTestProvider{add: func(callCtx context.Context, _, _ string) error {
+			deadline, ok := callCtx.Deadline()
+			require.True(t, ok)
+			require.WithinDuration(t, start.Add(retryTimeout), deadline, time.Second)
+			if len(contexts) == 1 {
+				require.ErrorIs(t, contexts[0].Err(), context.Canceled, "each group must release its own timeout")
+				require.NoError(t, callCtx.Err(), "the next group must receive a fresh timeout")
+			}
+			contexts = append(contexts, callCtx)
+			return nil
+		}}}
+		require.NoError(t, c.addGroupMemberships(context.Background(), "member", groups))
+		require.Len(t, contexts, 2)
+		require.ErrorIs(t, contexts[1].Err(), context.Canceled)
+	})
+
+	t.Run("caller deadline longer than default", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*retryTimeout)
+		defer cancel()
+		parentDeadline, _ := ctx.Deadline()
+		calls := 0
+		c := &client{provider: &groupMembershipTestProvider{add: func(callCtx context.Context, _, _ string) error {
+			calls++
+			deadline, ok := callCtx.Deadline()
+			require.True(t, ok)
+			require.Equal(t, parentDeadline, deadline, "preserve the caller's deadline even when longer than 80 seconds")
+			return nil
+		}}}
+		require.NoError(t, c.addGroupMemberships(ctx, "member", groups))
+		require.Equal(t, 2, calls)
+		require.NoError(t, ctx.Err())
+	})
+}
+
+// TestAddGroupMembershipsCanceledRequest verifies that Azure is not called when
+// the request is already canceled.
+func TestAddGroupMembershipsCanceledRequest(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	c := &client{provider: &groupMembershipTestProvider{add: func(context.Context, string, string) error {
+		t.Fatal("canceled request called Azure")
+		return nil
+	}}}
+	require.ErrorIs(t, c.addGroupMemberships(ctx, "member", []*AzureGroup{{ObjectID: "group"}}), context.Canceled)
+}
+
+// TestAddGroupMembershipsSuccessDuringCancellation verifies that a successful
+// Graph write is trusted even if the request is canceled at the same time.
+func TestAddGroupMembershipsSuccessDuringCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := &client{provider: &groupMembershipTestProvider{add: func(callCtx context.Context, _, _ string) error {
+		require.NoError(t, callCtx.Err())
+		cancel()
+		return nil
+	}}}
+	require.NoError(t, c.addGroupMemberships(ctx, "member", []*AzureGroup{{ObjectID: "group"}}))
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
+}
+
+// TestAddGroupMembershipsInFlightDeadline verifies that a deadline reached
+// during a Graph call is returned as a deadline error.
+func TestAddGroupMembershipsInFlightDeadline(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	c := &client{provider: &groupMembershipTestProvider{add: func(callCtx context.Context, _, _ string) error {
+		<-callCtx.Done()
+		return callCtx.Err()
+	}}}
+	require.ErrorIs(t, c.addGroupMemberships(ctx, "member", []*AzureGroup{{ObjectID: "group"}}), context.DeadlineExceeded)
+}
+
+// TestAddGroupMembershipsLastError verifies that only the most recent Graph
+// error is returned, whether retries stop on cancellation or a terminal error.
+func TestAddGroupMembershipsLastError(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+	for _, tc := range []struct {
+		name         string
+		lastCode     string
+		wantCanceled bool
+	}{
+		{name: "retryable error then canceled", lastCode: "Authorization_RequestDenied", wantCanceled: true},
+		{name: "terminal error", lastCode: "OtherError"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			first := groupMembershipTestError("Request_ResourceNotFound", http.StatusNotFound)
+			last := groupMembershipTestError(tc.lastCode, http.StatusForbidden)
+			calls := 0
+			c := &client{provider: &groupMembershipTestProvider{add: func(context.Context, string, string) error {
+				calls++
+				if calls == 1 {
+					return first
+				}
+				if tc.wantCanceled {
+					cancel()
+				}
+				return last
+			}}}
+			err := c.addGroupMemberships(ctx, "member", []*AzureGroup{{ObjectID: "group"}})
+			require.Equal(t, 2, calls)
+			require.ErrorIs(t, err, last)
+			require.NotErrorIs(t, err, first)
+			if tc.wantCanceled {
+				require.ErrorIs(t, err, context.Canceled)
+			}
+		})
+	}
+}
+
+// TestAddGroupMembershipsAuthorizationBudget verifies that the first
+// authorization denial starts a 30-second window that later errors do not restart.
+func TestAddGroupMembershipsAuthorizationBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+	for _, tc := range []struct {
+		subsequentCode   string
+		subsequentStatus int
+	}{
+		{subsequentCode: "Authorization_RequestDenied", subsequentStatus: http.StatusForbidden},
+		{subsequentCode: "Request_ResourceNotFound", subsequentStatus: http.StatusNotFound},
+	} {
+		t.Run(tc.subsequentCode, func(t *testing.T) {
+			t.Parallel()
+			first := groupMembershipTestError("Authorization_RequestDenied", http.StatusForbidden)
+			last := groupMembershipTestError(tc.subsequentCode, tc.subsequentStatus)
+			calls := 0
+			var firstDenied time.Time
+			var limitedDeadline time.Time
+			c := &client{provider: &groupMembershipTestProvider{add: func(ctx context.Context, _, _ string) error {
+				calls++
+				deadline, ok := ctx.Deadline()
+				require.True(t, ok)
+				if calls == 1 {
+					firstDenied = time.Now()
+					require.Greater(t, time.Until(deadline), groupAuthorizationRetryTimeout)
+					return first
+				}
+				require.WithinDuration(t, firstDenied.Add(groupAuthorizationRetryTimeout), deadline, time.Second)
+				if limitedDeadline.IsZero() {
+					limitedDeadline = deadline
+				} else {
+					require.Equal(t, limitedDeadline, deadline, "authorization window must not restart")
+				}
+				return last
+			}}}
+			err := c.addGroupMemberships(context.Background(), "member", []*AzureGroup{{ObjectID: "group"}})
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			require.ErrorIs(t, err, last)
+			require.Greater(t, calls, 1)
+			require.WithinDuration(t, firstDenied.Add(groupAuthorizationRetryTimeout), time.Now(), time.Second)
+		})
 	}
 }

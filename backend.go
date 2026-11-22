@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/consts"
@@ -246,12 +247,28 @@ func (b *azureSecretBackend) getClient(ctx context.Context, s logical.Storage) (
 	return c, nil
 }
 
+// sameClientID reports whether a and b identify the same Azure client ID. UUIDs
+// are compared by value, since their textual form is case-insensitive and
+// may differ between the configured value and the one returned by Graph. Values
+// that don't parse as UUIDs are compared case-insensitively.
+func sameClientID(a, b string) bool {
+	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
+
+	ua, errA := uuid.Parse(a)
+	ub, errB := uuid.Parse(b)
+	if errA == nil && errB == nil {
+		return ua == ub
+	}
+
+	return strings.EqualFold(a, b)
+}
+
 // checkRootCredentialTarget returns an error if targetClientID matches the
 // engine's own service principal, logging a warning so operators can detect
 // attempts to use a role that targets the root credential. action describes
 // the operation being blocked (e.g. "read_dynamic_credentials").
 func (b *azureSecretBackend) checkRootCredentialTarget(client *client, targetClientID, roleName, action string) error {
-	if client.settings.ClientID == "" || targetClientID != client.settings.ClientID {
+	if client.settings.ClientID == "" || !sameClientID(targetClientID, client.settings.ClientID) {
 		return nil
 	}
 	logger := b.Logger()

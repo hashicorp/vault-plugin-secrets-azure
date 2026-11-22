@@ -7,6 +7,7 @@ import (
 	"context"
 	"github.com/hashicorp/vault/sdk/helper/automatedrotationutil"
 	"github.com/hashicorp/vault/sdk/rotation"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 	"github.com/hashicorp/vault/sdk/helper/logging"
 	"github.com/hashicorp/vault/sdk/helper/pluginutil"
 	"github.com/hashicorp/vault/sdk/logical"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -190,4 +193,124 @@ func TestPeriodicFuncNilConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("periodicFunc error not nil, it should have been: %v", err)
 	}
+}
+
+func TestSameClientID(t *testing.T) {
+	id := generateUUID()
+
+	tests := map[string]struct {
+		a, b string
+		want bool
+	}{
+		"identical":              {id, id, true},
+		"upper vs lower":         {strings.ToUpper(id), strings.ToLower(id), true},
+		"mixed vs lower":         {strings.ToUpper(id[:18]) + id[18:], id, true},
+		"braced and no hyphens":  {"{" + strings.ToUpper(id) + "}", strings.ReplaceAll(id, "-", ""), true},
+		"surrounding whitespace": {" " + strings.ToUpper(id) + " ", id, true},
+		"distinct uuids":         {id, generateUUID(), false},
+		"non-uuid case variant":  {"testClientId", "TESTCLIENTID", true},
+		"non-uuid distinct":      {"testClientId", "otherClientId", false},
+		"uuid vs non-uuid":       {id, "testClientId", false},
+		"empty vs uuid":          {"", id, false},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := sameClientID(tc.a, tc.b); got != tc.want {
+				t.Fatalf("sameClientID(%q, %q) = %t, want %t", tc.a, tc.b, got, tc.want)
+			}
+			if got := sameClientID(tc.b, tc.a); got != tc.want {
+				t.Fatalf("sameClientID(%q, %q) = %t, want %t", tc.b, tc.a, got, tc.want)
+			}
+		})
+	}
+}
+
+// getTestBackendWithUUIDClientID returns a backend whose configured client_id
+// is rootClientID.
+func getTestBackendWithUUIDClientID(t *testing.T, rootClientID string) (*azureSecretBackend, logical.Storage, *mockProvider) {
+	t.Helper()
+
+	b, s, _, mp := getTestBackendWithStorage(t, false, nil, false)
+	testConfigCreate(t, b, s, map[string]interface{}{
+		"subscription_id": generateUUID(),
+		"tenant_id":       generateUUID(),
+		"client_id":       rootClientID,
+		"client_secret":   testClientSecret,
+	}, false)
+
+	return b, s, mp
+}
+
+// caseVariants returns representations of id that differ only in letter case.
+func caseVariants(id string) map[string]string {
+	return map[string]string{
+		"upper": strings.ToUpper(id),
+		"lower": strings.ToLower(id),
+		"mixed": strings.ToUpper(id[:18]) + strings.ToLower(id[18:]),
+	}
+}
+
+// TestRootCredentialTarget_CaseVariantBlocked verifies that the self-target
+// guard rejects every textual case form of Vault's own client ID at role write,
+// and at credential issuance for roles stored before the guard was effective,
+// without ever creating a password.
+func TestRootCredentialTarget_CaseVariantBlocked(t *testing.T) {
+	rootID := strings.ToLower(generateUUID())
+
+	for configName, configured := range caseVariants(rootID) {
+		for graphName, fromGraph := range caseVariants(rootID) {
+			t.Run("config_"+configName+"/graph_"+graphName, func(t *testing.T) {
+				b, s, mp := getTestBackendWithUUIDClientID(t, configured)
+				mp.lock.Lock()
+				mp.applications["root-obj"] = fromGraph
+				mp.lock.Unlock()
+				passwordsBefore := len(mp.passwords)
+
+				t.Run("role write", func(t *testing.T) {
+					_, err := b.HandleRequest(context.Background(), &logical.Request{
+						Operation: logical.CreateOperation,
+						Path:      "roles/dyn",
+						Data:      map[string]interface{}{"application_object_id": "root-obj"},
+						Storage:   s,
+					})
+					assert.ErrorContains(t, err, msgTargetRootCredential)
+				})
+
+				t.Run("pre-existing role creds read", func(t *testing.T) {
+					require.NoError(t, saveRole(context.Background(), s, &roleEntry{
+						ApplicationObjectID: "root-obj",
+						ApplicationID:       fromGraph,
+						TTL:                 time.Hour,
+					}, "stored"))
+
+					resp, err := b.HandleRequest(context.Background(), &logical.Request{
+						Operation: logical.ReadOperation,
+						Path:      "creds/stored",
+						Storage:   s,
+					})
+					require.NoError(t, err)
+					require.NotNil(t, resp)
+					require.True(t, resp.IsError(), "expected an error response, got %v", resp)
+					assert.Contains(t, resp.Error().Error(), msgTargetRootCredential)
+				})
+
+				mp.lock.Lock()
+				defer mp.lock.Unlock()
+				assert.Equal(t, passwordsBefore, len(mp.passwords), "no password may be created")
+			})
+		}
+	}
+}
+
+// TestRootCredentialTarget_DistinctUUIDAllowed verifies that the UUID-aware
+// comparison does not block applications other than Vault's own.
+func TestRootCredentialTarget_DistinctUUIDAllowed(t *testing.T) {
+	b, s, mp := getTestBackendWithUUIDClientID(t, strings.ToUpper(generateUUID()))
+
+	mp.lock.Lock()
+	mp.applications["other-obj"] = generateUUID()
+	mp.lock.Unlock()
+
+	testRoleCreate(t, b, s, "other", map[string]interface{}{"application_object_id": "other-obj"})
 }
